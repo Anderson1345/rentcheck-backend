@@ -22,7 +22,8 @@ model Arrendador {
   creado_en           DateTime @default(now())
   inmuebles           Inmueble[]
   inquilinos          Inquilino[]
-  contratos           Contrato[] 
+  contratos           Contrato[]
+  pagos               Pago[] 
 }
 
 
@@ -123,6 +124,7 @@ model Contrato {
   creado_en             DateTime              @default(now())
   incrementos_ipc       IncrementoIPC[]
   codigo_acceso         CodigoAcceso?
+  pagos                 Pago[]
 }
 
 
@@ -149,4 +151,25 @@ model CodigoAcceso {
   inquilino      Inquilino @relation(fields: [inquilino_id], references: [id])
   creado_en      DateTime  @default(now())
   actualizado_en DateTime  @updatedAt
+}
+
+
+enum EstadoPago {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+model Pago {
+  id              String      @id @default(uuid()) @db.Uuid
+  arrendador_id   String      @db.Uuid
+  arrendador      Arrendador @relation(fields: [arrendador_id], references: [id])
+  contrato_id     String      @db.Uuid
+  contrato        Contrato    @relation(fields: [contrato_id], references: [id])
+  monto_centavos  Int
+  fecha_reportada DateTime    @db.Date
+  comprobante_url String
+  estado          EstadoPago  @default(PENDIENTE)
+  creado_en       DateTime    @default(now())
+  actualizado_en  DateTime    @updatedAt
 }
