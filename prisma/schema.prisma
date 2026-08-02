@@ -74,6 +74,7 @@ model Unidad {
   contratos              Contrato[]
   codigos_acceso         CodigoAcceso[]
   solicitudes_mantenimiento SolicitudMantenimiento[]
+  fotos_inventario       FotoInventario[]
 }
 
 
@@ -129,6 +130,7 @@ model Contrato {
   incrementos_ipc       IncrementoIPC[]
   codigo_acceso         CodigoAcceso?
   pagos                 Pago[]
+  fotos_inventario      FotoInventario[]
 }
 
 
@@ -222,3 +224,22 @@ model DocumentoInmueble {
   archivo_url String
   creado_en   DateTime               @default(now())
 }
+
+
+enum Momento {
+  ENTREGA
+  DEVOLUCION
+}
+
+model FotoInventario {
+  id          String   @id @default(uuid()) @db.Uuid
+  contrato_id String   @db.Uuid
+  contrato    Contrato @relation(fields: [contrato_id], references: [id])
+  unidad_id   String   @db.Uuid
+  unidad      Unidad   @relation(fields: [unidad_id], references: [id])
+  momento     Momento
+  zona        String
+  foto_url    String
+  creado_en   DateTime @default(now())
+}
+
