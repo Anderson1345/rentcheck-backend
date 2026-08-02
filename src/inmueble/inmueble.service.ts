@@ -56,4 +56,14 @@ export class InmuebleService {
       orderBy: { creado_en: 'desc' },
     });
   }
+
+  encontrarUno(
+    id: string,
+    arrendadorId: string,
+  ): Promise<InmuebleConUnidades | null> {
+    return this.prisma.inmueble.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+      include: { unidades: true },
+    });
+  }
 }

@@ -4,12 +4,15 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -32,6 +35,25 @@ export class InmuebleController {
   })
   listar(@ArrendadorActual() arrendadorId: string) {
     return this.inmuebleService.listar(arrendadorId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtener detalle de un inmueble por ID' })
+  @ApiOkResponse({
+    description: 'Inmueble con sus unidades.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado.',
+  })
+  async encontrarUno(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const inmueble = await this.inmuebleService.encontrarUno(id, arrendadorId);
+    if (!inmueble) {
+      throw new NotFoundException('Inmueble no encontrado.');
+    }
+    return inmueble;
   }
 
   @Post()
