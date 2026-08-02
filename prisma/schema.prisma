@@ -34,4 +34,36 @@ model Inmueble {
   matricula_inmobiliaria String
   foto_portada_url       String?
   creado_en              DateTime    @default(now())
+  unidades               Unidad[]
+}
+
+
+enum TipoUnidad {
+  APARTAMENTO
+  CASA
+  LOCAL
+  PARQUEADERO
+  HABITACION
+}
+
+enum UsoPermitido {
+  RESIDENCIAL
+  COMERCIAL
+}
+
+model Unidad {
+  id                    String      @id @default(uuid()) @db.Uuid
+  inmueble_id           String      @db.Uuid
+  inmueble              Inmueble    @relation(fields: [inmueble_id], references: [id])
+  nombre                String
+  tipo                  TipoUnidad
+  metros_cuadrados      Decimal
+  numero_habitaciones   Int
+  numero_banos          Int
+  canon_base_centavos   Int
+  ocupantes_maximos     Int
+  acepta_mascotas       Boolean
+  uso_permitido         UsoPermitido
+  foto_principal_url    String?
+  creado_en             DateTime    @default(now())
 }
