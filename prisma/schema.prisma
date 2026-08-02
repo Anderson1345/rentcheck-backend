@@ -20,7 +20,8 @@ model Arrendador {
   contrasena_hash     String 
   foto_cedula_nit_url String? 
   creado_en           DateTime @default(now())
-  inmuebles           Inmueble[] 
+  inmuebles           Inmueble[]
+  inquilinos          Inquilino[] 
 }
 
 
@@ -66,4 +67,18 @@ model Unidad {
   uso_permitido         UsoPermitido
   foto_principal_url    String?
   creado_en             DateTime    @default(now())
+}
+
+
+model Inquilino {
+  id                String      @id @default(uuid()) @db.Uuid
+  arrendador_id     String      @db.Uuid
+  arrendador        Arrendador @relation(fields: [arrendador_id], references: [id])
+  nombre            String
+  cedula            String
+  telefono          String
+  correo            String?     @unique
+  contrasena_hash   String?
+  foto_cedula_url   String?
+  creado_en         DateTime    @default(now())
 }
