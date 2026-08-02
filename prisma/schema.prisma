@@ -119,4 +119,17 @@ model Contrato {
   pdf_contrato_url      String?
   estado                EstadoContrato
   creado_en             DateTime              @default(now())
+  incrementos_ipc       IncrementoIPC[]
+}
+
+
+model IncrementoIPC {
+  id                       String    @id @default(uuid()) @db.Uuid
+  contrato_id              String    @db.Uuid
+  contrato                 Contrato  @relation(fields: [contrato_id], references: [id])
+  fecha_aplicacion         DateTime  @db.Date
+  canon_anterior_centavos  Int
+  canon_nuevo_centavos     Int
+  porcentaje_ipc_aplicado  Decimal
+  creado_en                DateTime  @default(now())
 }
