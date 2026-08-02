@@ -3,15 +3,15 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
-} from "@nestjs/common";
-import { JwtService } from "@nestjs/jwt";
-import * as bcrypt from "bcrypt";
-import { PrismaService } from "../prisma/prisma.service";
-import { CompletarRegistroInquilinoDto } from "./dto/completar-registro-inquilino.dto";
-import { LoginArrendadorDto } from "./dto/login-arrendador.dto";
-import { LoginInquilinoDto } from "./dto/login-inquilino.dto";
-import { RegistroArrendadorDto } from "./dto/registro-arrendador.dto";
-import { ValidarCodigoAccesoDto } from "./dto/validar-codigo-acceso.dto";
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../prisma/prisma.service';
+import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
+import { LoginArrendadorDto } from './dto/login-arrendador.dto';
+import { LoginInquilinoDto } from './dto/login-inquilino.dto';
+import { RegistroArrendadorDto } from './dto/registro-arrendador.dto';
+import { ValidarCodigoAccesoDto } from './dto/validar-codigo-acceso.dto';
 
 @Injectable()
 export class AuthService {
@@ -26,7 +26,7 @@ export class AuthService {
     });
 
     if (arrendadorExistente) {
-      throw new ConflictException("El correo ya está registrado.");
+      throw new ConflictException('El correo ya está registrado.');
     }
 
     const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
@@ -48,7 +48,7 @@ export class AuthService {
     });
 
     if (!arrendador) {
-      throw new UnauthorizedException("Credenciales inválidas.");
+      throw new UnauthorizedException('Credenciales inválidas.');
     }
 
     const contrasenaCoincide = await bcrypt.compare(
@@ -57,7 +57,7 @@ export class AuthService {
     );
 
     if (!contrasenaCoincide) {
-      throw new UnauthorizedException("Credenciales inválidas.");
+      throw new UnauthorizedException('Credenciales inválidas.');
     }
 
     return this.crearRespuestaAutenticacion(arrendador);
@@ -74,7 +74,7 @@ export class AuthService {
     });
 
     if (!codigoAcceso) {
-      throw new NotFoundException("Código de acceso no válido");
+      throw new NotFoundException('Código de acceso no válido');
     }
 
     if (
@@ -82,7 +82,7 @@ export class AuthService {
       codigoAcceso.inquilino.contrasena_hash !== null
     ) {
       throw new ConflictException(
-        "Esta cuenta ya fue activada. Inicie sesión con correo y contraseña.",
+        'Esta cuenta ya fue activada. Inicie sesión con correo y contraseña.',
       );
     }
 
@@ -91,7 +91,7 @@ export class AuthService {
       nombreInquilino: codigoAcceso.inquilino.nombre,
       nombreUnidad: codigoAcceso.unidad.nombre,
       direccionInmueble: codigoAcceso.unidad.inmueble.direccion,
-      mensaje: "Puede continuar completando su registro.",
+      mensaje: 'Puede continuar completando su registro.',
     };
   }
 
@@ -102,22 +102,25 @@ export class AuthService {
     });
 
     if (!codigoAcceso) {
-      throw new NotFoundException("Código de acceso no válido");
+      throw new NotFoundException('Código de acceso no válido');
     }
 
     if (
       codigoAcceso.inquilino.correo !== null &&
       codigoAcceso.inquilino.contrasena_hash !== null
     ) {
-      throw new ConflictException("Esta cuenta ya fue activada.");
+      throw new ConflictException('Esta cuenta ya fue activada.');
     }
 
     const inquilinoConCorreo = await this.prisma.inquilino.findUnique({
       where: { correo: dto.correo },
     });
 
-    if (inquilinoConCorreo && inquilinoConCorreo.id !== codigoAcceso.inquilino.id) {
-      throw new ConflictException("El correo ya está en uso.");
+    if (
+      inquilinoConCorreo &&
+      inquilinoConCorreo.id !== codigoAcceso.inquilino.id
+    ) {
+      throw new ConflictException('El correo ya está en uso.');
     }
 
     const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
@@ -139,7 +142,7 @@ export class AuthService {
     });
 
     if (!inquilino || !inquilino.contrasena_hash) {
-      throw new UnauthorizedException("Credenciales inválidas.");
+      throw new UnauthorizedException('Credenciales inválidas.');
     }
 
     const contrasenaCoincide = await bcrypt.compare(
@@ -148,7 +151,7 @@ export class AuthService {
     );
 
     if (!contrasenaCoincide) {
-      throw new UnauthorizedException("Credenciales inválidas.");
+      throw new UnauthorizedException('Credenciales inválidas.');
     }
 
     return this.crearRespuestaAutenticacionInquilino(inquilino);
