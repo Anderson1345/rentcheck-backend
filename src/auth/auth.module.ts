@@ -23,7 +23,7 @@ import { ArrendadorActual } from './arrendador-actual.decorator';
   ],
   controllers: [AuthController, InquilinoAuthController],
   providers: [AuthService, PrismaService, JwtStrategy, JwtAuthGuard],
-  exports: [JwtAuthGuard, ArrendadorActual],
+  exports: [JwtAuthGuard],
 })
 export class AuthModule {}
 
