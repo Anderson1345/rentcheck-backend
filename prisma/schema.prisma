@@ -69,6 +69,7 @@ model Unidad {
   foto_principal_url    String?
   creado_en             DateTime    @default(now())
   contratos              Contrato[]
+  codigos_acceso         CodigoAcceso[]
 }
 
 
@@ -84,6 +85,7 @@ model Inquilino {
   foto_cedula_url   String?
   creado_en         DateTime    @default(now())
   contratos          Contrato[]
+  codigos_acceso     CodigoAcceso[]
 }
 
 
@@ -120,6 +122,7 @@ model Contrato {
   estado                EstadoContrato
   creado_en             DateTime              @default(now())
   incrementos_ipc       IncrementoIPC[]
+  codigo_acceso         CodigoAcceso?
 }
 
 
@@ -132,4 +135,18 @@ model IncrementoIPC {
   canon_nuevo_centavos     Int
   porcentaje_ipc_aplicado  Decimal
   creado_en                DateTime  @default(now())
+}
+
+
+model CodigoAcceso {
+  id             String    @id @default(uuid()) @db.Uuid
+  codigo         String    @unique
+  contrato_id    String    @unique @db.Uuid
+  contrato       Contrato  @relation(fields: [contrato_id], references: [id])
+  unidad_id      String    @db.Uuid
+  unidad         Unidad    @relation(fields: [unidad_id], references: [id])
+  inquilino_id   String    @db.Uuid
+  inquilino      Inquilino @relation(fields: [inquilino_id], references: [id])
+  creado_en      DateTime  @default(now())
+  actualizado_en DateTime  @updatedAt
 }
