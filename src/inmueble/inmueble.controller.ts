@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -9,6 +10,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
@@ -22,6 +24,15 @@ import { InmuebleService } from './inmueble.service';
 @ApiBearerAuth()
 export class InmuebleController {
   constructor(private readonly inmuebleService: InmuebleService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Listar inmuebles del arrendador autenticado' })
+  @ApiOkResponse({
+    description: 'Lista de inmuebles con sus unidades.',
+  })
+  listar(@ArrendadorActual() arrendadorId: string) {
+    return this.inmuebleService.listar(arrendadorId);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

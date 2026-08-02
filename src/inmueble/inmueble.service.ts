@@ -48,4 +48,12 @@ export class InmuebleService {
       });
     });
   }
+
+  listar(arrendadorId: string): Promise<InmuebleConUnidades[]> {
+    return this.prisma.inmueble.findMany({
+      where: { arrendador_id: arrendadorId },
+      include: { unidades: true },
+      orderBy: { creado_en: 'desc' },
+    });
+  }
 }
