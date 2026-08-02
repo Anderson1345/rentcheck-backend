@@ -23,7 +23,8 @@ model Arrendador {
   inmuebles           Inmueble[]
   inquilinos          Inquilino[]
   contratos           Contrato[]
-  pagos               Pago[] 
+  pagos               Pago[]
+  solicitudes_mantenimiento SolicitudMantenimiento[] 
 }
 
 
@@ -71,6 +72,7 @@ model Unidad {
   creado_en             DateTime    @default(now())
   contratos              Contrato[]
   codigos_acceso         CodigoAcceso[]
+  solicitudes_mantenimiento SolicitudMantenimiento[]
 }
 
 
@@ -87,6 +89,7 @@ model Inquilino {
   creado_en         DateTime    @default(now())
   contratos          Contrato[]
   codigos_acceso     CodigoAcceso[]
+  solicitudes_mantenimiento SolicitudMantenimiento[]
 }
 
 
@@ -172,4 +175,33 @@ model Pago {
   estado          EstadoPago  @default(PENDIENTE)
   creado_en       DateTime    @default(now())
   actualizado_en  DateTime    @updatedAt
+}
+
+
+enum UrgenciaMantenimiento {
+  BAJO
+  MEDIO
+  ALTO
+}
+
+enum EstadoSolicitudMantenimiento {
+  PENDIENTE
+  EN_PROCESO
+  RESUELTO
+}
+
+model SolicitudMantenimiento {
+  id             String                       @id @default(uuid()) @db.Uuid
+  arrendador_id  String                       @db.Uuid
+  arrendador     Arrendador                   @relation(fields: [arrendador_id], references: [id])
+  unidad_id      String                       @db.Uuid
+  unidad         Unidad                       @relation(fields: [unidad_id], references: [id])
+  inquilino_id   String                       @db.Uuid
+  inquilino      Inquilino                    @relation(fields: [inquilino_id], references: [id])
+  descripcion    String
+  adjunto_url    String?
+  urgencia       UrgenciaMantenimiento
+  estado         EstadoSolicitudMantenimiento @default(PENDIENTE)
+  creado_en      DateTime                     @default(now())
+  actualizado_en DateTime                     @updatedAt
 }
