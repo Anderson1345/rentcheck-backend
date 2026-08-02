@@ -39,6 +39,7 @@ model Inmueble {
   foto_portada_url       String?
   creado_en              DateTime    @default(now())
   unidades               Unidad[]
+  documentos             DocumentoInmueble[]
 }
 
 
@@ -204,4 +205,20 @@ model SolicitudMantenimiento {
   estado         EstadoSolicitudMantenimiento @default(PENDIENTE)
   creado_en      DateTime                     @default(now())
   actualizado_en DateTime                     @updatedAt
+}
+
+
+enum TipoDocumentoInmueble {
+  CERTIFICADO_TRADICION_LIBERTAD
+  RECIBO_PREDIAL
+  PAZ_Y_SALVO_ADMINISTRACION
+}
+
+model DocumentoInmueble {
+  id          String                 @id @default(uuid()) @db.Uuid
+  inmueble_id String                 @db.Uuid
+  inmueble    Inmueble               @relation(fields: [inmueble_id], references: [id])
+  tipo        TipoDocumentoInmueble
+  archivo_url String
+  creado_en   DateTime               @default(now())
 }
