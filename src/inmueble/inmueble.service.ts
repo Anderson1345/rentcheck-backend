@@ -3,6 +3,7 @@ import { Prisma, TipoUnidad, UsoPermitido } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
+import { CrearUnidadDto } from './dto/crear-unidad.dto';
 
 type InmuebleConUnidades = Prisma.InmuebleGetPayload<{
   include: { unidades: true };
@@ -83,6 +84,34 @@ export class InmuebleService {
     return this.prisma.inmueble.findFirst({
       where: { id, arrendador_id: arrendadorId },
       include: { unidades: true },
+    });
+  }
+
+  async crearUnidad(
+    inmuebleId: string,
+    dto: CrearUnidadDto,
+    arrendadorId: string,
+  ): Promise<Prisma.UnidadGetPayload<{}> | null> {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id: inmuebleId, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      return null;
+    }
+    return this.prisma.unidad.create({
+      data: {
+        inmueble_id: inmuebleId,
+        nombre: dto.nombre,
+        tipo: dto.tipo,
+        metros_cuadrados: dto.metros_cuadrados.toString(),
+        numero_habitaciones: dto.numero_habitaciones,
+        numero_banos: dto.numero_banos,
+        canon_base_centavos: dto.canon_base_centavos,
+        ocupantes_maximos: dto.ocupantes_maximos,
+        acepta_mascotas: dto.acepta_mascotas,
+        uso_permitido: dto.uso_permitido,
+        foto_principal_url: dto.foto_principal_url,
+      },
     });
   }
 }

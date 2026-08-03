@@ -21,6 +21,7 @@ import {
 import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
+import { CrearUnidadDto } from './dto/crear-unidad.dto';
 import { InmuebleService } from './inmueble.service';
 
 @ApiTags('Inmuebles')
@@ -93,5 +94,30 @@ export class InmuebleController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.inmuebleService.crear(dto, arrendadorId);
+  }
+
+  @Post(':inmuebleId/unidades')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Crear una unidad dentro de un inmueble existente' })
+  @ApiCreatedResponse({
+    description: 'Unidad creada exitosamente.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado o no pertenece al arrendador.',
+  })
+  async crearUnidad(
+    @Param('inmuebleId') inmuebleId: string,
+    @Body() dto: CrearUnidadDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const unidad = await this.inmuebleService.crearUnidad(
+      inmuebleId,
+      dto,
+      arrendadorId,
+    );
+    if (!unidad) {
+      throw new NotFoundException('Inmueble no encontrado.');
+    }
+    return unidad;
   }
 }
