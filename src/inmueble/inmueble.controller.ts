@@ -6,6 +6,7 @@ import {
   HttpStatus,
   NotFoundException,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
+import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { InmuebleService } from './inmueble.service';
 
@@ -50,6 +52,30 @@ export class InmuebleController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     const inmueble = await this.inmuebleService.encontrarUno(id, arrendadorId);
+    if (!inmueble) {
+      throw new NotFoundException('Inmueble no encontrado.');
+    }
+    return inmueble;
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Actualizar un inmueble por ID' })
+  @ApiOkResponse({
+    description: 'Inmueble actualizado con sus unidades.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado.',
+  })
+  async actualizar(
+    @Param('id') id: string,
+    @Body() dto: ActualizarInmuebleDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const inmueble = await this.inmuebleService.actualizar(
+      id,
+      dto,
+      arrendadorId,
+    );
     if (!inmueble) {
       throw new NotFoundException('Inmueble no encontrado.');
     }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, TipoUnidad, UsoPermitido } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
+import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 
 type InmuebleConUnidades = Prisma.InmuebleGetPayload<{
   include: { unidades: true };
@@ -61,6 +62,24 @@ export class InmuebleService {
     id: string,
     arrendadorId: string,
   ): Promise<InmuebleConUnidades | null> {
+    return this.prisma.inmueble.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+      include: { unidades: true },
+    });
+  }
+
+  async actualizar(
+    id: string,
+    dto: ActualizarInmuebleDto,
+    arrendadorId: string,
+  ): Promise<InmuebleConUnidades | null> {
+    const resultado = await this.prisma.inmueble.updateMany({
+      where: { id, arrendador_id: arrendadorId },
+      data: dto,
+    });
+    if (resultado.count === 0) {
+      return null;
+    }
     return this.prisma.inmueble.findFirst({
       where: { id, arrendador_id: arrendadorId },
       include: { unidades: true },
