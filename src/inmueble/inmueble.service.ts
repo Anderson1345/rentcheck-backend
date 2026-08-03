@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { CrearUnidadDto } from './dto/crear-unidad.dto';
+import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
 
 type InmuebleConUnidades = Prisma.InmuebleGetPayload<{
   include: { unidades: true };
@@ -112,6 +113,49 @@ export class InmuebleService {
         uso_permitido: dto.uso_permitido,
         foto_principal_url: dto.foto_principal_url,
       },
+    });
+  }
+
+  async actualizarUnidad(
+    inmuebleId: string,
+    unidadId: string,
+    dto: ActualizarUnidadDto,
+    arrendadorId: string,
+  ): Promise<Prisma.UnidadGetPayload<{}> | null> {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id: inmuebleId, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      return null;
+    }
+
+    const data: Prisma.UnidadUpdateInput = {};
+    if (dto.nombre !== undefined) data.nombre = dto.nombre;
+    if (dto.tipo !== undefined) data.tipo = dto.tipo;
+    if (dto.metros_cuadrados !== undefined)
+      data.metros_cuadrados = dto.metros_cuadrados.toString();
+    if (dto.numero_habitaciones !== undefined)
+      data.numero_habitaciones = dto.numero_habitaciones;
+    if (dto.numero_banos !== undefined) data.numero_banos = dto.numero_banos;
+    if (dto.canon_base_centavos !== undefined)
+      data.canon_base_centavos = dto.canon_base_centavos;
+    if (dto.ocupantes_maximos !== undefined)
+      data.ocupantes_maximos = dto.ocupantes_maximos;
+    if (dto.acepta_mascotas !== undefined)
+      data.acepta_mascotas = dto.acepta_mascotas;
+    if (dto.uso_permitido !== undefined) data.uso_permitido = dto.uso_permitido;
+    if (dto.foto_principal_url !== undefined)
+      data.foto_principal_url = dto.foto_principal_url;
+
+    const resultado = await this.prisma.unidad.updateMany({
+      where: { id: unidadId, inmueble_id: inmuebleId },
+      data,
+    });
+    if (resultado.count === 0) {
+      return null;
+    }
+    return this.prisma.unidad.findFirst({
+      where: { id: unidadId, inmueble_id: inmuebleId },
     });
   }
 }

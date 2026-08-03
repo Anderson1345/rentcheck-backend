@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
+import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { CrearUnidadDto } from './dto/crear-unidad.dto';
 import { InmuebleService } from './inmueble.service';
@@ -117,6 +118,32 @@ export class InmuebleController {
     );
     if (!unidad) {
       throw new NotFoundException('Inmueble no encontrado.');
+    }
+    return unidad;
+  }
+
+  @Patch(':inmuebleId/unidades/:unidadId')
+  @ApiOperation({ summary: 'Actualizar una unidad por ID' })
+  @ApiOkResponse({
+    description: 'Unidad actualizada exitosamente.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Inmueble o unidad no encontrada.',
+  })
+  async actualizarUnidad(
+    @Param('inmuebleId') inmuebleId: string,
+    @Param('unidadId') unidadId: string,
+    @Body() dto: ActualizarUnidadDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const unidad = await this.inmuebleService.actualizarUnidad(
+      inmuebleId,
+      unidadId,
+      dto,
+      arrendadorId,
+    );
+    if (!unidad) {
+      throw new NotFoundException('Inmueble o unidad no encontrada.');
     }
     return unidad;
   }
