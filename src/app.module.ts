@@ -4,12 +4,14 @@ import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { InmuebleModule } from './inmueble/inmueble.module';
+import { InquilinoModule } from './inquilino/inquilino.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AuthModule,
     InmuebleModule,
+    InquilinoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
