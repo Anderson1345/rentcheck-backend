@@ -20,6 +20,42 @@ type InquilinoSeguro = Prisma.InquilinoGetPayload<{
 export class InquilinoService {
   constructor(private readonly prisma: PrismaService) {}
 
+  listar(arrendadorId: string): Promise<InquilinoSeguro[]> {
+    return this.prisma.inquilino.findMany({
+      where: { arrendador_id: arrendadorId },
+      orderBy: { creado_en: 'desc' },
+      select: {
+        id: true,
+        arrendador_id: true,
+        nombre: true,
+        cedula: true,
+        telefono: true,
+        correo: true,
+        foto_cedula_url: true,
+        creado_en: true,
+      },
+    });
+  }
+
+  encontrarUno(
+    id: string,
+    arrendadorId: string,
+  ): Promise<InquilinoSeguro | null> {
+    return this.prisma.inquilino.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+      select: {
+        id: true,
+        arrendador_id: true,
+        nombre: true,
+        cedula: true,
+        telefono: true,
+        correo: true,
+        foto_cedula_url: true,
+        creado_en: true,
+      },
+    });
+  }
+
   crear(
     dto: CrearInquilinoDto,
     arrendadorId: string,
