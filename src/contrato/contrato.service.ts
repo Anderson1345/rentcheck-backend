@@ -2,16 +2,80 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EstadoContrato, Prisma } from '@prisma/client';
 import { randomInt } from 'crypto';
+import { createWriteStream } from 'fs';
+import { mkdir, unlink } from 'fs/promises';
+import { dirname, join } from 'path';
+import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 
 @Injectable()
 export class ContratoService {
+  private readonly logger = new Logger(ContratoService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  private async generarPdfContrato(
+    contrato: Prisma.ContratoGetPayload<{
+      include: {
+        unidad: { include: { inmueble: true } };
+        inquilino: true;
+      };
+    }>,
+  ): Promise<void> {
+    const rutaRelativa = `uploads/contratos/${contrato.id}.pdf`;
+    const rutaAbsoluta = join(process.cwd(), rutaRelativa);
+
+    await mkdir(dirname(rutaAbsoluta), { recursive: true });
+
+    await new Promise<void>((resolve, reject) => {
+      const documento = new PDFDocument();
+      const salida = createWriteStream(rutaAbsoluta);
+
+      salida.on('finish', resolve);
+      salida.on('error', reject);
+      documento.on('error', reject);
+      documento.pipe(salida);
+
+      documento.fontSize(18).text('Contrato de arrendamiento');
+      documento.moveDown();
+      documento.fontSize(12);
+      documento.text(`Inquilino: ${contrato.inquilino.nombre}`);
+      documento.text(
+        `Dirección del inmueble: ${contrato.unidad.inmueble.direccion}`,
+      );
+      documento.text(`Unidad: ${contrato.unidad.nombre}`);
+      documento.text(`Tipo de plantilla: ${contrato.tipo_plantilla}`);
+      documento.text(
+        `Canon: $${(contrato.canon_centavos / 100).toLocaleString('es-CO')}`,
+      );
+      documento.text(`Día de pago: ${contrato.dia_pago}`);
+      documento.text(`Forma de pago: ${contrato.forma_pago}`);
+      documento.text(
+        `Depósito: $${(contrato.deposito_centavos / 100).toLocaleString('es-CO')}`,
+      );
+      documento.text(
+        `Fecha de inicio: ${contrato.fecha_inicio.toISOString().slice(0, 10)}`,
+      );
+      documento.text(
+        `Fecha de fin: ${contrato.fecha_fin.toISOString().slice(0, 10)}`,
+      );
+      documento.end();
+    });
+  }
+
+  private async eliminarPdfContrato(rutaRelativa: string): Promise<void> {
+    try {
+      await unlink(join(process.cwd(), rutaRelativa));
+    } catch {
+      // La limpieza no debe ocultar el error original de la transacción.
+    }
+  }
 
   private generarCodigoAcceso(): string {
     const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -56,10 +120,20 @@ export class ContratoService {
       throw new NotFoundException('Inquilino no encontrado');
     }
 
+    let contratoCreado:
+      | Prisma.ContratoGetPayload<{
+          include: {
+            codigo_acceso: true;
+            unidad: { include: { inmueble: true } };
+            inquilino: true;
+          };
+        }>
+      | undefined;
+
     try {
       for (let intento = 1; intento <= 5; intento += 1) {
         try {
-          return await this.prisma.$transaction(async (tx) => {
+          contratoCreado = await this.prisma.$transaction(async (tx) => {
             const contrato = await tx.contrato.create({
               data: {
                 arrendador_id: arrendadorId,
@@ -76,6 +150,10 @@ export class ContratoService {
                 fecha_fin: dto.fecha_fin,
                 estado: EstadoContrato.ACTIVO,
               },
+              include: {
+                unidad: { include: { inmueble: true } },
+                inquilino: true,
+              },
             });
 
             await tx.codigoAcceso.create({
@@ -89,9 +167,14 @@ export class ContratoService {
 
             return tx.contrato.findUniqueOrThrow({
               where: { id: contrato.id },
-              include: { codigo_acceso: true },
+              include: {
+                codigo_acceso: true,
+                unidad: { include: { inmueble: true } },
+                inquilino: true,
+              },
             });
           });
+          break;
         } catch (error) {
           if (this.esColisionDeCodigoAcceso(error)) {
             if (intento === 5) {
@@ -105,9 +188,11 @@ export class ContratoService {
         }
       }
 
-      throw new InternalServerErrorException(
-        'No fue posible generar el código de acceso',
-      );
+      if (!contratoCreado) {
+        throw new InternalServerErrorException(
+          'No fue posible generar el código de acceso',
+        );
+      }
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -116,6 +201,35 @@ export class ContratoService {
         throw new ConflictException('Esta unidad ya tiene un contrato activo');
       }
       throw error;
+    }
+
+    const contratoConfirmado = contratoCreado;
+    if (!contratoConfirmado) {
+      throw new InternalServerErrorException(
+        'No fue posible crear el contrato',
+      );
+    }
+
+    const pdfContratoUrl = `uploads/contratos/${contratoConfirmado.id}.pdf`;
+    try {
+      await this.generarPdfContrato(contratoConfirmado);
+
+      return await this.prisma.contrato.update({
+        where: { id: contratoConfirmado.id },
+        data: { pdf_contrato_url: pdfContratoUrl },
+        include: {
+          codigo_acceso: true,
+          unidad: { include: { inmueble: true } },
+          inquilino: true,
+        },
+      });
+    } catch (error) {
+      await this.eliminarPdfContrato(pdfContratoUrl);
+      this.logger.error(
+        `No fue posible generar o guardar el PDF del contrato ${contratoConfirmado.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return contratoConfirmado;
     }
   }
 }
