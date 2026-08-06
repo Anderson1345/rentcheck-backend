@@ -20,7 +20,10 @@ export class ContratoController {
 
   @Post()
   @ApiOperation({ summary: 'Crear un contrato' })
-  @ApiCreatedResponse({ description: 'Contrato creado exitosamente.' })
+  @ApiCreatedResponse({
+    description:
+      'Contrato creado exitosamente, incluyendo su código de acceso generado.',
+  })
   @ApiNotFoundResponse({
     description: 'La unidad o el inquilino no pertenecen al arrendador.',
   })
