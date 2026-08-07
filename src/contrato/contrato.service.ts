@@ -102,6 +102,48 @@ export class ContratoService {
     );
   }
 
+  async listar(arrendadorId: string) {
+    return this.prisma.contrato.findMany({
+      where: {
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+      include: {
+        unidad: {
+          select: {
+            id: true,
+            nombre: true,
+            tipo: true,
+          },
+        },
+        inquilino: {
+          select: {
+            id: true,
+            nombre: true,
+          },
+        },
+      },
+      orderBy: { fecha_inicio: 'desc' },
+    });
+  }
+
+  async encontrarUno(id: string, arrendadorId: string) {
+    return this.prisma.contrato.findFirst({
+      where: {
+        id,
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+      include: {
+        unidad: true,
+        inquilino: true,
+        incrementos_ipc: true,
+      },
+    });
+  }
+
   async crear(dto: CrearContratoDto, arrendadorId: string) {
     const unidad = await this.prisma.unidad.findFirst({
       where: {
