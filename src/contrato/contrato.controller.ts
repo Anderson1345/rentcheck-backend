@@ -58,6 +58,24 @@ export class ContratoController {
     return contrato;
   }
 
+  @Post(':id/renovar')
+  @ApiOperation({ summary: 'Renovar un contrato activo aplicando el IPC vigente' })
+  @ApiOkResponse({
+    description: 'Contrato renovado e incremento IPC registrado exitosamente.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description: 'El contrato no está activo y no puede renovarse.',
+  })
+  renovar(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.contratoService.renovar(id, arrendadorId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Crear un contrato' })
   @ApiCreatedResponse({

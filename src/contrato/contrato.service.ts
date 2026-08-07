@@ -144,6 +144,89 @@ export class ContratoService {
     });
   }
 
+  async renovar(id: string, arrendadorId: string) {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: {
+        id,
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+      include: {
+        unidad: { include: { inmueble: true } },
+        inquilino: true,
+      },
+    });
+
+    if (!contrato) {
+      throw new NotFoundException('Contrato no encontrado.');
+    }
+
+    if (contrato.estado !== EstadoContrato.ACTIVO) {
+      throw new ConflictException(
+        'No se puede renovar un contrato que no está activo.',
+      );
+    }
+
+    const configuracionIpc = await this.prisma.configuracionIpc.findFirst({
+      orderBy: [{ anio: 'desc' }, { actualizadoEn: 'desc' }],
+    });
+    if (!configuracionIpc) {
+      throw new InternalServerErrorException(
+        'No hay un valor de IPC configurado para renovar el contrato.',
+      );
+    }
+
+    const porcentajeIpc = configuracionIpc.porcentaje.toNumber();
+    const canonNuevo = Math.round(
+      contrato.canon_centavos +
+        (contrato.canon_centavos * porcentajeIpc) / 100,
+    );
+    const nuevaFechaFin = new Date(contrato.fecha_fin);
+    nuevaFechaFin.setFullYear(nuevaFechaFin.getFullYear() + 1);
+    const fechaAplicacion = new Date();
+
+    const [contratoActualizado, incrementoIpc] = await this.prisma.$transaction([
+      this.prisma.contrato.update({
+        where: { id: contrato.id },
+        data: {
+          canon_centavos: canonNuevo,
+          fecha_fin: nuevaFechaFin,
+        },
+      }),
+      this.prisma.incrementoIPC.create({
+        data: {
+          contrato_id: contrato.id,
+          canon_anterior_centavos: contrato.canon_centavos,
+          canon_nuevo_centavos: canonNuevo,
+          porcentaje_ipc_aplicado: configuracionIpc.porcentaje,
+          fecha_aplicacion: fechaAplicacion,
+        },
+      }),
+    ]);
+
+    let contratoConPdf = contratoActualizado;
+    const pdfContratoUrl = `uploads/contratos/${contrato.id}.pdf`;
+    try {
+      await this.generarPdfContrato({
+        ...contrato,
+        canon_centavos: canonNuevo,
+        fecha_fin: nuevaFechaFin,
+      });
+      contratoConPdf = await this.prisma.contrato.update({
+        where: { id: contrato.id },
+        data: { pdf_contrato_url: pdfContratoUrl },
+      });
+    } catch (error) {
+      this.logger.error(
+        `No fue posible regenerar o guardar el PDF del contrato ${contrato.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    return { contrato: contratoConPdf, incremento_ipc: incrementoIpc };
+  }
+
   async crear(dto: CrearContratoDto, arrendadorId: string) {
     const unidad = await this.prisma.unidad.findFirst({
       where: {
