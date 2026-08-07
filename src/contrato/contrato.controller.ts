@@ -76,6 +76,20 @@ export class ContratoController {
     return this.contratoService.renovar(id, arrendadorId);
   }
 
+  @Post(':id/regenerar-codigo')
+  @ApiOperation({ summary: 'Regenerar el código de acceso de un contrato' })
+  @ApiOkResponse({ description: 'Código de acceso regenerado exitosamente.' })
+  @ApiNotFoundResponse({
+    description:
+      'Contrato no encontrado, no pertenece al arrendador o no tiene código de acceso.',
+  })
+  regenerarCodigo(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.contratoService.regenerarCodigo(id, arrendadorId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Crear un contrato' })
   @ApiCreatedResponse({

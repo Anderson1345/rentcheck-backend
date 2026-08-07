@@ -227,6 +227,51 @@ export class ContratoService {
     return { contrato: contratoConPdf, incremento_ipc: incrementoIpc };
   }
 
+  async regenerarCodigo(id: string, arrendadorId: string) {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: {
+        id,
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+      include: { codigo_acceso: true },
+    });
+
+    if (!contrato) {
+      throw new NotFoundException('Contrato no encontrado.');
+    }
+    if (!contrato.codigo_acceso) {
+      throw new NotFoundException(
+        'El contrato no tiene un código de acceso asociado.',
+      );
+    }
+
+    for (let intento = 1; intento <= 5; intento += 1) {
+      try {
+        const codigoAcceso = await this.prisma.codigoAcceso.update({
+          where: { id: contrato.codigo_acceso.id },
+          data: { codigo: this.generarCodigoAcceso() },
+        });
+        return { codigo: codigoAcceso.codigo };
+      } catch (error) {
+        if (this.esColisionDeCodigoAcceso(error) && intento < 5) {
+          continue;
+        }
+        if (this.esColisionDeCodigoAcceso(error)) {
+          throw new InternalServerErrorException(
+            'No fue posible generar un código de acceso único.',
+          );
+        }
+        throw error;
+      }
+    }
+
+    throw new InternalServerErrorException(
+      'No fue posible generar un código de acceso único.',
+    );
+  }
+
   async crear(dto: CrearContratoDto, arrendadorId: string) {
     const unidad = await this.prisma.unidad.findFirst({
       where: {
