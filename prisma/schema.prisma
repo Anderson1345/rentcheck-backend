@@ -144,6 +144,13 @@ model IncrementoIPC {
   creado_en                DateTime  @default(now())
 }
 
+model ConfiguracionIpc {
+  id            String   @id @default(uuid())
+  porcentaje    Decimal
+  anio          Int
+  actualizadoEn DateTime @default(now())
+}
+
 
 model CodigoAcceso {
   id             String    @id @default(uuid()) @db.Uuid
