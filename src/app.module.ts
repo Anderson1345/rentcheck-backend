@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { InmuebleModule } from './inmueble/inmueble.module';
 import { InquilinoModule } from './inquilino/inquilino.module';
 import { ContratoModule } from './contrato/contrato.module';
+import { PagoModule } from './pago/pago.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { ContratoModule } from './contrato/contrato.module';
     InmuebleModule,
     InquilinoModule,
     ContratoModule,
+    PagoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
