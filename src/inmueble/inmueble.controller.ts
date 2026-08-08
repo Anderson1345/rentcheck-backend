@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -8,22 +9,45 @@ import {
   Param,
   Patch,
   Post,
+  Query,
+  UnsupportedMediaTypeException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
+  ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
+import { randomUUID } from 'crypto';
+import { mkdirSync } from 'fs';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
 import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
+import { CrearDocumentoInmuebleDto } from './dto/crear-documento-inmueble.dto';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { CrearUnidadDto } from './dto/crear-unidad.dto';
+import { ListarDocumentosInmuebleQueryDto } from './dto/listar-documentos-inmueble-query.dto';
 import { InmuebleService } from './inmueble.service';
+
+const TIPOS_DE_ARCHIVO_PERMITIDOS = [
+  'image/jpeg',
+  'image/png',
+  'application/pdf',
+];
+const TAMANO_MAXIMO_DOCUMENTO = 10 * 1024 * 1024;
 
 @ApiTags('Inmuebles')
 @Controller('inmuebles')
@@ -146,5 +170,127 @@ export class InmuebleController {
       throw new NotFoundException('Inmueble o unidad no encontrada.');
     }
     return unidad;
+  }
+
+  @Post(':inmuebleId/documentos')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      storage: diskStorage({
+        destination: (_req, _file, callback) => {
+          const directorio = join(process.cwd(), 'uploads/documentos-inmueble');
+          mkdirSync(directorio, { recursive: true });
+          callback(null, directorio);
+        },
+        filename: (_req, file, callback) => {
+          const nombre = `${randomUUID()}${extname(file.originalname)}`;
+          callback(null, nombre);
+        },
+      }),
+      fileFilter: (_req, file, callback) => {
+        if (!TIPOS_DE_ARCHIVO_PERMITIDOS.includes(file.mimetype)) {
+          callback(
+            new UnsupportedMediaTypeException(
+              'Tipo de archivo no permitido. Solo se aceptan imágenes JPEG, PNG o documentos PDF.',
+            ),
+            false,
+          );
+          return;
+        }
+        callback(null, true);
+      },
+      limits: { fileSize: TAMANO_MAXIMO_DOCUMENTO },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Subir un documento de un inmueble' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tipo', 'archivo'],
+      properties: {
+        tipo: {
+          type: 'string',
+          enum: [
+            'CERTIFICADO_TRADICION_LIBERTAD',
+            'RECIBO_PREDIAL',
+            'PAZ_Y_SALVO_ADMINISTRACION',
+          ],
+          description: 'Tipo de documento del inmueble.',
+        },
+        archivo: {
+          type: 'string',
+          format: 'binary',
+          description: 'Documento (JPEG, PNG o PDF).',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ description: 'Documento creado exitosamente.' })
+  @ApiBadRequestResponse({ description: 'Datos del formulario inválidos.' })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado o no pertenece al arrendador.',
+  })
+  @ApiUnsupportedMediaTypeResponse({
+    description: 'El tipo de archivo del documento no está permitido.',
+  })
+  async crearDocumento(
+    @Param('inmuebleId') inmuebleId: string,
+    @UploadedFile() archivo: Express.Multer.File,
+    @Body() dto: CrearDocumentoInmuebleDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    if (!archivo) {
+      throw new BadRequestException('El archivo es obligatorio.');
+    }
+
+    const documento = await this.inmuebleService.crearDocumento(
+      inmuebleId,
+      arrendadorId,
+      dto,
+      archivo,
+    );
+    if (!documento) {
+      throw new NotFoundException(
+        'Inmueble no encontrado o no pertenece al arrendador.',
+      );
+    }
+    return documento;
+  }
+
+  @Get(':inmuebleId/documentos')
+  @ApiOperation({ summary: 'Listar documentos de un inmueble' })
+  @ApiOkResponse({
+    description: 'Documentos del inmueble ordenados por fecha de creación.',
+  })
+  @ApiQuery({
+    name: 'tipo',
+    required: false,
+    enum: [
+      'CERTIFICADO_TRADICION_LIBERTAD',
+      'RECIBO_PREDIAL',
+      'PAZ_Y_SALVO_ADMINISTRACION',
+    ],
+    description: 'Filtrar documentos por tipo.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado o no pertenece al arrendador.',
+  })
+  async listarDocumentos(
+    @Param('inmuebleId') inmuebleId: string,
+    @Query() query: ListarDocumentosInmuebleQueryDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const documentos = await this.inmuebleService.listarDocumentos(
+      inmuebleId,
+      arrendadorId,
+      query.tipo,
+    );
+    if (!documentos) {
+      throw new NotFoundException(
+        'Inmueble no encontrado o no pertenece al arrendador.',
+      );
+    }
+    return documentos;
   }
 }

@@ -39,7 +39,8 @@ export class ContratoController {
   @Get(':id')
   @ApiOperation({ summary: 'Obtener el detalle de un contrato por ID' })
   @ApiOkResponse({
-    description: 'Detalle completo del contrato e historial de incrementos IPC.',
+    description:
+      'Detalle completo del contrato e historial de incrementos IPC.',
   })
   @ApiNotFoundResponse({
     description: 'Contrato no encontrado o no pertenece al arrendador.',
@@ -48,10 +49,7 @@ export class ContratoController {
     @Param('id') id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
-    const contrato = await this.contratoService.encontrarUno(
-      id,
-      arrendadorId,
-    );
+    const contrato = await this.contratoService.encontrarUno(id, arrendadorId);
     if (!contrato) {
       throw new NotFoundException('Contrato no encontrado.');
     }
@@ -59,7 +57,9 @@ export class ContratoController {
   }
 
   @Post(':id/renovar')
-  @ApiOperation({ summary: 'Renovar un contrato activo aplicando el IPC vigente' })
+  @ApiOperation({
+    summary: 'Renovar un contrato activo aplicando el IPC vigente',
+  })
   @ApiOkResponse({
     description: 'Contrato renovado e incremento IPC registrado exitosamente.',
   })
@@ -69,10 +69,7 @@ export class ContratoController {
   @ApiConflictResponse({
     description: 'El contrato no está activo y no puede renovarse.',
   })
-  renovar(
-    @Param('id') id: string,
-    @ArrendadorActual() arrendadorId: string,
-  ) {
+  renovar(@Param('id') id: string, @ArrendadorActual() arrendadorId: string) {
     return this.contratoService.renovar(id, arrendadorId);
   }
 

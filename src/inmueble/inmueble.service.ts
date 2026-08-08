@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TipoUnidad, UsoPermitido } from '@prisma/client';
+import {
+  Prisma,
+  TipoDocumentoInmueble,
+  TipoUnidad,
+  UsoPermitido,
+} from '@prisma/client';
+import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { CrearUnidadDto } from './dto/crear-unidad.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
+import { CrearDocumentoInmuebleDto } from './dto/crear-documento-inmueble.dto';
 
 type InmuebleConUnidades = Prisma.InmuebleGetPayload<{
   include: { unidades: true };
@@ -157,5 +164,61 @@ export class InmuebleService {
     return this.prisma.unidad.findFirst({
       where: { id: unidadId, inmueble_id: inmuebleId },
     });
+  }
+
+  async crearDocumento(
+    inmuebleId: string,
+    arrendadorId: string,
+    dto: CrearDocumentoInmuebleDto,
+    archivo: Express.Multer.File,
+  ): Promise<Prisma.DocumentoInmuebleGetPayload<{}> | null> {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id: inmuebleId, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      await this.eliminarArchivo(archivo.path);
+      return null;
+    }
+
+    try {
+      return await this.prisma.documentoInmueble.create({
+        data: {
+          inmueble_id: inmuebleId,
+          tipo: dto.tipo,
+          archivo_url: `uploads/documentos-inmueble/${archivo.filename}`,
+        },
+      });
+    } catch (error) {
+      await this.eliminarArchivo(archivo.path);
+      throw error;
+    }
+  }
+
+  async listarDocumentos(
+    inmuebleId: string,
+    arrendadorId: string,
+    tipo?: TipoDocumentoInmueble,
+  ): Promise<Prisma.DocumentoInmuebleGetPayload<{}>[] | null> {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id: inmuebleId, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      return null;
+    }
+    return this.prisma.documentoInmueble.findMany({
+      where: {
+        inmueble_id: inmuebleId,
+        ...(tipo ? { tipo } : {}),
+      },
+      orderBy: { creado_en: 'desc' },
+    });
+  }
+
+  private async eliminarArchivo(rutaAbsoluta: string): Promise<void> {
+    try {
+      await unlink(rutaAbsoluta);
+    } catch {
+      // La limpieza no debe ocultar el error original.
+    }
   }
 }

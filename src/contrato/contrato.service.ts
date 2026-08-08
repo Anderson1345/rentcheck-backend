@@ -179,31 +179,32 @@ export class ContratoService {
 
     const porcentajeIpc = configuracionIpc.porcentaje.toNumber();
     const canonNuevo = Math.round(
-      contrato.canon_centavos +
-        (contrato.canon_centavos * porcentajeIpc) / 100,
+      contrato.canon_centavos + (contrato.canon_centavos * porcentajeIpc) / 100,
     );
     const nuevaFechaFin = new Date(contrato.fecha_fin);
     nuevaFechaFin.setFullYear(nuevaFechaFin.getFullYear() + 1);
     const fechaAplicacion = new Date();
 
-    const [contratoActualizado, incrementoIpc] = await this.prisma.$transaction([
-      this.prisma.contrato.update({
-        where: { id: contrato.id },
-        data: {
-          canon_centavos: canonNuevo,
-          fecha_fin: nuevaFechaFin,
-        },
-      }),
-      this.prisma.incrementoIPC.create({
-        data: {
-          contrato_id: contrato.id,
-          canon_anterior_centavos: contrato.canon_centavos,
-          canon_nuevo_centavos: canonNuevo,
-          porcentaje_ipc_aplicado: configuracionIpc.porcentaje,
-          fecha_aplicacion: fechaAplicacion,
-        },
-      }),
-    ]);
+    const [contratoActualizado, incrementoIpc] = await this.prisma.$transaction(
+      [
+        this.prisma.contrato.update({
+          where: { id: contrato.id },
+          data: {
+            canon_centavos: canonNuevo,
+            fecha_fin: nuevaFechaFin,
+          },
+        }),
+        this.prisma.incrementoIPC.create({
+          data: {
+            contrato_id: contrato.id,
+            canon_anterior_centavos: contrato.canon_centavos,
+            canon_nuevo_centavos: canonNuevo,
+            porcentaje_ipc_aplicado: configuracionIpc.porcentaje,
+            fecha_aplicacion: fechaAplicacion,
+          },
+        }),
+      ],
+    );
 
     let contratoConPdf = contratoActualizado;
     const pdfContratoUrl = `uploads/contratos/${contrato.id}.pdf`;
