@@ -83,6 +83,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "transformIgnorePatterns": [
+      "node_modules/(?!archiver|zip-stream|compress-commons|is-stream|crc32-stream)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
