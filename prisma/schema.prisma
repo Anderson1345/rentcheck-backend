@@ -106,6 +106,12 @@ enum EstadoContrato {
   PROXIMO_A_VENCER
 }
 
+enum EstadoPagoContrato {
+  AL_DIA
+  PENDIENTE
+  EN_MORA
+}
+
 model Contrato {
   id                    String                @id @default(uuid()) @db.Uuid
   arrendador_id         String                @db.Uuid
@@ -125,6 +131,7 @@ model Contrato {
   fecha_fin             DateTime              @db.Date
   pdf_contrato_url      String?
   estado                EstadoContrato
+  estado_pago           EstadoPagoContrato @default(PENDIENTE)
   creado_en             DateTime              @default(now())
   incrementos_ipc       IncrementoIPC[]
   codigo_acceso         CodigoAcceso?
