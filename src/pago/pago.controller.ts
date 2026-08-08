@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UnsupportedMediaTypeException,
@@ -16,6 +17,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
@@ -92,6 +94,34 @@ export class PagoController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.pagoService.encontrarUno(id, arrendadorId);
+  }
+
+  @Patch(':id/aprobar')
+  @ApiOperation({ summary: 'Aprobar un pago pendiente del arrendador' })
+  @ApiOkResponse({
+    description: 'Pago aprobado y contrato marcado como al día.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Pago no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description: 'El pago ya fue procesado y no puede aprobarse ni rechazarse.',
+  })
+  aprobar(@Param('id') id: string, @ArrendadorActual() arrendadorId: string) {
+    return this.pagoService.aprobar(id, arrendadorId);
+  }
+
+  @Patch(':id/rechazar')
+  @ApiOperation({ summary: 'Rechazar un pago pendiente del arrendador' })
+  @ApiOkResponse({ description: 'Pago rechazado correctamente.' })
+  @ApiNotFoundResponse({
+    description: 'Pago no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description: 'El pago ya fue procesado y no puede aprobarse ni rechazarse.',
+  })
+  rechazar(@Param('id') id: string, @ArrendadorActual() arrendadorId: string) {
+    return this.pagoService.rechazar(id, arrendadorId);
   }
 
   @Post()

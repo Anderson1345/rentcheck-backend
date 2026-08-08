@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoPago, Prisma } from '@prisma/client';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { EstadoPago, EstadoPagoContrato, Prisma } from '@prisma/client';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
@@ -105,6 +109,54 @@ export class PagoService {
     if (!pago) {
       throw new NotFoundException(
         'Pago no encontrado o no pertenece al arrendador autenticado.',
+      );
+    }
+
+    return pago;
+  }
+
+  async aprobar(id: string, arrendadorId: string) {
+    const pago = await this.obtenerPagoPendiente(id, arrendadorId);
+
+    const [pagoActualizado] = await this.prisma.$transaction([
+      this.prisma.pago.update({
+        where: { id: pago.id },
+        data: { estado: EstadoPago.APROBADO },
+        include: this.INCLUDE_PAGO,
+      }),
+      this.prisma.contrato.update({
+        where: { id: pago.contrato_id },
+        data: { estado_pago: EstadoPagoContrato.AL_DIA },
+      }),
+    ]);
+
+    return pagoActualizado;
+  }
+
+  async rechazar(id: string, arrendadorId: string) {
+    const pago = await this.obtenerPagoPendiente(id, arrendadorId);
+
+    return this.prisma.pago.update({
+      where: { id: pago.id },
+      data: { estado: EstadoPago.RECHAZADO },
+      include: this.INCLUDE_PAGO,
+    });
+  }
+
+  private async obtenerPagoPendiente(id: string, arrendadorId: string) {
+    const pago = await this.prisma.pago.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+    });
+
+    if (!pago) {
+      throw new NotFoundException(
+        'Pago no encontrado o no pertenece al arrendador autenticado.',
+      );
+    }
+
+    if (pago.estado !== EstadoPago.PENDIENTE) {
+      throw new ConflictException(
+        'El pago ya fue procesado y no puede aprobarse ni rechazarse nuevamente.',
       );
     }
 
