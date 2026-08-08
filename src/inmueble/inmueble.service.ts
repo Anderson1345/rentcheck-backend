@@ -1,11 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   Prisma,
   TipoDocumentoInmueble,
   TipoUnidad,
   UsoPermitido,
 } from '@prisma/client';
+import { ZipArchive } from 'archiver';
+import { existsSync } from 'fs';
 import { unlink } from 'fs/promises';
+import { basename, join } from 'path';
+import { PassThrough } from 'stream';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
@@ -17,8 +21,21 @@ type InmuebleConUnidades = Prisma.InmuebleGetPayload<{
   include: { unidades: true };
 }>;
 
+type InmuebleConDocumentosParaDescarga = Prisma.InmuebleGetPayload<{
+  include: {
+    documentos: true;
+    unidades: {
+      include: {
+        contratos: { include: { pagos: true } };
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class InmuebleService {
+  private readonly logger = new Logger(InmuebleService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async crear(
@@ -220,5 +237,96 @@ export class InmuebleService {
     } catch {
       // La limpieza no debe ocultar el error original.
     }
+  }
+
+  async construirZipDocumentos(
+    id: string,
+    arrendadorId: string,
+  ): Promise<{ stream: PassThrough; nombreArchivo: string } | null> {
+    const inmueble = await this.obtenerInmuebleParaDescarga(id, arrendadorId);
+    if (!inmueble) {
+      return null;
+    }
+
+    const archivo = new ZipArchive({ zlib: { level: 9 } });
+    const archivosSaltados: string[] = [];
+
+    const agregarArchivo = (
+      rutaRelativa: string | null | undefined,
+      carpeta: string,
+    ) => {
+      if (!rutaRelativa) {
+        return;
+      }
+      const rutaAbsoluta = join(process.cwd(), rutaRelativa);
+      if (!existsSync(rutaAbsoluta)) {
+        archivosSaltados.push(rutaRelativa);
+        return;
+      }
+      archivo.file(rutaAbsoluta, {
+        name: `${carpeta}/${basename(rutaRelativa)}`,
+      });
+    };
+
+    for (const documento of inmueble.documentos) {
+      agregarArchivo(documento.archivo_url, 'documentos-inmueble');
+    }
+    for (const unidad of inmueble.unidades) {
+      for (const contrato of unidad.contratos) {
+        agregarArchivo(contrato.pdf_contrato_url, 'contratos');
+        for (const pago of contrato.pagos) {
+          agregarArchivo(pago.comprobante_url, 'comprobantes');
+        }
+      }
+    }
+
+    if (archivosSaltados.length > 0) {
+      this.logger.warn(
+        `Archivos referenciados no encontrados en disco para el inmueble ${id}: ${archivosSaltados.join(', ')}`,
+      );
+    }
+
+    const stream = new PassThrough();
+    archivo.on('error', (error) => {
+      this.logger.error(
+        `Error al generar el ZIP de documentos del inmueble ${id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      stream.destroy(error);
+    });
+    archivo.pipe(stream);
+    await archivo.finalize();
+
+    return {
+      stream,
+      nombreArchivo: `documentos-${this.simplificarDireccion(inmueble.direccion)}.zip`,
+    };
+  }
+
+  private obtenerInmuebleParaDescarga(
+    id: string,
+    arrendadorId: string,
+  ): Promise<InmuebleConDocumentosParaDescarga | null> {
+    return this.prisma.inmueble.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+      include: {
+        documentos: true,
+        unidades: {
+          include: {
+            contratos: { include: { pagos: true } },
+          },
+        },
+      },
+    });
+  }
+
+  private simplificarDireccion(direccion: string): string {
+    const simplificada = direccion
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return simplificada || 'inmueble';
   }
 }

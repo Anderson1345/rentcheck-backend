@@ -5,11 +5,13 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   NotFoundException,
   Param,
   Patch,
   Post,
   Query,
+  Res,
   UnsupportedMediaTypeException,
   UploadedFile,
   UseGuards,
@@ -25,11 +27,13 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiQuery,
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
+import type { Response } from 'express';
 import { mkdirSync } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -54,6 +58,8 @@ const TAMANO_MAXIMO_DOCUMENTO = 10 * 1024 * 1024;
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class InmuebleController {
+  private readonly logger = new Logger(InmuebleController.name);
+
   constructor(private readonly inmuebleService: InmuebleService) {}
 
   @Get()
@@ -292,5 +298,53 @@ export class InmuebleController {
       );
     }
     return documentos;
+  }
+
+  @Get(':id/descargar-documentos')
+  @ApiOperation({
+    summary: 'Descargar los documentos del inmueble en un ZIP',
+    description:
+      'Genera un archivo ZIP con los documentos del inmueble, los contratos de sus unidades y los comprobantes de pago (para declaración de renta). No incluye fotos de inventario.',
+  })
+  @ApiProduces('application/zip')
+  @ApiOkResponse({
+    description: 'Archivo ZIP con los documentos del inmueble.',
+    content: {
+      'application/zip': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado o no pertenece al arrendador.',
+  })
+  async descargarDocumentos(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+    @Res() res: Response,
+  ) {
+    const resultado = await this.inmuebleService.construirZipDocumentos(
+      id,
+      arrendadorId,
+    );
+    if (!resultado) {
+      throw new NotFoundException(
+        'Inmueble no encontrado o no pertenece al arrendador.',
+      );
+    }
+
+    resultado.stream.on('error', (error) => {
+      this.logger.error(
+        `Error al transmitir el ZIP del inmueble ${id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      res.destroy(error);
+    });
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${resultado.nombreArchivo}"`,
+    });
+    resultado.stream.pipe(res);
   }
 }
