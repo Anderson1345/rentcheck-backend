@@ -8,6 +8,7 @@ import { InquilinoModule } from './inquilino/inquilino.module';
 import { ContratoModule } from './contrato/contrato.module';
 import { PagoModule } from './pago/pago.module';
 import { FotoInventarioModule } from './foto-inventario/foto-inventario.module';
+import { SolicitudMantenimientoModule } from './solicitud-mantenimiento/solicitud-mantenimiento.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { FotoInventarioModule } from './foto-inventario/foto-inventario.module';
     ContratoModule,
     PagoModule,
     FotoInventarioModule,
+    SolicitudMantenimientoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
