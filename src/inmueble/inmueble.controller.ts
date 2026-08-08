@@ -37,7 +37,11 @@ import type { Response } from 'express';
 import { mkdirSync } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
+import {
+  ArrendadorActual,
+  ArrendadorGuard,
+  JwtAuthGuard,
+} from '../auth/auth.module';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
 import { CrearDocumentoInmuebleDto } from './dto/crear-documento-inmueble.dto';
@@ -55,7 +59,7 @@ const TAMANO_MAXIMO_DOCUMENTO = 10 * 1024 * 1024;
 
 @ApiTags('Inmuebles')
 @Controller('inmuebles')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ArrendadorGuard)
 @ApiBearerAuth()
 export class InmuebleController {
   private readonly logger = new Logger(InmuebleController.name);

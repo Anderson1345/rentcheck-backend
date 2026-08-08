@@ -15,13 +15,17 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
+import {
+  ArrendadorActual,
+  ArrendadorGuard,
+  JwtAuthGuard,
+} from '../auth/auth.module';
 import { CrearInquilinoDto } from './dto/crear-inquilino.dto';
 import { InquilinoService } from './inquilino.service';
 
 @ApiTags('Inquilinos')
 @Controller('inquilinos')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ArrendadorGuard)
 @ApiBearerAuth()
 export class InquilinoController {
   constructor(private readonly inquilinoService: InquilinoService) {}

@@ -32,7 +32,9 @@ import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import {
   ArrendadorActual,
+  ArrendadorGuard,
   InquilinoActual,
+  InquilinoGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
 import { CrearPagoDto } from './dto/crear-pago.dto';
@@ -54,6 +56,7 @@ export class PagoController {
   constructor(private readonly pagoService: PagoService) {}
 
   @Get()
+  @UseGuards(ArrendadorGuard)
   @ApiOperation({
     summary: 'Listar pagos del arrendador autenticado (cola de validación)',
   })
@@ -69,6 +72,7 @@ export class PagoController {
   }
 
   @Get('mios')
+  @UseGuards(InquilinoGuard)
   @ApiOperation({
     summary: 'Listar los pagos reportados por el inquilino autenticado',
   })
@@ -80,6 +84,7 @@ export class PagoController {
   }
 
   @Get(':id')
+  @UseGuards(ArrendadorGuard)
   @ApiOperation({
     summary: 'Obtener el detalle de un pago por ID (arrendador)',
   })
@@ -97,6 +102,7 @@ export class PagoController {
   }
 
   @Patch(':id/aprobar')
+  @UseGuards(ArrendadorGuard)
   @ApiOperation({ summary: 'Aprobar un pago pendiente del arrendador' })
   @ApiOkResponse({
     description: 'Pago aprobado y contrato marcado como al día.',
@@ -112,6 +118,7 @@ export class PagoController {
   }
 
   @Patch(':id/rechazar')
+  @UseGuards(ArrendadorGuard)
   @ApiOperation({ summary: 'Rechazar un pago pendiente del arrendador' })
   @ApiOkResponse({ description: 'Pago rechazado correctamente.' })
   @ApiNotFoundResponse({
@@ -125,6 +132,7 @@ export class PagoController {
   }
 
   @Post()
+  @UseGuards(InquilinoGuard)
   @UseInterceptors(
     FileInterceptor('comprobante', {
       storage: diskStorage({

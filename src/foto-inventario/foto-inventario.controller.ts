@@ -31,7 +31,11 @@ import { randomUUID } from 'crypto';
 import { mkdirSync } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { ArrendadorActual, JwtAuthGuard } from '../auth/auth.module';
+import {
+  ArrendadorActual,
+  ArrendadorGuard,
+  JwtAuthGuard,
+} from '../auth/auth.module';
 import { CrearFotoInventarioDto } from './dto/crear-foto-inventario.dto';
 import { ListarFotosInventarioQueryDto } from './dto/listar-fotos-inventario-query.dto';
 import { FotoInventarioService } from './foto-inventario.service';
@@ -41,7 +45,7 @@ const TAMANO_MAXIMO_FOTO = 10 * 1024 * 1024;
 
 @ApiTags('Contratos')
 @Controller('contratos')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ArrendadorGuard)
 @ApiBearerAuth()
 export class FotoInventarioController {
   constructor(private readonly fotoInventarioService: FotoInventarioService) {}

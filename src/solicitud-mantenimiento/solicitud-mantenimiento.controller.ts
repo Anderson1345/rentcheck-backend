@@ -27,7 +27,11 @@ import { randomUUID } from 'crypto';
 import { mkdirSync } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { InquilinoActual, JwtAuthGuard } from '../auth/auth.module';
+import {
+  InquilinoActual,
+  InquilinoGuard,
+  JwtAuthGuard,
+} from '../auth/auth.module';
 import { CrearSolicitudMantenimientoDto } from './dto/crear-solicitud-mantenimiento.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
 
@@ -36,7 +40,7 @@ const TAMANO_MAXIMO_ADJUNTO = 20 * 1024 * 1024;
 
 @ApiTags('Solicitudes de Mantenimiento')
 @Controller('solicitudes-mantenimiento')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, InquilinoGuard)
 @ApiBearerAuth()
 export class SolicitudMantenimientoController {
   constructor(
