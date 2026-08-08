@@ -5,20 +5,20 @@ import {
 } from '@nestjs/common';
 
 interface RequestConUsuario {
-  user?: { arrendadorId?: string };
+  user?: { inquilinoId?: string };
 }
 
-export const ArrendadorActual = createParamDecorator(
+export const InquilinoActual = createParamDecorator(
   (_data: unknown, context: ExecutionContext): string => {
     const request = context.switchToHttp().getRequest<RequestConUsuario>();
-    const arrendadorId = request.user?.arrendadorId;
+    const inquilinoId = request.user?.inquilinoId;
 
-    if (!arrendadorId) {
+    if (!inquilinoId) {
       throw new UnauthorizedException(
-        'El token no corresponde a un Arrendador.',
+        'El token no corresponde a un Inquilino.',
       );
     }
 
-    return arrendadorId;
+    return inquilinoId;
   },
 );

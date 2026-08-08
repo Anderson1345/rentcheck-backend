@@ -13,7 +13,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: { id: string }) {
-    return { arrendadorId: payload.id };
+  validate(payload: { id?: string; inquilinoId?: string }) {
+    return { ...payload, arrendadorId: payload.id };
   }
 }

@@ -8,7 +8,6 @@ import { AuthService } from './auth.service';
 import { InquilinoAuthController } from './inquilino-auth.controller';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './jwt.strategy';
-import { ArrendadorActual } from './arrendador-actual.decorator';
 
 @Module({
   imports: [
@@ -28,4 +27,5 @@ import { ArrendadorActual } from './arrendador-actual.decorator';
 export class AuthModule {}
 
 export { ArrendadorActual } from './arrendador-actual.decorator';
+export { InquilinoActual } from './inquilino-actual.decorator';
 export { JwtAuthGuard } from './jwt-auth.guard';
