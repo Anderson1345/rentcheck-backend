@@ -1,11 +1,37 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoPago } from '@prisma/client';
+import { EstadoPago, Prisma } from '@prisma/client';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 
 @Injectable()
 export class PagoService {
+  private readonly INCLUDE_PAGO: Prisma.PagoInclude = {
+    contrato: {
+      select: {
+        id: true,
+        tipo_plantilla: true,
+        canon_centavos: true,
+        dia_pago: true,
+        forma_pago: true,
+        deposito_centavos: true,
+        fecha_inicio: true,
+        fecha_fin: true,
+        estado: true,
+        unidad: {
+          include: {
+            inmueble: {
+              select: { id: true, direccion: true, ciudad: true },
+            },
+          },
+        },
+        inquilino: {
+          select: { id: true, nombre: true, cedula: true, telefono: true },
+        },
+      },
+    },
+  };
+
   constructor(private readonly prisma: PrismaService) {}
 
   async crear(
@@ -47,6 +73,42 @@ export class PagoService {
       await this.eliminarComprobante(comprobante.path);
       throw error;
     }
+  }
+
+  async listar(arrendadorId: string, estado?: EstadoPago) {
+    return this.prisma.pago.findMany({
+      where: {
+        arrendador_id: arrendadorId,
+        ...(estado ? { estado } : {}),
+      },
+      include: this.INCLUDE_PAGO,
+      orderBy: { fecha_reportada: 'desc' },
+    });
+  }
+
+  async listarMios(inquilinoId: string) {
+    return this.prisma.pago.findMany({
+      where: {
+        contrato: { inquilino_id: inquilinoId },
+      },
+      include: this.INCLUDE_PAGO,
+      orderBy: { fecha_reportada: 'desc' },
+    });
+  }
+
+  async encontrarUno(id: string, arrendadorId: string) {
+    const pago = await this.prisma.pago.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+      include: this.INCLUDE_PAGO,
+    });
+
+    if (!pago) {
+      throw new NotFoundException(
+        'Pago no encontrado o no pertenece al arrendador autenticado.',
+      );
+    }
+
+    return pago;
   }
 
   private async eliminarComprobante(rutaAbsoluta: string): Promise<void> {

@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  Param,
   Post,
+  Query,
   UnsupportedMediaTypeException,
   UploadedFile,
   UseGuards,
@@ -16,6 +19,7 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
@@ -24,8 +28,13 @@ import { randomUUID } from 'crypto';
 import { mkdirSync } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { InquilinoActual, JwtAuthGuard } from '../auth/auth.module';
+import {
+  ArrendadorActual,
+  InquilinoActual,
+  JwtAuthGuard,
+} from '../auth/auth.module';
 import { CrearPagoDto } from './dto/crear-pago.dto';
+import { ListarPagosQueryDto } from './dto/listar-pagos-query.dto';
 import { PagoService } from './pago.service';
 
 const TIPOS_DE_ARCHIVO_PERMITIDOS = [
@@ -41,6 +50,49 @@ const TAMANO_MAXIMO_COMPROBANTE = 10 * 1024 * 1024;
 @ApiBearerAuth()
 export class PagoController {
   constructor(private readonly pagoService: PagoService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'Listar pagos del arrendador autenticado (cola de validación)',
+  })
+  @ApiOkResponse({
+    description:
+      'Lista de pagos con el contrato, la unidad y el inquilino relacionados.',
+  })
+  listar(
+    @ArrendadorActual() arrendadorId: string,
+    @Query() query: ListarPagosQueryDto,
+  ) {
+    return this.pagoService.listar(arrendadorId, query.estado);
+  }
+
+  @Get('mios')
+  @ApiOperation({
+    summary: 'Listar los pagos reportados por el inquilino autenticado',
+  })
+  @ApiOkResponse({
+    description: 'Lista de pagos del inquilino con sus datos de contrato.',
+  })
+  listarMios(@InquilinoActual() inquilinoId: string) {
+    return this.pagoService.listarMios(inquilinoId);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Obtener el detalle de un pago por ID (arrendador)',
+  })
+  @ApiOkResponse({
+    description: 'Detalle del pago con los datos relacionados.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Pago no encontrado o no pertenece al arrendador.',
+  })
+  encontrarUno(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.pagoService.encontrarUno(id, arrendadorId);
+  }
 
   @Post()
   @UseInterceptors(
