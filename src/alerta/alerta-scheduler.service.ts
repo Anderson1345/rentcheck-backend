@@ -15,6 +15,25 @@ export class AlertaSchedulerService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  @Cron('55 23 * * *')
+  async ejecutarTransicionVencimiento(): Promise<{ actualizados: number }> {
+    const resultado = await this.prisma.contrato.updateMany({
+      where: {
+        estado: EstadoContrato.ACTIVO,
+        fecha_fin: { lt: new Date() },
+      },
+      data: {
+        estado: EstadoContrato.VENCIDO,
+      },
+    });
+
+    this.logger.log(
+      `Cron de transición de vencimiento: ${resultado.count} contrato(s) actualizado(s) a VENCIDO.`,
+    );
+
+    return { actualizados: resultado.count };
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async ejecutarVencimiento(): Promise<{ creadas: number }> {
     const hoy = new Date();

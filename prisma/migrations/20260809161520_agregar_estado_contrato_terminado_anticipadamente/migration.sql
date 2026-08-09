@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "EstadoContrato" ADD VALUE 'TERMINADO_ANTICIPADAMENTE';

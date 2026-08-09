@@ -105,6 +105,7 @@ enum EstadoContrato {
   ACTIVO
   VENCIDO
   PROXIMO_A_VENCER
+  TERMINADO_ANTICIPADAMENTE
 }
 
 enum EstadoPagoContrato {

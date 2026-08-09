@@ -68,6 +68,21 @@ export class AlertaController {
   }
 
   // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
+  // transición de contratos vencidos sin esperar a las 23:55. Eliminar en producción.
+  @Post('ejecutar-cron-transicion-vencimiento')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      '[TEMPORAL] Ejecutar manualmente el cron de transición de contratos vencidos',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la ejecución manual del cron.',
+  })
+  ejecutarCronTransicionVencimiento() {
+    return this.alertaSchedulerService.ejecutarTransicionVencimiento();
+  }
+
+  // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
   // vencimiento de contratos sin esperar a la medianoche. Eliminar en producción.
   @Post('ejecutar-cron-vencimiento')
   @HttpCode(HttpStatus.OK)
