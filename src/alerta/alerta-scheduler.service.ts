@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   EstadoContrato,
+  EstadoPago,
+  EstadoPagoContrato,
   EstadoSolicitudMantenimiento,
   TipoAlerta,
 } from '@prisma/client';
@@ -255,6 +257,101 @@ export class AlertaSchedulerService {
     );
 
     return { revisados: contratos.length, creadas };
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async ejecutarInquilinoEnMora(): Promise<{
+    revisados: number;
+    enMora: number;
+    creadas: number;
+  }> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const contratos = await this.prisma.contrato.findMany({
+      where: {
+        estado: EstadoContrato.ACTIVO,
+      },
+      include: {
+        unidad: { include: { inmueble: true } },
+        pagos: true,
+      },
+    });
+
+    let enMora = 0;
+    let creadas = 0;
+    for (const contrato of contratos) {
+      const fechaVencimiento = this.calcularFechaPagoAnterior(
+        contrato.dia_pago,
+        hoy,
+      );
+
+      const pagoQueCubre = contrato.pagos.some(
+        (pago) =>
+          (pago.estado === EstadoPago.PENDIENTE ||
+            pago.estado === EstadoPago.APROBADO) &&
+          pago.fecha_reportada >= fechaVencimiento,
+      );
+      if (pagoQueCubre) {
+        continue;
+      }
+
+      enMora += 1;
+      if (contrato.estado_pago !== EstadoPagoContrato.EN_MORA) {
+        await this.prisma.contrato.update({
+          where: { id: contrato.id },
+          data: { estado_pago: EstadoPagoContrato.EN_MORA },
+        });
+      }
+
+      const yaExiste = await this.prisma.alerta.findFirst({
+        where: {
+          tipo: TipoAlerta.INQUILINO_EN_MORA,
+          contrato_id: contrato.id,
+          leida: false,
+        },
+      });
+      if (yaExiste) {
+        continue;
+      }
+
+      const arrendadorId = contrato.unidad.inmueble.arrendador_id;
+      const fechaVencimientoStr = fechaVencimiento.toLocaleDateString('es-CO');
+
+      await this.prisma.alerta.create({
+        data: {
+          arrendador_id: arrendadorId,
+          tipo: TipoAlerta.INQUILINO_EN_MORA,
+          contrato_id: contrato.id,
+          mensaje: `El pago de la unidad ${contrato.unidad.nombre} correspondiente a ${fechaVencimientoStr} está vencido.`,
+        },
+      });
+      creadas += 1;
+    }
+
+    this.logger.log(
+      `Cron de mora: ${contratos.length} contrato(s) revisado(s), ${enMora} en mora, ${creadas} alerta(s) nueva(s) creada(s).`,
+    );
+
+    return { revisados: contratos.length, enMora, creadas };
+  }
+
+  private calcularFechaPagoAnterior(diaPago: number, hoy: Date): Date {
+    const anio = hoy.getFullYear();
+    const mesActual = hoy.getMonth();
+    const diaHoy = hoy.getDate();
+
+    const ultimoDiaDelMes = (anioObjetivo: number, mesObjetivo: number) =>
+      new Date(anioObjetivo, mesObjetivo + 1, 0).getDate();
+
+    const mesPago = diaHoy >= diaPago ? mesActual : mesActual - 1;
+    const anioPago = anio + Math.floor(mesPago / 12);
+    const mesNormalizado = ((mesPago % 12) + 12) % 12;
+
+    const ultimoDia = ultimoDiaDelMes(anioPago, mesNormalizado);
+    const diaAjustado = Math.min(diaPago, ultimoDia);
+
+    return new Date(anioPago, mesNormalizado, diaAjustado);
   }
 
   private calcularProximaFechaPago(diaPago: number, hoy: Date): Date {

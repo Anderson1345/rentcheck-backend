@@ -124,4 +124,18 @@ export class AlertaController {
   ejecutarCronIpc() {
     return this.alertaSchedulerService.ejecutarAjusteIpcPendiente();
   }
+
+  // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
+  // mora de inquilinos sin esperar a la medianoche. Eliminar en producción.
+  @Post('ejecutar-cron-mora')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[TEMPORAL] Ejecutar manualmente el cron de mora de inquilinos',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la ejecución manual del cron.',
+  })
+  ejecutarCronMora() {
+    return this.alertaSchedulerService.ejecutarInquilinoEnMora();
+  }
 }
