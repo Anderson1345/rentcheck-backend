@@ -23,6 +23,7 @@ import {
 } from '../auth/auth.module';
 import { ContratoService } from './contrato.service';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
+import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
 
 @ApiTags('Contratos')
 @Controller('contratos')
@@ -108,5 +109,55 @@ export class ContratoController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.contratoService.crear(dto, arrendadorId);
+  }
+
+  @Post(':id/solicitar-terminacion-anticipada')
+  @ApiOperation({
+    summary: 'Solicitar la terminación anticipada de un contrato',
+  })
+  @ApiOkResponse({
+    description: 'Solicitud de terminación anticipada registrada.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description:
+      'El contrato no está activo o ya tiene una solicitud de terminación anticipada pendiente.',
+  })
+  solicitarTerminacionAnticipada(
+    @Param('id') id: string,
+    @Body() dto: SolicitarTerminacionAnticipadaDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.contratoService.solicitarTerminacionAnticipada(
+      id,
+      arrendadorId,
+      dto.motivo,
+    );
+  }
+
+  @Post(':id/confirmar-terminacion-anticipada')
+  @ApiOperation({
+    summary: 'Confirmar la terminación anticipada de un contrato',
+  })
+  @ApiOkResponse({
+    description: 'Terminación anticipada confirmada y contrato finalizado.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description:
+      'No hay una solicitud de terminación anticipada pendiente para confirmar.',
+  })
+  confirmarTerminacionAnticipada(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.contratoService.confirmarTerminacionAnticipada(
+      id,
+      arrendadorId,
+    );
   }
 }

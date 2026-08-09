@@ -108,6 +108,11 @@ enum EstadoContrato {
   TERMINADO_ANTICIPADAMENTE
 }
 
+enum RolSolicitante {
+  ARRENDADOR
+  INQUILINO
+}
+
 enum EstadoPagoContrato {
   AL_DIA
   PENDIENTE
@@ -135,6 +140,11 @@ model Contrato {
   estado                EstadoContrato
   estado_pago           EstadoPagoContrato @default(PENDIENTE)
   creado_en             DateTime              @default(now())
+  terminacionAnticipadaSolicitada    Boolean       @default(false)
+  terminacionAnticipadaSolicitadaPor RolSolicitante?
+  terminacionAnticipadaSolicitadaEn  DateTime?
+  terminacionAnticipadaMotivo        String?
+  terminacionAnticipadaConfirmadaEn  DateTime?
   incrementos_ipc       IncrementoIPC[]
   codigo_acceso         CodigoAcceso?
   pagos                 Pago[]

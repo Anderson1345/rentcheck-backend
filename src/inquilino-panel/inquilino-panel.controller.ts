@@ -1,6 +1,7 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -11,6 +12,7 @@ import {
   InquilinoGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
 import { InquilinoPanelService } from './inquilino-panel.service';
 
 @ApiTags('Panel del Inquilino')
@@ -45,5 +47,29 @@ export class InquilinoPanelController {
   })
   obtenerMiContrato(@InquilinoActual() inquilinoId: string) {
     return this.inquilinoPanelService.obtenerMiContrato(inquilinoId);
+  }
+
+  @Post('mi-contrato/solicitar-terminacion-anticipada')
+  @ApiOperation({
+    summary: 'Solicitar la terminación anticipada del contrato del inquilino',
+  })
+  @ApiOkResponse({
+    description: 'Solicitud de terminación anticipada registrada.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El inquilino autenticado no tiene ningún contrato.',
+  })
+  @ApiConflictResponse({
+    description:
+      'El contrato no está activo o ya tiene una solicitud de terminación anticipada pendiente.',
+  })
+  solicitarTerminacionAnticipada(
+    @Body() dto: SolicitarTerminacionAnticipadaDto,
+    @InquilinoActual() inquilinoId: string,
+  ) {
+    return this.inquilinoPanelService.solicitarTerminacionAnticipada(
+      inquilinoId,
+      dto.motivo,
+    );
   }
 }

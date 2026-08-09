@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoContrato, Prisma } from '@prisma/client';
+import { EstadoContrato, Prisma, RolSolicitante } from '@prisma/client';
 import { randomInt } from 'crypto';
 import { createWriteStream } from 'fs';
 import { mkdir, unlink } from 'fs/promises';
@@ -402,5 +402,75 @@ export class ContratoService {
       );
       return contratoConfirmado;
     }
+  }
+
+  async solicitarTerminacionAnticipada(
+    id: string,
+    arrendadorId: string,
+    motivo: string,
+  ) {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: {
+        id,
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+    });
+
+    if (!contrato) {
+      throw new NotFoundException('Contrato no encontrado.');
+    }
+
+    if (contrato.estado !== EstadoContrato.ACTIVO) {
+      throw new ConflictException(
+        'Solo un contrato activo puede solicitar terminación anticipada.',
+      );
+    }
+
+    if (contrato.terminacionAnticipadaSolicitada) {
+      throw new ConflictException(
+        'Este contrato ya tiene una solicitud de terminación anticipada pendiente.',
+      );
+    }
+
+    return this.prisma.contrato.update({
+      where: { id: contrato.id },
+      data: {
+        terminacionAnticipadaSolicitada: true,
+        terminacionAnticipadaSolicitadaPor: RolSolicitante.ARRENDADOR,
+        terminacionAnticipadaSolicitadaEn: new Date(),
+        terminacionAnticipadaMotivo: motivo,
+      },
+    });
+  }
+
+  async confirmarTerminacionAnticipada(id: string, arrendadorId: string) {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: {
+        id,
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+    });
+
+    if (!contrato) {
+      throw new NotFoundException('Contrato no encontrado.');
+    }
+
+    if (!contrato.terminacionAnticipadaSolicitada) {
+      throw new ConflictException(
+        'No hay una solicitud de terminación anticipada pendiente para confirmar.',
+      );
+    }
+
+    return this.prisma.contrato.update({
+      where: { id: contrato.id },
+      data: {
+        estado: EstadoContrato.TERMINADO_ANTICIPADAMENTE,
+        terminacionAnticipadaConfirmadaEn: new Date(),
+      },
+    });
   }
 }
