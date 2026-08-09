@@ -1,8 +1,11 @@
 import {
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +22,7 @@ import {
   ArrendadorGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { AlertaSchedulerService } from './alerta-scheduler.service';
 import { AlertaService } from './alerta.service';
 import { ListarAlertasQueryDto } from './dto/listar-alertas-query.dto';
 
@@ -27,7 +31,10 @@ import { ListarAlertasQueryDto } from './dto/listar-alertas-query.dto';
 @UseGuards(JwtAuthGuard, ArrendadorGuard)
 @ApiBearerAuth()
 export class AlertaController {
-  constructor(private readonly alertaService: AlertaService) {}
+  constructor(
+    private readonly alertaService: AlertaService,
+    private readonly alertaSchedulerService: AlertaSchedulerService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar alertas del arrendador autenticado' })
@@ -58,5 +65,20 @@ export class AlertaController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.alertaService.marcarComoLeida(id, arrendadorId);
+  }
+
+  // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
+  // vencimiento de contratos sin esperar a la medianoche. Eliminar en producción.
+  @Post('ejecutar-cron-vencimiento')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      '[TEMPORAL] Ejecutar manualmente el cron de alertas de contratos por vencer',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la ejecución manual del cron.',
+  })
+  ejecutarCronVencimiento() {
+    return this.alertaSchedulerService.ejecutarVencimiento();
   }
 }
