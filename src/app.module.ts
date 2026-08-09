@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AlertaModule } from './alerta/alerta.module';
 import { InmuebleModule } from './inmueble/inmueble.module';
 import { InquilinoModule } from './inquilino/inquilino.module';
 import { ContratoModule } from './contrato/contrato.module';
@@ -14,6 +15,7 @@ import { SolicitudMantenimientoModule } from './solicitud-mantenimiento/solicitu
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AuthModule,
+    AlertaModule,
     InmuebleModule,
     InquilinoModule,
     ContratoModule,

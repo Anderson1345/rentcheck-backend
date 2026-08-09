@@ -24,6 +24,7 @@ model Arrendador {
   contratos           Contrato[]
   pagos               Pago[]
   solicitudes_mantenimiento SolicitudMantenimiento[] 
+  alertas             Alerta[]
 }
 
 
@@ -137,6 +138,7 @@ model Contrato {
   codigo_acceso         CodigoAcceso?
   pagos                 Pago[]
   fotos_inventario      FotoInventario[]
+  alertas               Alerta[]
 }
 
 
@@ -220,6 +222,30 @@ model SolicitudMantenimiento {
   estado         EstadoSolicitudMantenimiento @default(PENDIENTE)
   creado_en      DateTime                     @default(now())
   actualizado_en DateTime                     @updatedAt
+  alertas        Alerta[]
+}
+
+
+enum TipoAlerta {
+  AJUSTE_IPC_PENDIENTE
+  INQUILINO_EN_MORA
+  CONTRATO_PROXIMO_A_VENCER
+  RECORDATORIO_PAGO_PROXIMO
+  SOLICITUD_MANTENIMIENTO_SIN_ATENDER
+}
+
+model Alerta {
+  id                          String      @id @default(uuid()) @db.Uuid
+  arrendador_id               String      @db.Uuid
+  arrendador                  Arrendador  @relation(fields: [arrendador_id], references: [id])
+  tipo                        TipoAlerta
+  mensaje                     String
+  contrato_id                 String?     @db.Uuid
+  contrato                    Contrato?   @relation(fields: [contrato_id], references: [id])
+  solicitud_mantenimiento_id  String?     @db.Uuid
+  solicitud_mantenimiento     SolicitudMantenimiento? @relation(fields: [solicitud_mantenimiento_id], references: [id])
+  leida                       Boolean     @default(false)
+  creado_en                   DateTime    @default(now())
 }
 
 
