@@ -8,6 +8,10 @@ import {
   TipoAlerta,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  calcularFechaPagoAnterior,
+  calcularProximaFechaPago,
+} from '../common/calcular-fecha-pago';
 
 @Injectable()
 export class AlertaSchedulerService {
@@ -109,10 +113,7 @@ export class AlertaSchedulerService {
 
     let creadas = 0;
     for (const contrato of contratos) {
-      const proximaFechaPago = this.calcularProximaFechaPago(
-        contrato.dia_pago,
-        hoy,
-      );
+      const proximaFechaPago = calcularProximaFechaPago(contrato.dia_pago, hoy);
       const diferenciaDias = Math.round(
         (proximaFechaPago.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24),
       );
@@ -300,7 +301,7 @@ export class AlertaSchedulerService {
     let enMora = 0;
     let creadas = 0;
     for (const contrato of contratos) {
-      const fechaVencimiento = this.calcularFechaPagoAnterior(
+      const fechaVencimiento = calcularFechaPagoAnterior(
         contrato.dia_pago,
         hoy,
       );
@@ -353,41 +354,5 @@ export class AlertaSchedulerService {
     );
 
     return { revisados: contratos.length, enMora, creadas };
-  }
-
-  private calcularFechaPagoAnterior(diaPago: number, hoy: Date): Date {
-    const anio = hoy.getFullYear();
-    const mesActual = hoy.getMonth();
-    const diaHoy = hoy.getDate();
-
-    const ultimoDiaDelMes = (anioObjetivo: number, mesObjetivo: number) =>
-      new Date(anioObjetivo, mesObjetivo + 1, 0).getDate();
-
-    const mesPago = diaHoy >= diaPago ? mesActual : mesActual - 1;
-    const anioPago = anio + Math.floor(mesPago / 12);
-    const mesNormalizado = ((mesPago % 12) + 12) % 12;
-
-    const ultimoDia = ultimoDiaDelMes(anioPago, mesNormalizado);
-    const diaAjustado = Math.min(diaPago, ultimoDia);
-
-    return new Date(anioPago, mesNormalizado, diaAjustado);
-  }
-
-  private calcularProximaFechaPago(diaPago: number, hoy: Date): Date {
-    const anio = hoy.getFullYear();
-    const mesActual = hoy.getMonth();
-    const diaHoy = hoy.getDate();
-
-    const ultimoDiaDelMes = (anioObjetivo: number, mesObjetivo: number) =>
-      new Date(anioObjetivo, mesObjetivo + 1, 0).getDate();
-
-    const mesPago = diaHoy > diaPago ? mesActual + 1 : mesActual;
-    const anioPago = anio + Math.floor(mesPago / 12);
-    const mesNormalizado = ((mesPago % 12) + 12) % 12;
-
-    const ultimoDia = ultimoDiaDelMes(anioPago, mesNormalizado);
-    const diaAjustado = Math.min(diaPago, ultimoDia);
-
-    return new Date(anioPago, mesNormalizado, diaAjustado);
   }
 }

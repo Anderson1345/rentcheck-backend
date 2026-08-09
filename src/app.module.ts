@@ -11,6 +11,7 @@ import { ContratoModule } from './contrato/contrato.module';
 import { PagoModule } from './pago/pago.module';
 import { FotoInventarioModule } from './foto-inventario/foto-inventario.module';
 import { SolicitudMantenimientoModule } from './solicitud-mantenimiento/solicitud-mantenimiento.module';
+import { InquilinoPanelModule } from './inquilino-panel/inquilino-panel.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SolicitudMantenimientoModule } from './solicitud-mantenimiento/solicitu
     PagoModule,
     FotoInventarioModule,
     SolicitudMantenimientoModule,
+    InquilinoPanelModule,
   ],
   controllers: [AppController],
   providers: [AppService],
