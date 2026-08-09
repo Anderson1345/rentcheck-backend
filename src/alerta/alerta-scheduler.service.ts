@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { EstadoContrato, TipoAlerta } from '@prisma/client';
+import {
+  EstadoContrato,
+  EstadoSolicitudMantenimiento,
+  TipoAlerta,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -122,6 +126,132 @@ export class AlertaSchedulerService {
 
     this.logger.log(
       `Cron de recordatorio de pago: ${contratos.length} contrato(s) revisado(s), ${creadas} alerta(s) nueva(s) creada(s).`,
+    );
+
+    return { revisados: contratos.length, creadas };
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async ejecutarMantenimientoSinAtender(): Promise<{
+    revisadas: number;
+    creadas: number;
+  }> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const limite = new Date(hoy);
+    limite.setDate(limite.getDate() - 5);
+
+    const solicitudes = await this.prisma.solicitudMantenimiento.findMany({
+      where: {
+        estado: EstadoSolicitudMantenimiento.PENDIENTE,
+        creado_en: { lte: limite },
+      },
+      include: {
+        unidad: { include: { inmueble: true } },
+      },
+    });
+
+    let creadas = 0;
+    for (const solicitud of solicitudes) {
+      const yaExiste = await this.prisma.alerta.findFirst({
+        where: {
+          tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
+          solicitud_mantenimiento_id: solicitud.id,
+          leida: false,
+        },
+      });
+      if (yaExiste) {
+        continue;
+      }
+
+      const arrendadorId = solicitud.unidad.inmueble.arrendador_id;
+      const diasSinAtender = Math.floor(
+        (hoy.getTime() - solicitud.creado_en.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      await this.prisma.alerta.create({
+        data: {
+          arrendador_id: arrendadorId,
+          tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
+          solicitud_mantenimiento_id: solicitud.id,
+          mensaje: `La solicitud de mantenimiento de la unidad ${solicitud.unidad.nombre} lleva ${diasSinAtender} día(s) sin atenderse.`,
+        },
+      });
+      creadas += 1;
+    }
+
+    this.logger.log(
+      `Cron de mantenimiento sin atender: ${solicitudes.length} solicitud(es) revisada(s), ${creadas} alerta(s) nueva(s) creada(s).`,
+    );
+
+    return { revisadas: solicitudes.length, creadas };
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async ejecutarAjusteIpcPendiente(): Promise<{
+    revisados: number;
+    creadas: number;
+  }> {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const limite = new Date(hoy);
+    limite.setDate(limite.getDate() + 30);
+    limite.setHours(23, 59, 59, 999);
+
+    const contratos = await this.prisma.contrato.findMany({
+      where: {
+        estado: EstadoContrato.ACTIVO,
+      },
+      include: {
+        unidad: { include: { inmueble: true } },
+        incrementos_ipc: true,
+      },
+    });
+
+    let creadas = 0;
+    for (const contrato of contratos) {
+      const referencia = contrato.incrementos_ipc.length
+        ? contrato.incrementos_ipc.reduce((a, b) =>
+            b.fecha_aplicacion.getTime() > a.fecha_aplicacion.getTime() ? b : a,
+          ).fecha_aplicacion
+        : contrato.fecha_inicio;
+
+      const proximoAjuste = new Date(referencia);
+      proximoAjuste.setFullYear(proximoAjuste.getFullYear() + 1);
+
+      if (proximoAjuste < hoy || proximoAjuste > limite) {
+        continue;
+      }
+
+      const yaExiste = await this.prisma.alerta.findFirst({
+        where: {
+          tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
+          contrato_id: contrato.id,
+          leida: false,
+        },
+      });
+      if (yaExiste) {
+        continue;
+      }
+
+      const arrendadorId = contrato.unidad.inmueble.arrendador_id;
+      const fechaAjuste = proximoAjuste.toLocaleDateString('es-CO');
+
+      await this.prisma.alerta.create({
+        data: {
+          arrendador_id: arrendadorId,
+          tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
+          contrato_id: contrato.id,
+          mensaje: `El ajuste de IPC de la unidad ${contrato.unidad.nombre} debe realizarse el ${fechaAjuste}.`,
+        },
+      });
+      creadas += 1;
+    }
+
+    this.logger.log(
+      `Cron de ajuste de IPC: ${contratos.length} contrato(s) revisado(s), ${creadas} alerta(s) nueva(s) creada(s).`,
     );
 
     return { revisados: contratos.length, creadas };

@@ -95,4 +95,33 @@ export class AlertaController {
   ejecutarCronRecordatorioPago() {
     return this.alertaSchedulerService.ejecutarRecordatorioPago();
   }
+
+  // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
+  // mantenimiento sin atender sin esperar a la medianoche. Eliminar en producción.
+  @Post('ejecutar-cron-mantenimiento')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      '[TEMPORAL] Ejecutar manualmente el cron de mantenimiento sin atender',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la ejecución manual del cron.',
+  })
+  ejecutarCronMantenimiento() {
+    return this.alertaSchedulerService.ejecutarMantenimientoSinAtender();
+  }
+
+  // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
+  // ajuste de IPC sin esperar a la medianoche. Eliminar en producción.
+  @Post('ejecutar-cron-ipc')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[TEMPORAL] Ejecutar manualmente el cron de ajuste de IPC',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la ejecución manual del cron.',
+  })
+  ejecutarCronIpc() {
+    return this.alertaSchedulerService.ejecutarAjusteIpcPendiente();
+  }
 }
