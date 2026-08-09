@@ -81,4 +81,18 @@ export class AlertaController {
   ejecutarCronVencimiento() {
     return this.alertaSchedulerService.ejecutarVencimiento();
   }
+
+  // ENDPOINT TEMPORAL DE PRUEBA: permite ejecutar manualmente el cron de
+  // recordatorio de pago sin esperar a la medianoche. Eliminar en producción.
+  @Post('ejecutar-cron-recordatorio-pago')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[TEMPORAL] Ejecutar manualmente el cron de recordatorio de pago',
+  })
+  @ApiOkResponse({
+    description: 'Resultado de la ejecución manual del cron.',
+  })
+  ejecutarCronRecordatorioPago() {
+    return this.alertaSchedulerService.ejecutarRecordatorioPago();
+  }
 }
