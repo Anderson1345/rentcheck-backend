@@ -15,6 +15,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
@@ -115,7 +116,11 @@ export class SolicitudMantenimientoController {
   })
   @ApiBadRequestResponse({ description: 'Datos del formulario inválidos.' })
   @ApiNotFoundResponse({
-    description: 'No existe un contrato activo del inquilino en esa unidad.',
+    description: 'No existe un contrato del inquilino en esa unidad.',
+  })
+  @ApiConflictResponse({
+    description:
+      'El contrato del inquilino ya no está activo y no puede reportar solicitudes.',
   })
   @ApiUnsupportedMediaTypeResponse({
     description: 'El tipo de archivo del adjunto no está permitido.',

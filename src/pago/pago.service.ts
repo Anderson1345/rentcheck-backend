@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoPago, EstadoPagoContrato, Prisma } from '@prisma/client';
+import {
+  EstadoContrato,
+  EstadoPago,
+  EstadoPagoContrato,
+  Prisma,
+} from '@prisma/client';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
@@ -57,6 +62,13 @@ export class PagoService {
       await this.eliminarComprobante(comprobante.path);
       throw new NotFoundException(
         'Contrato no encontrado o no pertenece al inquilino autenticado.',
+      );
+    }
+
+    if (contrato.estado !== EstadoContrato.ACTIVO) {
+      await this.eliminarComprobante(comprobante.path);
+      throw new ConflictException(
+        'No puedes reportar pagos, tu contrato ya no está activo.',
       );
     }
 

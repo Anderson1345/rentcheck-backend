@@ -19,30 +19,47 @@ export class SolicitudMantenimientoService {
     inquilinoId: string,
     adjunto?: Express.Multer.File,
   ) {
-    const contratoActivo = await this.prisma.contrato.findFirst({
-      where: {
-        unidad_id: dto.unidadId,
-        inquilino_id: inquilinoId,
-        estado: EstadoContrato.ACTIVO,
-      },
-      include: {
-        unidad: { include: { inmueble: true } },
-      },
-    });
+    const donde = {
+      unidad_id: dto.unidadId,
+      inquilino_id: inquilinoId,
+    };
+    const include = {
+      unidad: { include: { inmueble: true } },
+    };
 
-    if (!contratoActivo) {
+    const contrato =
+      (await this.prisma.contrato.findFirst({
+        where: { ...donde, estado: EstadoContrato.ACTIVO },
+        include,
+      })) ??
+      (await this.prisma.contrato.findFirst({
+        where: donde,
+        orderBy: { creado_en: 'desc' },
+        include,
+      }));
+
+    if (!contrato) {
       if (adjunto) {
         await this.eliminarAdjunto(adjunto.path);
       }
       throw new NotFoundException(
-        'No existe un contrato activo para el inquilino autenticado en esa unidad.',
+        'No existe un contrato para el inquilino autenticado en esa unidad.',
+      );
+    }
+
+    if (contrato.estado !== EstadoContrato.ACTIVO) {
+      if (adjunto) {
+        await this.eliminarAdjunto(adjunto.path);
+      }
+      throw new ConflictException(
+        'No puedes crear solicitudes de mantenimiento, tu contrato ya no está activo.',
       );
     }
 
     try {
       return await this.prisma.solicitudMantenimiento.create({
         data: {
-          arrendador_id: contratoActivo.unidad.inmueble.arrendador_id,
+          arrendador_id: contrato.unidad.inmueble.arrendador_id,
           unidad_id: dto.unidadId,
           inquilino_id: inquilinoId,
           descripcion: dto.descripcion,

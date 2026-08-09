@@ -199,6 +199,10 @@ export class PagoController {
   @ApiNotFoundResponse({
     description: 'Contrato no encontrado o no pertenece al inquilino.',
   })
+  @ApiConflictResponse({
+    description:
+      'El contrato del inquilino ya no está activo y no puede reportar pagos.',
+  })
   @ApiUnsupportedMediaTypeResponse({
     description: 'El tipo de archivo del comprobante no está permitido.',
   })
