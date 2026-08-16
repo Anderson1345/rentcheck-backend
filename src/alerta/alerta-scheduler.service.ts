@@ -8,10 +8,8 @@ import {
   TipoAlerta,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  calcularFechaPagoAnterior,
-  calcularProximaFechaPago,
-} from '../common/calcular-fecha-pago';
+import { calcularProximaFechaPago } from '../common/calcular-fecha-pago';
+import { calcularCicloPagoActual } from '../common/ciclo-pago.util';
 
 @Injectable()
 export class AlertaSchedulerService {
@@ -301,10 +299,7 @@ export class AlertaSchedulerService {
     let enMora = 0;
     let creadas = 0;
     for (const contrato of contratos) {
-      const fechaVencimiento = calcularFechaPagoAnterior(
-        contrato.dia_pago,
-        hoy,
-      );
+      const fechaVencimiento = calcularCicloPagoActual(contrato.dia_pago, hoy);
 
       const pagoQueCubre = contrato.pagos.some(
         (pago) =>

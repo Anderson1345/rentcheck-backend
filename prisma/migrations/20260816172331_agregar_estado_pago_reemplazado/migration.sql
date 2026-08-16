@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "EstadoPago" ADD VALUE 'REEMPLAZADO';
