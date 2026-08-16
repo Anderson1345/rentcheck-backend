@@ -1,4 +1,10 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  Matches,
+  MinLength,
+} from 'class-validator';
 
 export class RegistroArrendadorDto {
   @IsString()
@@ -14,5 +20,9 @@ export class RegistroArrendadorDto {
 
   @IsString()
   @MinLength(8)
+  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
+    message:
+      'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
+  })
   contrasena: string;
 }

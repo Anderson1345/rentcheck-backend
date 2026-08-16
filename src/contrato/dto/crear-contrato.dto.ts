@@ -6,10 +6,12 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
+  IsPositive,
   IsString,
   Max,
   Min,
 } from 'class-validator';
+import { FechaFinPosteriorAFechaInicio } from '../../common/validadores-fecha';
 
 export class CrearContratoDto {
   @IsString()
@@ -24,6 +26,7 @@ export class CrearContratoDto {
   tipo_plantilla!: TipoPlantillaContrato;
 
   @IsInt()
+  @IsPositive()
   canon_centavos!: number;
 
   @IsInt()
@@ -36,6 +39,7 @@ export class CrearContratoDto {
   forma_pago!: string;
 
   @IsInt()
+  @IsPositive()
   deposito_centavos!: number;
 
   @IsString()
@@ -56,5 +60,6 @@ export class CrearContratoDto {
 
   @Type(() => Date)
   @IsDate()
+  @FechaFinPosteriorAFechaInicio()
   fecha_fin!: Date;
 }
