@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AlertaModule } from './alerta/alerta.module';
+import { ArrendadorModule } from './arrendador/arrendador.module';
 import { InmuebleModule } from './inmueble/inmueble.module';
 import { InquilinoModule } from './inquilino/inquilino.module';
 import { ContratoModule } from './contrato/contrato.module';
@@ -18,6 +19,7 @@ import { InquilinoPanelModule } from './inquilino-panel/inquilino-panel.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     AuthModule,
+    ArrendadorModule,
     AlertaModule,
     InmuebleModule,
     InquilinoModule,

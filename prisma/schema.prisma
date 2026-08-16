@@ -16,6 +16,7 @@ model Arrendador {
   nombre              String 
   correo              String   @unique 
   telefono            String 
+  cedula              String? 
   contrasena_hash     String 
   foto_cedula_nit_url String? 
   creado_en           DateTime @default(now())
@@ -134,6 +135,7 @@ model Contrato {
   deposito_centavos     Int
   datos_recaudo         String
   datos_fiador_o_poliza String?
+  condicionesParticularesTexto String? @db.Text
   fecha_inicio          DateTime              @db.Date
   fecha_fin             DateTime              @db.Date
   pdf_contrato_url      String?
