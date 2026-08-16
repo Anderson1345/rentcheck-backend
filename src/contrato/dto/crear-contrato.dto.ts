@@ -46,6 +46,10 @@ export class CrearContratoDto {
   @IsString()
   datos_fiador_o_poliza?: string;
 
+  @IsOptional()
+  @IsString()
+  condicionesParticularesTexto?: string;
+
   @Type(() => Date)
   @IsDate()
   fecha_inicio!: Date;
