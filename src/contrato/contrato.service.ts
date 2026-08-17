@@ -433,16 +433,7 @@ export class ContratoService {
       throw new NotFoundException('Inquilino no encontrado');
     }
 
-    let contratoCreado:
-      | Prisma.ContratoGetPayload<{
-          include: {
-            codigo_acceso: true;
-            unidad: { include: { inmueble: true } };
-            inquilino: true;
-            arrendador: true;
-          };
-        }>
-      | undefined;
+    let contratoCreado: Prisma.ContratoGetPayload<object> | undefined;
 
     try {
       for (let intento = 1; intento <= 5; intento += 1) {
@@ -465,11 +456,6 @@ export class ContratoService {
                 fecha_fin: dto.fecha_fin,
                 estado: EstadoContrato.ACTIVO,
               },
-              include: {
-                unidad: { include: { inmueble: true } },
-                inquilino: true,
-                arrendador: true,
-              },
             });
 
             await tx.codigoAcceso.create({
@@ -481,15 +467,7 @@ export class ContratoService {
               },
             });
 
-            return tx.contrato.findUniqueOrThrow({
-              where: { id: contrato.id },
-              include: {
-                codigo_acceso: true,
-                unidad: { include: { inmueble: true } },
-                inquilino: true,
-                arrendador: true,
-              },
-            });
+            return contrato;
           });
           break;
         } catch (error) {
@@ -529,11 +507,24 @@ export class ContratoService {
 
     const pdfContratoUrl = `uploads/contratos/${contratoConfirmado.id}.pdf`;
     try {
-      await this.generarPdfContrato(contratoConfirmado);
+      const contratoParaPdf = await this.prisma.contrato.findUniqueOrThrow({
+        where: { id: contratoConfirmado.id },
+        include: {
+          unidad: { include: { inmueble: true } },
+          inquilino: true,
+          arrendador: true,
+        },
+      });
 
-      return await this.prisma.contrato.update({
+      await this.generarPdfContrato(contratoParaPdf);
+
+      const contratoActualizado = await this.prisma.contrato.update({
         where: { id: contratoConfirmado.id },
         data: { pdf_contrato_url: pdfContratoUrl },
+      });
+
+      return this.prisma.contrato.findUniqueOrThrow({
+        where: { id: contratoActualizado.id },
         include: {
           codigo_acceso: true,
           unidad: { include: { inmueble: true } },
@@ -546,7 +537,14 @@ export class ContratoService {
         `No fue posible generar o guardar el PDF del contrato ${contratoConfirmado.id}`,
         error instanceof Error ? error.stack : String(error),
       );
-      return contratoConfirmado;
+      return this.prisma.contrato.findUniqueOrThrow({
+        where: { id: contratoConfirmado.id },
+        include: {
+          codigo_acceso: true,
+          unidad: { include: { inmueble: true } },
+          inquilino: true,
+        },
+      });
     }
   }
 
