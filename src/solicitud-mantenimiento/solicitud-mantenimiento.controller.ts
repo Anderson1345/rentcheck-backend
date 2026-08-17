@@ -33,11 +33,12 @@ import {
   InquilinoGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import {
+  TAMANO_MAXIMO_ADJUNTO,
+  TIPOS_ARCHIVO_ADJUNTO,
+} from '../common/limites-archivo.constants';
 import { CrearSolicitudMantenimientoDto } from './dto/crear-solicitud-mantenimiento.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
-
-const TIPOS_DE_ARCHIVO_PERMITIDOS = ['image/jpeg', 'image/png', 'video/mp4'];
-const TAMANO_MAXIMO_ADJUNTO = 20 * 1024 * 1024;
 
 @ApiTags('Solicitudes de Mantenimiento')
 @Controller('solicitudes-mantenimiento')
@@ -67,7 +68,7 @@ export class SolicitudMantenimientoController {
         },
       }),
       fileFilter: (_req, file, callback) => {
-        if (!TIPOS_DE_ARCHIVO_PERMITIDOS.includes(file.mimetype)) {
+        if (!TIPOS_ARCHIVO_ADJUNTO.includes(file.mimetype)) {
           callback(
             new UnsupportedMediaTypeException(
               'Tipo de archivo no permitido. Solo se aceptan imágenes JPEG, PNG o video MP4.',

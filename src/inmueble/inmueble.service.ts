@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import {
   Prisma,
   TipoDocumentoInmueble,
@@ -112,6 +112,26 @@ export class InmuebleService {
     });
   }
 
+  async eliminar(id: string, arrendadorId: string) {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      return null;
+    }
+
+    const unidadesAsociadas = await this.prisma.unidad.count({
+      where: { inmueble_id: id },
+    });
+    if (unidadesAsociadas > 0) {
+      throw new ConflictException(
+        'No se puede eliminar: este inmueble tiene unidades asociadas, elimínalas primero',
+      );
+    }
+
+    return this.prisma.inmueble.delete({ where: { id } });
+  }
+
   async crearUnidad(
     inmuebleId: string,
     dto: CrearUnidadDto,
@@ -181,6 +201,37 @@ export class InmuebleService {
     return this.prisma.unidad.findFirst({
       where: { id: unidadId, inmueble_id: inmuebleId },
     });
+  }
+
+  async eliminarUnidad(
+    inmuebleId: string,
+    unidadId: string,
+    arrendadorId: string,
+  ) {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id: inmuebleId, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      return null;
+    }
+
+    const unidad = await this.prisma.unidad.findFirst({
+      where: { id: unidadId, inmueble_id: inmuebleId },
+    });
+    if (!unidad) {
+      return null;
+    }
+
+    const contratosAsociados = await this.prisma.contrato.count({
+      where: { unidad_id: unidadId },
+    });
+    if (contratosAsociados > 0) {
+      throw new ConflictException(
+        'No se puede eliminar: esta unidad tiene contratos asociados',
+      );
+    }
+
+    return this.prisma.unidad.delete({ where: { id: unidadId } });
   }
 
   async crearDocumento(

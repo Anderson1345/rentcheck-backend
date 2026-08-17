@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -22,6 +23,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
   ApiNotFoundResponse,
@@ -42,6 +44,10 @@ import {
   ArrendadorGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import {
+  TAMANO_MAXIMO_DOCUMENTO,
+  TIPOS_ARCHIVO_DOCUMENTO,
+} from '../common/limites-archivo.constants';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
 import { CrearDocumentoInmuebleDto } from './dto/crear-documento-inmueble.dto';
@@ -49,13 +55,6 @@ import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { CrearUnidadDto } from './dto/crear-unidad.dto';
 import { ListarDocumentosInmuebleQueryDto } from './dto/listar-documentos-inmueble-query.dto';
 import { InmuebleService } from './inmueble.service';
-
-const TIPOS_DE_ARCHIVO_PERMITIDOS = [
-  'image/jpeg',
-  'image/png',
-  'application/pdf',
-];
-const TAMANO_MAXIMO_DOCUMENTO = 10 * 1024 * 1024;
 
 @ApiTags('Inmuebles')
 @Controller('inmuebles')
@@ -112,6 +111,26 @@ export class InmuebleController {
       dto,
       arrendadorId,
     );
+    if (!inmueble) {
+      throw new NotFoundException('Inmueble no encontrado.');
+    }
+    return inmueble;
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Eliminar un inmueble por ID' })
+  @ApiOkResponse({ description: 'Inmueble eliminado exitosamente.' })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado.',
+  })
+  @ApiConflictResponse({
+    description: 'El inmueble tiene unidades asociadas y no puede eliminarse.',
+  })
+  async eliminar(
+    @Param('id') id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const inmueble = await this.inmuebleService.eliminar(id, arrendadorId);
     if (!inmueble) {
       throw new NotFoundException('Inmueble no encontrado.');
     }
@@ -182,6 +201,31 @@ export class InmuebleController {
     return unidad;
   }
 
+  @Delete(':inmuebleId/unidades/:unidadId')
+  @ApiOperation({ summary: 'Eliminar una unidad por ID' })
+  @ApiOkResponse({ description: 'Unidad eliminada exitosamente.' })
+  @ApiNotFoundResponse({
+    description: 'Inmueble o unidad no encontrada.',
+  })
+  @ApiConflictResponse({
+    description: 'La unidad tiene contratos asociados y no puede eliminarse.',
+  })
+  async eliminarUnidad(
+    @Param('inmuebleId') inmuebleId: string,
+    @Param('unidadId') unidadId: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const unidad = await this.inmuebleService.eliminarUnidad(
+      inmuebleId,
+      unidadId,
+      arrendadorId,
+    );
+    if (!unidad) {
+      throw new NotFoundException('Inmueble o unidad no encontrada.');
+    }
+    return unidad;
+  }
+
   @Post(':inmuebleId/documentos')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(
@@ -198,7 +242,7 @@ export class InmuebleController {
         },
       }),
       fileFilter: (_req, file, callback) => {
-        if (!TIPOS_DE_ARCHIVO_PERMITIDOS.includes(file.mimetype)) {
+        if (!TIPOS_ARCHIVO_DOCUMENTO.includes(file.mimetype)) {
           callback(
             new UnsupportedMediaTypeException(
               'Tipo de archivo no permitido. Solo se aceptan imágenes JPEG, PNG o documentos PDF.',

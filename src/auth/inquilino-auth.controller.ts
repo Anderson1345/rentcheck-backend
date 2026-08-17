@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
@@ -53,6 +54,7 @@ export class InquilinoAuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Iniciar sesión como inquilino' })
   @ApiBody({ type: LoginInquilinoDto })
   @ApiResponse({
