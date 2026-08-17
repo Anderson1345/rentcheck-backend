@@ -1,12 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Momento } from '@prisma/client';
-import { unlink } from 'fs/promises';
+import { basename, extname } from 'path';
+import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearFotoInventarioDto } from './dto/crear-foto-inventario.dto';
 
 @Injectable()
 export class FotoInventarioService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(FotoInventarioService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly almacenamiento: AlmacenamientoService,
+  ) {}
 
   async crear(
     contratoId: string,
@@ -21,24 +27,33 @@ export class FotoInventarioService {
       },
     });
     if (!contrato) {
-      await this.eliminarFoto(foto.path);
       throw new NotFoundException(
         'Contrato no encontrado o no pertenece al arrendador autenticado.',
       );
     }
 
+    const rutaDestino = `fotos-inventario/${contratoId}/${Date.now()}-${this.sanitizarNombreArchivo(foto.originalname)}`;
+
+    await this.almacenamiento.subirArchivo(
+      foto.buffer,
+      rutaDestino,
+      foto.mimetype,
+    );
+
     try {
-      return await this.prisma.fotoInventario.create({
+      const fotoInventario = await this.prisma.fotoInventario.create({
         data: {
           contrato_id: contratoId,
           unidad_id: contrato.unidad_id,
           momento: dto.momento,
           zona: dto.zona,
-          foto_url: `uploads/fotos-inventario/${foto.filename}`,
+          foto_ruta: rutaDestino,
         },
       });
+
+      return this.exponerUrlFirmada(fotoInventario);
     } catch (error) {
-      await this.eliminarFoto(foto.path);
+      await this.eliminarArchivoHuérfano(rutaDestino);
       throw error;
     }
   }
@@ -56,20 +71,45 @@ export class FotoInventarioService {
       );
     }
 
-    return this.prisma.fotoInventario.findMany({
+    const fotos = await this.prisma.fotoInventario.findMany({
       where: {
         contrato_id: contratoId,
         ...(momento ? { momento } : {}),
       },
       orderBy: [{ momento: 'asc' }, { zona: 'asc' }, { creado_en: 'asc' }],
     });
+
+    return Promise.all(fotos.map((f) => this.exponerUrlFirmada(f)));
   }
 
-  private async eliminarFoto(rutaAbsoluta: string): Promise<void> {
+  private async exponerUrlFirmada<T extends { foto_ruta: string | null }>(
+    foto: T,
+  ): Promise<Omit<T, 'foto_ruta'> & { foto_url: string | null }> {
+    const { foto_ruta, ...resto } = foto;
+    if (!foto_ruta) {
+      return { ...resto, foto_url: null };
+    }
+    return {
+      ...resto,
+      foto_url: await this.almacenamiento.generarUrlFirmada(foto_ruta),
+    };
+  }
+
+  private sanitizarNombreArchivo(nombre: string): string {
+    const extension = extname(nombre);
+    const base = basename(nombre, extension);
+    const baseLimpia = base.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const extensionLimpia = extension.replace(/[^a-zA-Z0-9.]/g, '');
+    return `${baseLimpia}${extensionLimpia}`;
+  }
+
+  private async eliminarArchivoHuérfano(ruta: string): Promise<void> {
     try {
-      await unlink(rutaAbsoluta);
+      await this.almacenamiento.eliminarArchivo(ruta);
     } catch {
-      // La limpieza no debe ocultar el error original.
+      this.logger.warn(
+        `No se pudo eliminar el archivo huérfano '${ruta}' del bucket.`,
+      );
     }
   }
 }

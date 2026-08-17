@@ -11,6 +11,7 @@ import {
   RolSolicitante,
 } from '@prisma/client';
 import { calcularProximaFechaPago } from '../common/calcular-fecha-pago';
+import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const INCLUDE_CONTRATO_PANEL = {
@@ -24,7 +25,10 @@ type ContratoPanel = Prisma.ContratoGetPayload<{
 
 @Injectable()
 export class InquilinoPanelService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly almacenamiento: AlmacenamientoService,
+  ) {}
 
   async obtenerMiPanel(inquilinoId: string) {
     const contrato = await this.resolverContrato(inquilinoId);
@@ -89,7 +93,9 @@ export class InquilinoPanelService {
       fecha_fin: contrato.fecha_fin,
       pdf_contrato_url: contrato.pdf_contrato_url,
       incrementos_ipc: contrato.incrementos_ipc,
-      fotos_entrega: contrato.fotos_inventario,
+      fotos_entrega: await Promise.all(
+        contrato.fotos_inventario.map((f) => this.exponerUrlFirmada(f)),
+      ),
     };
   }
 
@@ -123,6 +129,19 @@ export class InquilinoPanelService {
         terminacionAnticipadaMotivo: motivo,
       },
     });
+  }
+
+  private async exponerUrlFirmada<T extends { foto_ruta: string | null }>(
+    foto: T,
+  ): Promise<Omit<T, 'foto_ruta'> & { foto_url: string | null }> {
+    const { foto_ruta, ...resto } = foto;
+    if (!foto_ruta) {
+      return { ...resto, foto_url: null };
+    }
+    return {
+      ...resto,
+      foto_url: await this.almacenamiento.generarUrlFirmada(foto_ruta),
+    };
   }
 
   private async resolverContrato(

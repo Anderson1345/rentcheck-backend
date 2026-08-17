@@ -231,7 +231,7 @@ model SolicitudMantenimiento {
   inquilino_id   String                       @db.Uuid
   inquilino      Inquilino                    @relation(fields: [inquilino_id], references: [id])
   descripcion    String
-  adjunto_url    String?
+  adjunto_ruta   String?
   urgencia       UrgenciaMantenimiento
   estado         EstadoSolicitudMantenimiento @default(PENDIENTE)
   creado_en      DateTime                     @default(now())
@@ -292,7 +292,7 @@ model FotoInventario {
   unidad      Unidad   @relation(fields: [unidad_id], references: [id])
   momento     Momento
   zona        String
-  foto_url    String
+  foto_ruta   String?
   creado_en   DateTime @default(now())
 }
 
