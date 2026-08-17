@@ -25,6 +25,7 @@ export interface RespuestaCrearContrato {
   estado: string;
   fecha_inicio: string;
   fecha_fin: string;
+  pdf_contrato_url: string | null;
   codigo_acceso: { codigo: string } | null;
   unidad: { id: string };
   inquilino: { id: string };

@@ -351,7 +351,7 @@ export class InmuebleService {
       if (!ruta) {
         return;
       }
-      // Rutas legacy de disco (aún no migradas, p. ej. pdf_contrato_url).
+      // Rutas legacy de disco (aún no migradas, p. ej. pdf_contrato_ruta).
       if (ruta.startsWith('uploads/')) {
         const rutaAbsoluta = join(process.cwd(), ruta);
         if (!existsSync(rutaAbsoluta)) {
@@ -378,7 +378,7 @@ export class InmuebleService {
     }
     for (const unidad of inmueble.unidades) {
       for (const contrato of unidad.contratos) {
-        await agregarArchivo(contrato.pdf_contrato_url, 'contratos');
+        await agregarArchivo(contrato.pdf_contrato_ruta, 'contratos');
         for (const pago of contrato.pagos) {
           await agregarArchivo(pago.comprobante_ruta, 'comprobantes');
         }

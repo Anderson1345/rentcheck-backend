@@ -138,7 +138,7 @@ model Contrato {
   condicionesParticularesTexto String? @db.Text
   fecha_inicio          DateTime              @db.Date
   fecha_fin             DateTime              @db.Date
-  pdf_contrato_url      String?
+  pdf_contrato_ruta     String?
   estado                EstadoContrato
   estado_pago           EstadoPagoContrato @default(PENDIENTE)
   creado_en             DateTime              @default(now())

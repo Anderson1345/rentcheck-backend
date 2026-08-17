@@ -91,7 +91,11 @@ export class InquilinoPanelService {
       deposito_centavos: contrato.deposito_centavos,
       fecha_inicio: contrato.fecha_inicio,
       fecha_fin: contrato.fecha_fin,
-      pdf_contrato_url: contrato.pdf_contrato_url,
+      pdf_contrato_url: contrato.pdf_contrato_ruta
+        ? await this.almacenamiento.generarUrlFirmada(
+            contrato.pdf_contrato_ruta,
+          )
+        : null,
       incrementos_ipc: contrato.incrementos_ipc,
       fotos_entrega: await Promise.all(
         contrato.fotos_inventario.map((f) => this.exponerUrlFirmada(f)),

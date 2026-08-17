@@ -21,10 +21,14 @@ export class AlmacenamientoService {
     buffer: Buffer,
     rutaDestino: string,
     tipoMime: string,
+    sobrescribir = false,
   ): Promise<string> {
     const { error } = await this.supabase.storage
       .from(this.bucket)
-      .upload(rutaDestino, buffer, { contentType: tipoMime });
+      .upload(rutaDestino, buffer, {
+        contentType: tipoMime,
+        upsert: sobrescribir,
+      });
 
     if (error) {
       this.logger.error(

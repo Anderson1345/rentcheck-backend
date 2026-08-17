@@ -12,10 +12,8 @@ import {
   TipoPlantillaContrato,
 } from '@prisma/client';
 import { randomInt } from 'crypto';
-import { createWriteStream } from 'fs';
-import { mkdir, unlink } from 'fs/promises';
-import { dirname, join } from 'path';
 import PDFDocument from 'pdfkit';
+import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 
@@ -105,7 +103,10 @@ EL ARRENDATARIO — {{inquilino_nombre}}`;
 export class ContratoService {
   private readonly logger = new Logger(ContratoService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly almacenamiento: AlmacenamientoService,
+  ) {}
 
   private formatearCentavosAPesos(centavos: number): string {
     return `$${(centavos / 100).toLocaleString('es-CO')}`;
@@ -189,20 +190,14 @@ export class ContratoService {
       .join(fechaGeneracion);
   }
 
-  private async generarPdfContrato(contrato: ContratoParaPdf): Promise<void> {
-    const rutaRelativa = `uploads/contratos/${contrato.id}.pdf`;
-    const rutaAbsoluta = join(process.cwd(), rutaRelativa);
-
-    await mkdir(dirname(rutaAbsoluta), { recursive: true });
-
-    await new Promise<void>((resolve, reject) => {
+  private generarPdfContrato(contrato: ContratoParaPdf): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
       const documento = new PDFDocument();
-      const salida = createWriteStream(rutaAbsoluta);
+      const fragmentos: Buffer[] = [];
 
-      salida.on('finish', resolve);
-      salida.on('error', reject);
+      documento.on('data', (fragmento: Buffer) => fragmentos.push(fragmento));
+      documento.on('end', () => resolve(Buffer.concat(fragmentos)));
       documento.on('error', reject);
-      documento.pipe(salida);
 
       documento.fontSize(11);
       documento.text(this.construirTextoContrato(contrato));
@@ -210,12 +205,30 @@ export class ContratoService {
     });
   }
 
-  private async eliminarPdfContrato(rutaRelativa: string): Promise<void> {
+  private async eliminarPdfContrato(ruta: string): Promise<void> {
     try {
-      await unlink(join(process.cwd(), rutaRelativa));
+      await this.almacenamiento.eliminarArchivo(ruta);
     } catch {
       // La limpieza no debe ocultar el error original de la transacción.
     }
+  }
+
+  private async exponerUrlFirmada<
+    T extends { pdf_contrato_ruta: string | null },
+  >(
+    contrato: T,
+  ): Promise<
+    Omit<T, 'pdf_contrato_ruta'> & { pdf_contrato_url: string | null }
+  > {
+    const { pdf_contrato_ruta, ...resto } = contrato;
+    if (!pdf_contrato_ruta) {
+      return { ...resto, pdf_contrato_url: null };
+    }
+    return {
+      ...resto,
+      pdf_contrato_url:
+        await this.almacenamiento.generarUrlFirmada(pdf_contrato_ruta),
+    };
   }
 
   private generarCodigoAcceso(): string {
@@ -244,7 +257,7 @@ export class ContratoService {
   }
 
   async listar(arrendadorId: string) {
-    return this.prisma.contrato.findMany({
+    const contratos = await this.prisma.contrato.findMany({
       where: {
         unidad: {
           inmueble: { arrendador_id: arrendadorId },
@@ -267,10 +280,12 @@ export class ContratoService {
       },
       orderBy: { fecha_inicio: 'desc' },
     });
+
+    return Promise.all(contratos.map((c) => this.exponerUrlFirmada(c)));
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
-    return this.prisma.contrato.findFirst({
+    const contrato = await this.prisma.contrato.findFirst({
       where: {
         id,
         unidad: {
@@ -283,6 +298,8 @@ export class ContratoService {
         incrementos_ipc: true,
       },
     });
+
+    return contrato ? this.exponerUrlFirmada(contrato) : null;
   }
 
   async renovar(id: string, arrendadorId: string) {
@@ -349,25 +366,39 @@ export class ContratoService {
     );
 
     let contratoConPdf = contratoActualizado;
-    const pdfContratoUrl = `uploads/contratos/${contrato.id}.pdf`;
+    const pdfContratoRuta = `contratos/${contrato.id}/contrato.pdf`;
+    let archivoSubido = false;
     try {
-      await this.generarPdfContrato({
+      const bufferPdf = await this.generarPdfContrato({
         ...contrato,
         canon_centavos: canonNuevo,
         fecha_fin: nuevaFechaFin,
       });
+      await this.almacenamiento.subirArchivo(
+        bufferPdf,
+        pdfContratoRuta,
+        'application/pdf',
+        true,
+      );
+      archivoSubido = true;
       contratoConPdf = await this.prisma.contrato.update({
         where: { id: contrato.id },
-        data: { pdf_contrato_url: pdfContratoUrl },
+        data: { pdf_contrato_ruta: pdfContratoRuta },
       });
     } catch (error) {
+      if (archivoSubido) {
+        await this.eliminarPdfContrato(pdfContratoRuta);
+      }
       this.logger.error(
         `No fue posible regenerar o guardar el PDF del contrato ${contrato.id}`,
         error instanceof Error ? error.stack : String(error),
       );
     }
 
-    return { contrato: contratoConPdf, incremento_ipc: incrementoIpc };
+    return {
+      contrato: await this.exponerUrlFirmada(contratoConPdf),
+      incremento_ipc: incrementoIpc,
+    };
   }
 
   async regenerarCodigo(id: string, arrendadorId: string) {
@@ -505,7 +536,8 @@ export class ContratoService {
       );
     }
 
-    const pdfContratoUrl = `uploads/contratos/${contratoConfirmado.id}.pdf`;
+    const pdfContratoRuta = `contratos/${contratoConfirmado.id}/contrato.pdf`;
+    let archivoSubido = false;
     try {
       const contratoParaPdf = await this.prisma.contrato.findUniqueOrThrow({
         where: { id: contratoConfirmado.id },
@@ -516,35 +548,48 @@ export class ContratoService {
         },
       });
 
-      await this.generarPdfContrato(contratoParaPdf);
+      const bufferPdf = await this.generarPdfContrato(contratoParaPdf);
+      await this.almacenamiento.subirArchivo(
+        bufferPdf,
+        pdfContratoRuta,
+        'application/pdf',
+        true,
+      );
+      archivoSubido = true;
 
-      const contratoActualizado = await this.prisma.contrato.update({
+      await this.prisma.contrato.update({
         where: { id: contratoConfirmado.id },
-        data: { pdf_contrato_url: pdfContratoUrl },
+        data: { pdf_contrato_ruta: pdfContratoRuta },
       });
 
-      return this.prisma.contrato.findUniqueOrThrow({
-        where: { id: contratoActualizado.id },
-        include: {
-          codigo_acceso: true,
-          unidad: { include: { inmueble: true } },
-          inquilino: true,
-        },
-      });
+      return this.exponerUrlFirmada(
+        await this.prisma.contrato.findUniqueOrThrow({
+          where: { id: contratoConfirmado.id },
+          include: {
+            codigo_acceso: true,
+            unidad: { include: { inmueble: true } },
+            inquilino: true,
+          },
+        }),
+      );
     } catch (error) {
-      await this.eliminarPdfContrato(pdfContratoUrl);
+      if (archivoSubido) {
+        await this.eliminarPdfContrato(pdfContratoRuta);
+      }
       this.logger.error(
         `No fue posible generar o guardar el PDF del contrato ${contratoConfirmado.id}`,
         error instanceof Error ? error.stack : String(error),
       );
-      return this.prisma.contrato.findUniqueOrThrow({
-        where: { id: contratoConfirmado.id },
-        include: {
-          codigo_acceso: true,
-          unidad: { include: { inmueble: true } },
-          inquilino: true,
-        },
-      });
+      return this.exponerUrlFirmada(
+        await this.prisma.contrato.findUniqueOrThrow({
+          where: { id: contratoConfirmado.id },
+          include: {
+            codigo_acceso: true,
+            unidad: { include: { inmueble: true } },
+            inquilino: true,
+          },
+        }),
+      );
     }
   }
 
