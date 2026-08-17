@@ -159,7 +159,9 @@ describe('Contrato PDF (e2e)', () => {
     );
     const listado = await supabase.storage
       .from(process.env.SUPABASE_BUCKET ?? '')
-      .list(`contratos/${contrato.id}/`);
+      .list(
+        `${process.env.SUPABASE_PREFIJO_RUTA ?? ''}contratos/${contrato.id}/`,
+      );
     expect(listado.error).toBeNull();
     expect(listado.data ?? []).toHaveLength(1);
     expect(listado.data?.[0]?.name).toBe('contrato.pdf');

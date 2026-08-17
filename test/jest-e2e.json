@@ -4,6 +4,7 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "setupFiles": ["<rootDir>/setup-env.ts"],
+  "globalTeardown": "<rootDir>/limpiar-bucket.global-teardown.ts",
   "maxWorkers": 1,
   "testTimeout": 15000,
   "transform": {
