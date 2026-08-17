@@ -136,7 +136,7 @@ export class InmuebleService {
     inmuebleId: string,
     dto: CrearUnidadDto,
     arrendadorId: string,
-  ): Promise<Prisma.UnidadGetPayload<{}> | null> {
+  ): Promise<Prisma.UnidadGetPayload<object> | null> {
     const inmueble = await this.prisma.inmueble.findFirst({
       where: { id: inmuebleId, arrendador_id: arrendadorId },
     });
@@ -165,7 +165,7 @@ export class InmuebleService {
     unidadId: string,
     dto: ActualizarUnidadDto,
     arrendadorId: string,
-  ): Promise<Prisma.UnidadGetPayload<{}> | null> {
+  ): Promise<Prisma.UnidadGetPayload<object> | null> {
     const inmueble = await this.prisma.inmueble.findFirst({
       where: { id: inmuebleId, arrendador_id: arrendadorId },
     });
@@ -239,7 +239,7 @@ export class InmuebleService {
     arrendadorId: string,
     dto: CrearDocumentoInmuebleDto,
     archivo: Express.Multer.File,
-  ): Promise<Prisma.DocumentoInmuebleGetPayload<{}> | null> {
+  ): Promise<Prisma.DocumentoInmuebleGetPayload<object> | null> {
     const inmueble = await this.prisma.inmueble.findFirst({
       where: { id: inmuebleId, arrendador_id: arrendadorId },
     });
@@ -266,7 +266,7 @@ export class InmuebleService {
     inmuebleId: string,
     arrendadorId: string,
     tipo?: TipoDocumentoInmueble,
-  ): Promise<Prisma.DocumentoInmuebleGetPayload<{}>[] | null> {
+  ): Promise<Prisma.DocumentoInmuebleGetPayload<object>[] | null> {
     const inmueble = await this.prisma.inmueble.findFirst({
       where: { id: inmuebleId, arrendador_id: arrendadorId },
     });
