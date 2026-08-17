@@ -103,6 +103,7 @@ export class AlertaSchedulerService {
       },
       include: {
         unidad: { include: { inmueble: true } },
+        pagos: true,
       },
     });
 
@@ -116,6 +117,18 @@ export class AlertaSchedulerService {
         (proximaFechaPago.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24),
       );
       if (diferenciaDias < 0 || diferenciaDias > 3) {
+        continue;
+      }
+
+      const fechaVencimiento = calcularCicloPagoActual(contrato.dia_pago, hoy);
+
+      const pagoQueCubre = contrato.pagos.some(
+        (pago) =>
+          (pago.estado === EstadoPago.PENDIENTE ||
+            pago.estado === EstadoPago.APROBADO) &&
+          pago.fecha_reportada >= fechaVencimiento,
+      );
+      if (pagoQueCubre) {
         continue;
       }
 
