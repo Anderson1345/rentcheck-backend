@@ -1,38 +1,17 @@
 import { HttpStatus, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TipoPlantillaContrato } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import {
+  contratoValido,
+  crearContrato,
+  crearInmueble,
+  crearInquilino,
+  registrarArrendador,
+} from './helpers/crear-datos.helper';
 import { limpiarBd } from './helpers/limpiar-bd';
-
-interface RespuestaAutenticacion {
-  access_token: string;
-  arrendador: { id: string };
-}
-
-interface RespuestaCrearInmueble {
-  id: string;
-  unidades: Array<{ id: string; nombre: string }>;
-}
-
-interface RespuestaCrearInquilino {
-  id: string;
-}
-
-interface RespuestaCrearContrato {
-  id: string;
-  canon_centavos: number;
-  deposito_centavos: number;
-  dia_pago: number;
-  estado: string;
-  fecha_inicio: string;
-  fecha_fin: string;
-  codigo_acceso: { codigo: string } | null;
-  unidad: { id: string };
-  inquilino: { id: string };
-}
 
 interface RespuestaRenovarContrato {
   contrato: { canon_centavos: number; fecha_fin: string };
@@ -45,92 +24,6 @@ interface RespuestaRenovarContrato {
 
 interface ContratoListado {
   id: string;
-}
-
-function contratoValido(
-  unidadId: string,
-  inquilinoId: string,
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    unidad_id: unidadId,
-    inquilino_id: inquilinoId,
-    tipo_plantilla: TipoPlantillaContrato.VIVIENDA_URBANA_LEY_820,
-    canon_centavos: 1000000,
-    dia_pago: 5,
-    forma_pago: 'Transferencia bancaria',
-    deposito_centavos: 500000,
-    datos_recaudo: 'Bancolombia ahorros 123456789',
-    fecha_inicio: '2026-01-10',
-    fecha_fin: '2026-12-31',
-    ...overrides,
-  };
-}
-
-async function registrarArrendador(
-  app: INestApplication<App>,
-  nombre: string,
-  correo: string,
-): Promise<RespuestaAutenticacion> {
-  const respuesta = await request(app.getHttpServer())
-    .post('/auth/arrendador/registro')
-    .send({
-      nombre,
-      correo,
-      telefono: '3001234567',
-      contrasena: 'clave123',
-    })
-    .expect(HttpStatus.CREATED);
-  return respuesta.body as RespuestaAutenticacion;
-}
-
-async function crearInmueble(
-  app: INestApplication<App>,
-  token: string,
-  matricula = 'ABC-123456',
-): Promise<RespuestaCrearInmueble> {
-  const respuesta = await request(app.getHttpServer())
-    .post('/inmuebles')
-    .set('Authorization', `Bearer ${token}`)
-    .send({
-      direccion: 'Calle 123 # 45-67',
-      ciudad: 'Bogota',
-      estrato: 3,
-      matricula_inmobiliaria: matricula,
-    })
-    .expect(HttpStatus.CREATED);
-  return respuesta.body as RespuestaCrearInmueble;
-}
-
-async function crearInquilino(
-  app: INestApplication<App>,
-  token: string,
-): Promise<RespuestaCrearInquilino> {
-  const respuesta = await request(app.getHttpServer())
-    .post('/inquilinos')
-    .set('Authorization', `Bearer ${token}`)
-    .send({
-      nombre: 'Inquilino Prueba',
-      cedula: '1234567890',
-      telefono: '3009876543',
-    })
-    .expect(HttpStatus.CREATED);
-  return respuesta.body as RespuestaCrearInquilino;
-}
-
-async function crearContrato(
-  app: INestApplication<App>,
-  token: string,
-  unidadId: string,
-  inquilinoId: string,
-  overrides: Record<string, unknown> = {},
-): Promise<RespuestaCrearContrato> {
-  const respuesta = await request(app.getHttpServer())
-    .post('/contratos')
-    .set('Authorization', `Bearer ${token}`)
-    .send(contratoValido(unidadId, inquilinoId, overrides))
-    .expect(HttpStatus.CREATED);
-  return respuesta.body as RespuestaCrearContrato;
 }
 
 describe('ContratoController (e2e)', () => {
