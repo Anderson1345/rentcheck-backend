@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
+import { calcularCicloPagoActual } from '../common/ciclo-pago.util';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 
 @Injectable()
@@ -75,16 +76,38 @@ export class PagoService {
     const arrendadorId = contrato.unidad.inmueble.arrendador_id;
 
     try {
-      return await this.prisma.pago.create({
-        data: {
-          arrendador_id: arrendadorId,
+      const cicloActual = calcularCicloPagoActual(contrato.dia_pago);
+
+      const pagoPendienteDelCiclo = await this.prisma.pago.findFirst({
+        where: {
           contrato_id: contrato.id,
-          monto_centavos: dto.monto_centavos,
-          fecha_reportada: dto.fecha_reportada,
-          comprobante_url: `uploads/comprobantes/${comprobante.filename}`,
           estado: EstadoPago.PENDIENTE,
+          fecha_reportada: { gte: cicloActual },
         },
       });
+
+      const datosNuevoPago: Prisma.PagoUncheckedCreateInput = {
+        arrendador_id: arrendadorId,
+        contrato_id: contrato.id,
+        monto_centavos: dto.monto_centavos,
+        fecha_reportada: dto.fecha_reportada,
+        comprobante_url: `uploads/comprobantes/${comprobante.filename}`,
+        estado: EstadoPago.PENDIENTE,
+      };
+
+      if (pagoPendienteDelCiclo) {
+        const [, nuevoPago] = await this.prisma.$transaction([
+          this.prisma.pago.update({
+            where: { id: pagoPendienteDelCiclo.id },
+            data: { estado: EstadoPago.REEMPLAZADO },
+          }),
+          this.prisma.pago.create({ data: datosNuevoPago }),
+        ]);
+
+        return nuevoPago;
+      }
+
+      return await this.prisma.pago.create({ data: datosNuevoPago });
     } catch (error) {
       await this.eliminarComprobante(comprobante.path);
       throw error;
