@@ -15,6 +15,7 @@ import { PagoModule } from './pago/pago.module';
 import { FotoInventarioModule } from './foto-inventario/foto-inventario.module';
 import { SolicitudMantenimientoModule } from './solicitud-mantenimiento/solicitud-mantenimiento.module';
 import { InquilinoPanelModule } from './inquilino-panel/inquilino-panel.module';
+import { AlmacenamientoModule } from './almacenamiento/almacenamiento.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { InquilinoPanelModule } from './inquilino-panel/inquilino-panel.module';
     FotoInventarioModule,
     SolicitudMantenimientoModule,
     InquilinoPanelModule,
+    AlmacenamientoModule,
   ],
   controllers: [AppController],
   providers: [
