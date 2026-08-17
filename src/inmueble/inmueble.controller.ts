@@ -34,11 +34,8 @@ import {
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
-import { randomUUID } from 'crypto';
 import type { Response } from 'express';
-import { mkdirSync } from 'fs';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { memoryStorage } from 'multer';
 import {
   ArrendadorActual,
   ArrendadorGuard,
@@ -230,17 +227,7 @@ export class InmuebleController {
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(
     FileInterceptor('archivo', {
-      storage: diskStorage({
-        destination: (_req, _file, callback) => {
-          const directorio = join(process.cwd(), 'uploads/documentos-inmueble');
-          mkdirSync(directorio, { recursive: true });
-          callback(null, directorio);
-        },
-        filename: (_req, file, callback) => {
-          const nombre = `${randomUUID()}${extname(file.originalname)}`;
-          callback(null, nombre);
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (_req, file, callback) => {
         if (!TIPOS_ARCHIVO_DOCUMENTO.includes(file.mimetype)) {
           callback(

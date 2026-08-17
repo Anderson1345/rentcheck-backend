@@ -54,6 +54,21 @@ export class AlmacenamientoService {
     return data.signedUrl;
   }
 
+  async descargarArchivo(ruta: string): Promise<Buffer> {
+    const { data, error } = await this.supabase.storage
+      .from(this.bucket)
+      .download(ruta);
+
+    if (error) {
+      this.logger.error(
+        `Error al descargar archivo '${ruta}': ${error.message}`,
+      );
+      throw new Error(`No se pudo descargar el archivo: ${error.message}`);
+    }
+
+    return Buffer.from(await data.arrayBuffer());
+  }
+
   async eliminarArchivo(ruta: string): Promise<void> {
     const { error } = await this.supabase.storage
       .from(this.bucket)

@@ -218,10 +218,15 @@ export class PagoService {
     return pago;
   }
 
-  private async exponerUrlFirmada<T extends { comprobante_ruta: string }>(
+  private async exponerUrlFirmada<
+    T extends { comprobante_ruta: string | null },
+  >(
     pago: T,
-  ): Promise<Omit<T, 'comprobante_ruta'> & { comprobante_url: string }> {
+  ): Promise<Omit<T, 'comprobante_ruta'> & { comprobante_url: string | null }> {
     const { comprobante_ruta, ...resto } = pago;
+    if (!comprobante_ruta) {
+      return { ...resto, comprobante_url: null };
+    }
     return {
       ...resto,
       comprobante_url:

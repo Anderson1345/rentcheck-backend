@@ -7,9 +7,9 @@ import {
 } from '@prisma/client';
 import { ZipArchive } from 'archiver';
 import { existsSync } from 'fs';
-import { unlink } from 'fs/promises';
-import { basename, join } from 'path';
+import { basename, extname, join } from 'path';
 import { PassThrough } from 'stream';
+import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
@@ -32,11 +32,19 @@ type InmuebleConDocumentosParaDescarga = Prisma.InmuebleGetPayload<{
   };
 }>;
 
+type DocumentoInmuebleConUrl = Omit<
+  Prisma.DocumentoInmuebleGetPayload<object>,
+  'archivo_ruta'
+> & { archivo_url: string | null };
+
 @Injectable()
 export class InmuebleService {
   private readonly logger = new Logger(InmuebleService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly almacenamiento: AlmacenamientoService,
+  ) {}
 
   async crear(
     dto: CrearInmuebleDto,
@@ -239,25 +247,34 @@ export class InmuebleService {
     arrendadorId: string,
     dto: CrearDocumentoInmuebleDto,
     archivo: Express.Multer.File,
-  ): Promise<Prisma.DocumentoInmuebleGetPayload<object> | null> {
+  ): Promise<DocumentoInmuebleConUrl | null> {
     const inmueble = await this.prisma.inmueble.findFirst({
       where: { id: inmuebleId, arrendador_id: arrendadorId },
     });
     if (!inmueble) {
-      await this.eliminarArchivo(archivo.path);
       return null;
     }
 
+    const rutaDestino = `documentos/${inmuebleId}/${Date.now()}-${this.sanitizarNombreArchivo(archivo.originalname)}`;
+
+    await this.almacenamiento.subirArchivo(
+      archivo.buffer,
+      rutaDestino,
+      archivo.mimetype,
+    );
+
     try {
-      return await this.prisma.documentoInmueble.create({
+      const documento = await this.prisma.documentoInmueble.create({
         data: {
           inmueble_id: inmuebleId,
           tipo: dto.tipo,
-          archivo_url: `uploads/documentos-inmueble/${archivo.filename}`,
+          archivo_ruta: rutaDestino,
         },
       });
+
+      return this.exponerUrlFirmada(documento);
     } catch (error) {
-      await this.eliminarArchivo(archivo.path);
+      await this.eliminarArchivoHuérfano(rutaDestino);
       throw error;
     }
   }
@@ -266,27 +283,52 @@ export class InmuebleService {
     inmuebleId: string,
     arrendadorId: string,
     tipo?: TipoDocumentoInmueble,
-  ): Promise<Prisma.DocumentoInmuebleGetPayload<object>[] | null> {
+  ): Promise<DocumentoInmuebleConUrl[] | null> {
     const inmueble = await this.prisma.inmueble.findFirst({
       where: { id: inmuebleId, arrendador_id: arrendadorId },
     });
     if (!inmueble) {
       return null;
     }
-    return this.prisma.documentoInmueble.findMany({
+    const documentos = await this.prisma.documentoInmueble.findMany({
       where: {
         inmueble_id: inmuebleId,
         ...(tipo ? { tipo } : {}),
       },
       orderBy: { creado_en: 'desc' },
     });
+
+    return Promise.all(documentos.map((d) => this.exponerUrlFirmada(d)));
   }
 
-  private async eliminarArchivo(rutaAbsoluta: string): Promise<void> {
+  private async exponerUrlFirmada<T extends { archivo_ruta: string | null }>(
+    documento: T,
+  ): Promise<Omit<T, 'archivo_ruta'> & { archivo_url: string | null }> {
+    const { archivo_ruta, ...resto } = documento;
+    if (!archivo_ruta) {
+      return { ...resto, archivo_url: null };
+    }
+    return {
+      ...resto,
+      archivo_url: await this.almacenamiento.generarUrlFirmada(archivo_ruta),
+    };
+  }
+
+  private sanitizarNombreArchivo(nombre: string): string {
+    const extension = extname(nombre);
+    const base = basename(nombre, extension);
+    const baseLimpia = base.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const extensionLimpia = extension.replace(/[^a-zA-Z0-9.]/g, '');
+    return `${baseLimpia}${extensionLimpia}`;
+  }
+
+  private async eliminarArchivoHuérfano(ruta: string): Promise<void> {
     try {
-      await unlink(rutaAbsoluta);
+      await this.almacenamiento.eliminarArchivo(ruta);
     } catch {
-      // La limpieza no debe ocultar el error original.
+      this.logger.warn(
+        `No se pudo eliminar el archivo huérfano '${ruta}' del bucket.`,
+      );
     }
   }
 
@@ -300,40 +342,52 @@ export class InmuebleService {
     }
 
     const archivo = new ZipArchive({ zlib: { level: 9 } });
-    const archivosSaltados: string[] = [];
+    const archivosFallidos: string[] = [];
 
-    const agregarArchivo = (
-      rutaRelativa: string | null | undefined,
+    const agregarArchivo = async (
+      ruta: string | null | undefined,
       carpeta: string,
     ) => {
-      if (!rutaRelativa) {
+      if (!ruta) {
         return;
       }
-      const rutaAbsoluta = join(process.cwd(), rutaRelativa);
-      if (!existsSync(rutaAbsoluta)) {
-        archivosSaltados.push(rutaRelativa);
+      // Rutas legacy de disco (aún no migradas, p. ej. pdf_contrato_url).
+      if (ruta.startsWith('uploads/')) {
+        const rutaAbsoluta = join(process.cwd(), ruta);
+        if (!existsSync(rutaAbsoluta)) {
+          archivosFallidos.push(ruta);
+          return;
+        }
+        archivo.file(rutaAbsoluta, {
+          name: `${carpeta}/${basename(ruta)}`,
+        });
         return;
       }
-      archivo.file(rutaAbsoluta, {
-        name: `${carpeta}/${basename(rutaRelativa)}`,
-      });
+      try {
+        const buffer = await this.almacenamiento.descargarArchivo(ruta);
+        archivo.append(buffer, {
+          name: `${carpeta}/${basename(ruta)}`,
+        });
+      } catch {
+        archivosFallidos.push(ruta);
+      }
     };
 
     for (const documento of inmueble.documentos) {
-      agregarArchivo(documento.archivo_url, 'documentos-inmueble');
+      await agregarArchivo(documento.archivo_ruta, 'documentos-inmueble');
     }
     for (const unidad of inmueble.unidades) {
       for (const contrato of unidad.contratos) {
-        agregarArchivo(contrato.pdf_contrato_url, 'contratos');
+        await agregarArchivo(contrato.pdf_contrato_url, 'contratos');
         for (const pago of contrato.pagos) {
-          agregarArchivo(pago.comprobante_ruta, 'comprobantes');
+          await agregarArchivo(pago.comprobante_ruta, 'comprobantes');
         }
       }
     }
 
-    if (archivosSaltados.length > 0) {
+    if (archivosFallidos.length > 0) {
       this.logger.warn(
-        `Archivos referenciados no encontrados en disco para el inmueble ${id}: ${archivosSaltados.join(', ')}`,
+        `Archivos referenciados no descargables desde Supabase para el inmueble ${id}: ${archivosFallidos.join(', ')}`,
       );
     }
 
