@@ -82,7 +82,9 @@ describe('PagoController (e2e)', () => {
     expect(pago.contrato_id).toBe(contrato.id);
     expect(pago.monto_centavos).toBe(1000000);
     expect(pago.estado).toBe(EstadoPago.PENDIENTE);
-    expect(pago.comprobante_url).toContain('uploads/comprobantes/');
+    expect(pago.comprobante_url).toMatch(
+      /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/sign\//,
+    );
   });
 
   it('el arrendador aprueba un pago pendiente y queda APROBADO', async () => {

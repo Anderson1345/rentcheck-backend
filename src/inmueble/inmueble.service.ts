@@ -326,7 +326,7 @@ export class InmuebleService {
       for (const contrato of unidad.contratos) {
         agregarArchivo(contrato.pdf_contrato_url, 'contratos');
         for (const pago of contrato.pagos) {
-          agregarArchivo(pago.comprobante_url, 'comprobantes');
+          agregarArchivo(pago.comprobante_ruta, 'comprobantes');
         }
       }
     }

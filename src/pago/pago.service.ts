@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -9,13 +10,15 @@ import {
   EstadoPagoContrato,
   Prisma,
 } from '@prisma/client';
-import { unlink } from 'fs/promises';
+import { basename, extname } from 'path';
+import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularCicloPagoActual } from '../common/ciclo-pago.util';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 
 @Injectable()
 export class PagoService {
+  private readonly logger = new Logger(PagoService.name);
   private readonly INCLUDE_PAGO: Prisma.PagoInclude = {
     contrato: {
       select: {
@@ -42,7 +45,10 @@ export class PagoService {
     },
   };
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly almacenamiento: AlmacenamientoService,
+  ) {}
 
   async crear(
     dto: CrearPagoDto,
@@ -60,20 +66,25 @@ export class PagoService {
     });
 
     if (!contrato) {
-      await this.eliminarComprobante(comprobante.path);
       throw new NotFoundException(
         'Contrato no encontrado o no pertenece al inquilino autenticado.',
       );
     }
 
     if (contrato.estado !== EstadoContrato.ACTIVO) {
-      await this.eliminarComprobante(comprobante.path);
       throw new ConflictException(
         'No puedes reportar pagos, tu contrato ya no está activo.',
       );
     }
 
     const arrendadorId = contrato.unidad.inmueble.arrendador_id;
+    const rutaDestino = `pagos/${contrato.id}/${Date.now()}-${this.sanitizarNombreArchivo(comprobante.originalname)}`;
+
+    await this.almacenamiento.subirArchivo(
+      comprobante.buffer,
+      rutaDestino,
+      comprobante.mimetype,
+    );
 
     try {
       const cicloActual = calcularCicloPagoActual(contrato.dia_pago);
@@ -91,7 +102,7 @@ export class PagoService {
         contrato_id: contrato.id,
         monto_centavos: dto.monto_centavos,
         fecha_reportada: dto.fecha_reportada,
-        comprobante_url: `uploads/comprobantes/${comprobante.filename}`,
+        comprobante_ruta: rutaDestino,
         estado: EstadoPago.PENDIENTE,
       };
 
@@ -104,18 +115,21 @@ export class PagoService {
           this.prisma.pago.create({ data: datosNuevoPago }),
         ]);
 
-        return nuevoPago;
+        return this.exponerUrlFirmada(nuevoPago);
       }
 
-      return await this.prisma.pago.create({ data: datosNuevoPago });
+      const nuevoPago = await this.prisma.pago.create({
+        data: datosNuevoPago,
+      });
+      return this.exponerUrlFirmada(nuevoPago);
     } catch (error) {
-      await this.eliminarComprobante(comprobante.path);
+      await this.eliminarArchivoHuérfano(rutaDestino);
       throw error;
     }
   }
 
   async listar(arrendadorId: string, estado?: EstadoPago) {
-    return this.prisma.pago.findMany({
+    const pagos = await this.prisma.pago.findMany({
       where: {
         arrendador_id: arrendadorId,
         ...(estado ? { estado } : {}),
@@ -123,16 +137,20 @@ export class PagoService {
       include: this.INCLUDE_PAGO,
       orderBy: { fecha_reportada: 'desc' },
     });
+
+    return Promise.all(pagos.map((p) => this.exponerUrlFirmada(p)));
   }
 
   async listarMios(inquilinoId: string) {
-    return this.prisma.pago.findMany({
+    const pagos = await this.prisma.pago.findMany({
       where: {
         contrato: { inquilino_id: inquilinoId },
       },
       include: this.INCLUDE_PAGO,
       orderBy: { fecha_reportada: 'desc' },
     });
+
+    return Promise.all(pagos.map((p) => this.exponerUrlFirmada(p)));
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
@@ -147,7 +165,7 @@ export class PagoService {
       );
     }
 
-    return pago;
+    return this.exponerUrlFirmada(pago);
   }
 
   async aprobar(id: string, arrendadorId: string) {
@@ -165,17 +183,19 @@ export class PagoService {
       }),
     ]);
 
-    return pagoActualizado;
+    return this.exponerUrlFirmada(pagoActualizado);
   }
 
   async rechazar(id: string, arrendadorId: string) {
     const pago = await this.obtenerPagoPendiente(id, arrendadorId);
 
-    return this.prisma.pago.update({
+    const pagoActualizado = await this.prisma.pago.update({
       where: { id: pago.id },
       data: { estado: EstadoPago.RECHAZADO },
       include: this.INCLUDE_PAGO,
     });
+
+    return this.exponerUrlFirmada(pagoActualizado);
   }
 
   private async obtenerPagoPendiente(id: string, arrendadorId: string) {
@@ -198,11 +218,32 @@ export class PagoService {
     return pago;
   }
 
-  private async eliminarComprobante(rutaAbsoluta: string): Promise<void> {
+  private async exponerUrlFirmada<T extends { comprobante_ruta: string }>(
+    pago: T,
+  ): Promise<Omit<T, 'comprobante_ruta'> & { comprobante_url: string }> {
+    const { comprobante_ruta, ...resto } = pago;
+    return {
+      ...resto,
+      comprobante_url:
+        await this.almacenamiento.generarUrlFirmada(comprobante_ruta),
+    };
+  }
+
+  private sanitizarNombreArchivo(nombre: string): string {
+    const extension = extname(nombre);
+    const base = basename(nombre, extension);
+    const baseLimpia = base.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const extensionLimpia = extension.replace(/[^a-zA-Z0-9.]/g, '');
+    return `${baseLimpia}${extensionLimpia}`;
+  }
+
+  private async eliminarArchivoHuérfano(ruta: string): Promise<void> {
     try {
-      await unlink(rutaAbsoluta);
+      await this.almacenamiento.eliminarArchivo(ruta);
     } catch {
-      // La limpieza no debe ocultar el error original.
+      this.logger.warn(
+        `No se pudo eliminar el archivo huérfano '${ruta}' del bucket.`,
+      );
     }
   }
 }

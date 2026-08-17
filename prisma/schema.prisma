@@ -203,7 +203,7 @@ model Pago {
   contrato        Contrato    @relation(fields: [contrato_id], references: [id])
   monto_centavos  Int
   fecha_reportada DateTime    @db.Date
-  comprobante_url String
+  comprobante_ruta String
   estado          EstadoPago  @default(PENDIENTE)
   creado_en       DateTime    @default(now())
   actualizado_en  DateTime    @updatedAt
