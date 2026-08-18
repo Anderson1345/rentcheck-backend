@@ -11,23 +11,23 @@ import {
 export class CrearInmuebleDto {
   @IsString()
   @IsNotEmpty()
-  direccion: string;
+  direccion!: string;
 
   @IsString()
   @IsNotEmpty()
-  ciudad: string;
+  ciudad!: string;
 
   @IsInt()
   @Min(1)
   @Max(6)
-  estrato: number;
+  estrato!: number;
 
   @IsString()
   @IsNotEmpty()
-  matricula_inmobiliaria: string;
+  matricula_inmobiliaria!: string;
 
   @IsOptional()
   @IsString()
   @ApiPropertyOptional()
-  foto_portada_url?: string;
+  foto_portada_ruta?: string;
 }

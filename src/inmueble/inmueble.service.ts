@@ -21,6 +21,11 @@ type InmuebleConUnidades = Prisma.InmuebleGetPayload<{
   include: { unidades: true };
 }>;
 
+type InmuebleConUnidadesConUrl = Omit<
+  InmuebleConUnidades,
+  'foto_portada_ruta'
+> & { foto_portada_url: string | null };
+
 type InmuebleConDocumentosParaDescarga = Prisma.InmuebleGetPayload<{
   include: {
     documentos: true;
@@ -49,7 +54,7 @@ export class InmuebleService {
   async crear(
     dto: CrearInmuebleDto,
     arrendadorId: string,
-  ): Promise<InmuebleConUnidades> {
+  ): Promise<InmuebleConUnidadesConUrl> {
     return this.prisma.$transaction(async (tx) => {
       const inmueble = await tx.inmueble.create({
         data: {
@@ -58,7 +63,7 @@ export class InmuebleService {
           ciudad: dto.ciudad,
           estrato: dto.estrato,
           matricula_inmobiliaria: dto.matricula_inmobiliaria,
-          foto_portada_url: dto.foto_portada_url,
+          foto_portada_ruta: dto.foto_portada_ruta,
         },
       });
 
@@ -77,36 +82,44 @@ export class InmuebleService {
         },
       });
 
-      return tx.inmueble.findUniqueOrThrow({
-        where: { id: inmueble.id },
-        include: { unidades: true },
-      });
+      return this.exponerUrlFirmadaInmueble(
+        await tx.inmueble.findUniqueOrThrow({
+          where: { id: inmueble.id },
+          include: { unidades: true },
+        }),
+      );
     });
   }
 
-  listar(arrendadorId: string): Promise<InmuebleConUnidades[]> {
-    return this.prisma.inmueble.findMany({
+  async listar(arrendadorId: string): Promise<InmuebleConUnidadesConUrl[]> {
+    const inmuebles = await this.prisma.inmueble.findMany({
       where: { arrendador_id: arrendadorId },
       include: { unidades: true },
       orderBy: { creado_en: 'desc' },
     });
+
+    return Promise.all(inmuebles.map((i) => this.exponerUrlFirmadaInmueble(i)));
   }
 
-  encontrarUno(
+  async encontrarUno(
     id: string,
     arrendadorId: string,
-  ): Promise<InmuebleConUnidades | null> {
-    return this.prisma.inmueble.findFirst({
+  ): Promise<InmuebleConUnidadesConUrl | null> {
+    const inmueble = await this.prisma.inmueble.findFirst({
       where: { id, arrendador_id: arrendadorId },
       include: { unidades: true },
     });
+    if (!inmueble) {
+      return null;
+    }
+    return this.exponerUrlFirmadaInmueble(inmueble);
   }
 
   async actualizar(
     id: string,
     dto: ActualizarInmuebleDto,
     arrendadorId: string,
-  ): Promise<InmuebleConUnidades | null> {
+  ): Promise<InmuebleConUnidadesConUrl | null> {
     const resultado = await this.prisma.inmueble.updateMany({
       where: { id, arrendador_id: arrendadorId },
       data: dto,
@@ -114,10 +127,14 @@ export class InmuebleService {
     if (resultado.count === 0) {
       return null;
     }
-    return this.prisma.inmueble.findFirst({
+    const inmueble = await this.prisma.inmueble.findFirst({
       where: { id, arrendador_id: arrendadorId },
       include: { unidades: true },
     });
+    if (!inmueble) {
+      return null;
+    }
+    return this.exponerUrlFirmadaInmueble(inmueble);
   }
 
   async eliminar(id: string, arrendadorId: string) {
@@ -137,7 +154,9 @@ export class InmuebleService {
       );
     }
 
-    return this.prisma.inmueble.delete({ where: { id } });
+    return this.exponerUrlFirmadaInmueble(
+      await this.prisma.inmueble.delete({ where: { id } }),
+    );
   }
 
   async crearUnidad(
@@ -299,6 +318,71 @@ export class InmuebleService {
     });
 
     return Promise.all(documentos.map((d) => this.exponerUrlFirmada(d)));
+  }
+
+  async subirFotoPortada(
+    id: string,
+    arrendadorId: string,
+    foto: Express.Multer.File,
+  ): Promise<InmuebleConUnidadesConUrl | null> {
+    const inmueble = await this.prisma.inmueble.findFirst({
+      where: { id, arrendador_id: arrendadorId },
+    });
+    if (!inmueble) {
+      return null;
+    }
+
+    const rutaAnterior = inmueble.foto_portada_ruta;
+    const extension = foto.mimetype === 'image/png' ? '.png' : '.jpg';
+    const rutaDestino = `inmuebles/${id}/portada${extension}`;
+
+    if (rutaAnterior && rutaAnterior !== rutaDestino) {
+      await this.eliminarArchivoHuérfano(rutaAnterior);
+    }
+
+    await this.almacenamiento.subirArchivo(
+      foto.buffer,
+      rutaDestino,
+      foto.mimetype,
+      true,
+    );
+
+    try {
+      const resultado = await this.prisma.inmueble.updateMany({
+        where: { id, arrendador_id: arrendadorId },
+        data: { foto_portada_ruta: rutaDestino },
+      });
+      if (resultado.count === 0) {
+        return null;
+      }
+      return this.exponerUrlFirmadaInmueble(
+        await this.prisma.inmueble.findFirstOrThrow({
+          where: { id, arrendador_id: arrendadorId },
+          include: { unidades: true },
+        }),
+      );
+    } catch (error) {
+      await this.eliminarArchivoHuérfano(rutaDestino);
+      throw error;
+    }
+  }
+
+  private async exponerUrlFirmadaInmueble<
+    T extends { foto_portada_ruta: string | null },
+  >(
+    inmueble: T,
+  ): Promise<
+    Omit<T, 'foto_portada_ruta'> & { foto_portada_url: string | null }
+  > {
+    const { foto_portada_ruta, ...resto } = inmueble;
+    if (!foto_portada_ruta) {
+      return { ...resto, foto_portada_url: null };
+    }
+    return {
+      ...resto,
+      foto_portada_url:
+        await this.almacenamiento.generarUrlFirmada(foto_portada_ruta),
+    };
   }
 
   private async exponerUrlFirmada<T extends { archivo_ruta: string | null }>(

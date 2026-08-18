@@ -27,5 +27,5 @@ export class ActualizarInmuebleDto {
   @IsOptional()
   @IsString()
   @ApiPropertyOptional()
-  foto_portada_url?: string;
+  foto_portada_ruta?: string;
 }

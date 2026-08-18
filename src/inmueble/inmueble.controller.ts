@@ -43,7 +43,9 @@ import {
 } from '../auth/auth.module';
 import {
   TAMANO_MAXIMO_DOCUMENTO,
+  TAMANO_MAXIMO_FOTO_INVENTARIO,
   TIPOS_ARCHIVO_DOCUMENTO,
+  TIPOS_ARCHIVO_FOTO_INVENTARIO,
 } from '../common/limites-archivo.constants';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
@@ -297,6 +299,77 @@ export class InmuebleController {
       );
     }
     return documento;
+  }
+
+  @Post(':id/foto-portada')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(
+    FileInterceptor('foto', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, callback) => {
+        if (!TIPOS_ARCHIVO_FOTO_INVENTARIO.includes(file.mimetype)) {
+          callback(
+            new UnsupportedMediaTypeException(
+              'Tipo de archivo no permitido. Solo se aceptan imágenes JPEG o PNG.',
+            ),
+            false,
+          );
+          return;
+        }
+        callback(null, true);
+      },
+      limits: { fileSize: TAMANO_MAXIMO_FOTO_INVENTARIO },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Subir o reemplazar la foto de portada de un inmueble',
+    description:
+      'Sobrescribe la foto anterior en la misma ruta del bucket; nunca acumula archivos.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['foto'],
+      properties: {
+        foto: {
+          type: 'string',
+          format: 'binary',
+          description: 'Foto de portada (JPEG o PNG).',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Foto de portada subida y ruta actualizada.',
+  })
+  @ApiBadRequestResponse({ description: 'La foto es obligatoria.' })
+  @ApiNotFoundResponse({
+    description: 'Inmueble no encontrado o no pertenece al arrendador.',
+  })
+  @ApiUnsupportedMediaTypeResponse({
+    description: 'El tipo de archivo de la foto no está permitido.',
+  })
+  async subirFotoPortada(
+    @Param('id') id: string,
+    @UploadedFile() foto: Express.Multer.File,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    if (!foto) {
+      throw new BadRequestException('La foto es obligatoria.');
+    }
+
+    const inmueble = await this.inmuebleService.subirFotoPortada(
+      id,
+      arrendadorId,
+      foto,
+    );
+    if (!inmueble) {
+      throw new NotFoundException(
+        'Inmueble no encontrado o no pertenece al arrendador.',
+      );
+    }
+    return inmueble;
   }
 
   @Get(':inmuebleId/documentos')

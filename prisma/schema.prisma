@@ -37,7 +37,7 @@ model Inmueble {
   ciudad                 String
   estrato                Int
   matricula_inmobiliaria String
-  foto_portada_url       String?
+  foto_portada_ruta      String?
   creado_en              DateTime    @default(now())
   unidades               Unidad[]
   documentos             DocumentoInmueble[]
