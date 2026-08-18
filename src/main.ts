@@ -13,6 +13,19 @@ async function bootstrap() {
     }),
   );
 
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      const esLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(origin);
+      const esVercel = /(^|\.)vercel\.app$/.test(origin);
+      callback(null, esLocalhost || esVercel);
+    },
+    credentials: false,
+  });
+
   const config = new DocumentBuilder()
     .setTitle('RentCheck API')
     .setDescription('Documentación de la API de RentCheck')
