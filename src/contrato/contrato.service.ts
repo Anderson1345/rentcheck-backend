@@ -277,6 +277,9 @@ export class ContratoService {
             nombre: true,
           },
         },
+        codigo_acceso: {
+          select: { codigo: true },
+        },
       },
       orderBy: { fecha_inicio: 'desc' },
     });
@@ -296,6 +299,9 @@ export class ContratoService {
         unidad: true,
         inquilino: true,
         incrementos_ipc: true,
+        codigo_acceso: {
+          select: { codigo: true },
+        },
       },
     });
 
