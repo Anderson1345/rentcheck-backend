@@ -85,10 +85,12 @@ export class InquilinoPanelService {
     }
 
     return {
+      contratoId: contrato.id,
       canon_centavos: contrato.canon_centavos,
       dia_pago: contrato.dia_pago,
       forma_pago: contrato.forma_pago,
       deposito_centavos: contrato.deposito_centavos,
+      datos_recaudo: contrato.datos_recaudo,
       fecha_inicio: contrato.fecha_inicio,
       fecha_fin: contrato.fecha_fin,
       pdf_contrato_url: contrato.pdf_contrato_ruta
