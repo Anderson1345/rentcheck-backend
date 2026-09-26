@@ -17,6 +17,16 @@ export interface RespuestaCrearInquilino {
   id: string;
 }
 
+let contadorCedula = 0;
+
+function generarCedulaUnica(): string {
+  contadorCedula += 1;
+  const aleatorio = Math.floor(Math.random() * 1_000_000)
+    .toString()
+    .padStart(6, '0');
+  return `${contadorCedula}${aleatorio}`.padStart(10, '0').slice(-10);
+}
+
 export interface RespuestaCrearContrato {
   id: string;
   canon_centavos: number;
@@ -112,7 +122,7 @@ export async function crearInquilino(
     .set('Authorization', `Bearer ${token}`)
     .send({
       nombre: 'Inquilino Prueba',
-      cedula: '1234567890',
+      cedula: generarCedulaUnica(),
       telefono: '3009876543',
     })
     .expect(HttpStatus.CREATED);

@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInquilinoDto } from './dto/crear-inquilino.dto';
+import { normalizarCedula } from '../common/utils/normalizar-cedula';
 
 type InquilinoSeguro = Prisma.InquilinoGetPayload<{
   select: {
@@ -60,11 +61,17 @@ export class InquilinoService {
     dto: CrearInquilinoDto,
     arrendadorId: string,
   ): Promise<InquilinoSeguro> {
+    const cedula = normalizarCedula(dto.cedula);
+    if (cedula.length < 5 || cedula.length > 20) {
+      throw new BadRequestException(
+        'La cédula debe tener entre 5 y 20 caracteres alfanuméricos.',
+      );
+    }
     return this.prisma.inquilino.create({
       data: {
         arrendador_id: arrendadorId,
         nombre: dto.nombre,
-        cedula: dto.cedula,
+        cedula,
         telefono: dto.telefono,
       },
       select: {

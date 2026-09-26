@@ -81,10 +81,10 @@ model Unidad {
 
 model Inquilino {
   id                String      @id @default(uuid()) @db.Uuid
-  arrendador_id     String      @db.Uuid
-  arrendador        Arrendador @relation(fields: [arrendador_id], references: [id])
+  arrendador_id     String?     @db.Uuid
+  arrendador        Arrendador? @relation(fields: [arrendador_id], references: [id])
   nombre            String
-  cedula            String
+  cedula            String      @unique
   telefono          String
   correo            String?     @unique
   contrasena_hash   String?
