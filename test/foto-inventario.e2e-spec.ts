@@ -199,8 +199,7 @@ describe('FotoInventario (e2e)', () => {
   });
 
   it('no permite a un inquilino usar los endpoints del arrendador (401)', async () => {
-    const { access_token, contrato, inquilinoToken } =
-      await prepararContrato();
+    const { access_token, contrato, inquilinoToken } = await prepararContrato();
     await subirFoto(access_token, contrato.id);
 
     await request(app.getHttpServer())

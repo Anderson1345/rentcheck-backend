@@ -4,10 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  EstadoContrato,
-  EstadoSolicitudMantenimiento,
-} from '@prisma/client';
+import { EstadoContrato, EstadoSolicitudMantenimiento } from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -98,9 +95,7 @@ export class SolicitudMantenimientoService {
       orderBy: { creado_en: 'desc' },
     });
 
-    return Promise.all(
-      solicitudes.map((s) => this.exponerUrlFirmada(s)),
-    );
+    return Promise.all(solicitudes.map((s) => this.exponerUrlFirmada(s)));
   }
 
   private readonly INCLUDE_SOLICITUD = {
@@ -125,9 +120,7 @@ export class SolicitudMantenimientoService {
       orderBy: [{ urgencia: 'desc' }, { creado_en: 'desc' }],
     });
 
-    return Promise.all(
-      solicitudes.map((s) => this.exponerUrlFirmada(s)),
-    );
+    return Promise.all(solicitudes.map((s) => this.exponerUrlFirmada(s)));
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
@@ -181,9 +174,7 @@ export class SolicitudMantenimientoService {
     return this.exponerUrlFirmada(actualizada);
   }
 
-  private async exponerUrlFirmada<
-    T extends { adjunto_ruta: string | null },
-  >(
+  private async exponerUrlFirmada<T extends { adjunto_ruta: string | null }>(
     solicitud: T,
   ): Promise<Omit<T, 'adjunto_ruta'> & { adjunto_url: string | null }> {
     const { adjunto_ruta, ...resto } = solicitud;
