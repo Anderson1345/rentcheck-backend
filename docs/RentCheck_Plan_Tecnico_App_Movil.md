@@ -1,15 +1,18 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 2.0 — 26 de septiembre de 2026.** Reemplaza a la versión 1.
+> **Versión 2.2 — 27 de septiembre de 2026.** Reemplaza a la versión 2.1.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
 
-**Qué cambió frente a la versión 1:**
-- Se auditó el **código real** del backend (no solo la documentación). Aparecieron errores de seguridad, de cálculo de pagos y de cumplimiento legal que no estaban en ningún documento. Están en la sección 3 con un identificador (B-01, B-02…) para poder citarlos en los prompts.
-- La lista de "ajustes al backend" de la versión 1 se reorganizó en **6 bloques de trabajo** (sección 4). Cada bloque cabe en uno o dos prompts medianos, no en diez pequeños.
-- El punto 1 de la versión 1 (identidad global del inquilino) ya estaba **a medias** en el código: la migración `20260920141053_identidad_global_inquilino_cedula` hizo la cédula única y `arrendador_id` opcional, pero los servicios siguen filtrando por `arrendador_id`. Ver B-14.
-- Se corrigió un dato falso: publicar en Google Play **sí tiene costo** (USD 25, pago único) y una regla de prueba cerrada. Ver sección 8.
-- La sección de tecnología se actualizó con piezas concretas: Expo Router, TanStack Query, notificaciones con el servicio de Expo y generación automática de tipos desde Swagger.
+**Qué cambió en la versión 2.2:**
+- B-33 (eliminar inmueble con documentos respondía 500) y B-36, la parte de "transiciones de estado sin escritura condicional" (doble aprobación de pago, doble confirmación de terminación anticipada, doble cambio de estado de mantenimiento), se corrigieron en el Bloque **0.1-B** (cerrado el 27/09/2026). La otra mitad de B-36 (control de versión en ediciones concurrentes normales) sigue pendiente para el Bloque 0.5.
+
+**Qué cambió en la versión 2.1:**
+- Se incorporaron los hallazgos de `RentCheck_Escenarios_Operativos.md` (auditoría de 30 escenarios sobre el código real, 26-27/09/2026): 15 IDs nuevos, B-32 a B-46 (sección 3.7).
+- B-32 (datos de recaudo expuestos con contrato no activo) y B-40 (fotos de devolución nunca se devuelven) se corrigieron en el Bloque 0.1.
+- Se agregó el Bloque **0.1-B** (B-33, B-36) y se repartieron los demás IDs nuevos entre los bloques existentes (sección 4).
+
+**Qué cambió en la versión 2.0 frente a la 1:** ver el historial completo en el documento; en resumen, se auditó el código real del backend (no solo la documentación) y aparecieron los errores B-01 a B-31, reorganizados en bloques de trabajo.
 
 ---
 
@@ -28,7 +31,7 @@ La app móvil es un cliente nuevo de la misma API REST. La web (`rentcheck-front
 - La app hace peticiones HTTPS a `https://rentcheck-backend-9zb6.onrender.com` con el mismo token `Authorization: Bearer` que usa la web.
 - Los archivos se piden igual: el backend devuelve una URL firmada que expira en 1 hora. La app **nunca** guarda esa URL como permanente; si expiró, vuelve a pedir el recurso.
 - **Arranque en frío de Render:** el plan gratis duerme el servicio tras 15 minutos sin tráfico, y la primera petición tarda unos 50 segundos. La app debe tener un tiempo de espera largo en la primera llamada y mostrar un mensaje tipo "Conectando con el servidor…" en vez de un error.
-- Los tipos TypeScript de la app se **generan desde Swagger** (`/api-json`), no se copian a mano. Para eso Swagger tiene que describir bien los DTOs (hoy muchos salen vacíos, ver B-24).
+- Los tipos TypeScript de la app se **generan desde Swagger** (`/api-json`, confirmado en producción desde B0.0), no se copian a mano.
 
 ---
 
@@ -38,15 +41,15 @@ Revisión hecha sobre `rentcheck-backend/src` y `prisma/schema.prisma` tal como 
 
 ### 3.1 Seguridad
 
-| ID | Sev. | Dónde | Problema | Corrección esperada |
-|---|---|---|---|---|
-| B-01 | Crítico | `contrato.service.ts` → `encontrarUno()` y `crear()` usan `include: { inquilino: true }` | `GET /contratos/:id` y `POST /contratos` devuelven **todos** los campos del inquilino, incluidos `contrasena_hash`, `correo` y `foto_cedula_url`. | Reemplazar todo `include: { inquilino: true }` por un `select` explícito (id, nombre, cédula, teléfono, activado). Buscar el mismo patrón en todo `src/` (`inquilino: true`, `arrendador: true`). Agregar una prueba e2e que falle si la respuesta contiene `contrasena_hash`. |
-| B-02 | Crítico | `generarCodigoAcceso()`, `POST /auth/inquilino/validar-codigo` y `completar-registro` | El código es `RC-<año>-` + 4 caracteres: unas 1,7 millones de combinaciones por año. Estos endpoints solo tienen el límite global (100 por minuto), así que con pocos contratos sin activar un atacante puede adivinar códigos y **tomar la cuenta del inquilino** (define él el correo y la contraseña). | Código de 8 caracteres de un alfabeto sin caracteres confusos (sin 0/O/1/I), con formato `RC-XXXX-XXXX` y sin el año; límite de 5 intentos por minuto en ambos endpoints; expiración (por ejemplo 7 días, regenerable); contador de intentos fallidos por código. |
-| B-03 | Crítico | `CrearInmuebleDto`/`ActualizarInmuebleDto.foto_portada_ruta`, `CrearUnidadDto`/`ActualizarUnidadDto.foto_principal_url`, `CompletarRegistroInquilinoDto.foto_cedula_url` | El cliente puede escribir una **ruta interna del bucket**. Con `PATCH /inmuebles/:id { foto_portada_ruta: "contratos/<id>/contrato.pdf" }`, el siguiente `GET` devuelve una URL firmada de un archivo ajeno. Si después se sube una portada nueva, `subirFotoPortada()` **borra** ese archivo ajeno. Además, la web guarda la foto de cédula como texto base64 dentro de la base de datos. | Quitar esos campos de todos los DTOs de entrada. Toda ruta la genera el servidor. Crear endpoints de subida real (multipart) para foto principal de Unidad, foto de cédula del Inquilino y foto de cédula/NIT del Arrendador, con el mismo patrón de `POST /inmuebles/:id/foto-portada`. Limpiar los valores base64 que existan. |
-| B-04 | Crítico (verificar) | `main.ts` | Render pone un proxy delante de la app. Sin `trust proxy`, es probable que `req.ip` sea la IP del proxy, y entonces **todos los usuarios compartirían** el límite de 100 peticiones por minuto y 5 inicios de sesión por minuto. Con la app móvil en uso real, eso da errores 429 aleatorios. | `app.getHttpAdapter().getInstance().set('trust proxy', 1)`. Verificar con un log temporal de `req.ip` en producción, antes y después. |
-| B-22 | Importante | Todos los `@Param('id')` | Un id que no tiene forma de UUID hace fallar la consulta de Prisma, y se responde 500 en vez de 404. | `ParseUUIDPipe` en todos los parámetros de id. |
-| B-25 | Importante | `auth.module.ts` (`expiresIn: '7d'`) | No hay token de renovación ni forma de revocar sesiones. En móvil, el usuario tendría que iniciar sesión cada 7 días, y un teléfono perdido conserva el acceso hasta que el token vence. | Token de acceso corto (por ejemplo 1 hora) + token de renovación guardado en la base de datos con su hash (tabla `SesionDispositivo`), rotación en cada uso, `POST /auth/logout` y "cerrar todas las sesiones". Puede ir en el Bloque 0.6 si hace falta priorizar. |
-| B-30 | Menor | Filtros de subida | El tipo de archivo se valida con el `mimetype` que declara el cliente, no con el contenido real. | Validar los bytes iniciales del archivo (paquete `file-type`) en el mismo paso. |
+| ID | Sev. | Dónde | Problema | Corrección esperada | Estado |
+|---|---|---|---|---|---|
+| B-01 | Crítico | `contrato.service.ts` → `encontrarUno()` y `crear()` usan `include: { inquilino: true }` | `GET /contratos/:id` y `POST /contratos` devuelven **todos** los campos del inquilino, incluidos `contrasena_hash`, `correo` y `foto_cedula_url`. | Reemplazar todo `include: { inquilino: true }` por un `select` explícito (id, nombre, cédula, teléfono, activado). Buscar el mismo patrón en todo `src/` (`inquilino: true`, `arrendador: true`). Agregar una prueba e2e que falle si la respuesta contiene `contrasena_hash`. | ✅ Corregido en B0.1 |
+| B-02 | Crítico | `generarCodigoAcceso()`, `POST /auth/inquilino/validar-codigo` y `completar-registro` | El código es `RC-<año>-` + 4 caracteres: unas 1,7 millones de combinaciones por año. Estos endpoints solo tienen el límite global (100 por minuto), así que con pocos contratos sin activar un atacante puede adivinar códigos y **tomar la cuenta del inquilino** (define él el correo y la contraseña). | Código de 8 caracteres de un alfabeto sin caracteres confusos (sin 0/O/1/I), con formato `RC-XXXX-XXXX` y sin el año; límite de 5 intentos por minuto en ambos endpoints; expiración (por ejemplo 7 días, regenerable); contador de intentos fallidos por código. | 🔶 Límite (5/min) corregido en B0.1; formato de 8 caracteres y expiración van en B0.4-A |
+| B-03 | Crítico | `CrearInmuebleDto`/`ActualizarInmuebleDto.foto_portada_ruta`, `CrearUnidadDto`/`ActualizarUnidadDto.foto_principal_url`, `CompletarRegistroInquilinoDto.foto_cedula_url` | El cliente puede escribir una **ruta interna del bucket**. Con `PATCH /inmuebles/:id { foto_portada_ruta: "contratos/<id>/contrato.pdf" }`, el siguiente `GET` devuelve una URL firmada de un archivo ajeno. Si después se sube una portada nueva, `subirFotoPortada()` **borra** ese archivo ajeno. Además, la web guarda la foto de cédula como texto base64 dentro de la base de datos. | Quitar esos campos de todos los DTOs de entrada. Toda ruta la genera el servidor. Crear endpoints de subida real (multipart) para foto principal de Unidad, foto de cédula del Inquilino y foto de cédula/NIT del Arrendador, con el mismo patrón de `POST /inmuebles/:id/foto-portada`. Limpiar los valores base64 que existan. | 🔶 Campos quitados de los DTOs en B0.1; endpoints de subida van en B0.4-B |
+| B-04 | Crítico (verificar) | `main.ts` | Render pone un proxy delante de la app. Sin `trust proxy`, es probable que `req.ip` sea la IP del proxy, y entonces **todos los usuarios compartirían** el límite de 100 peticiones por minuto y 5 inicios de sesión por minuto. Con la app móvil en uso real, eso da errores 429 aleatorios. | `app.getHttpAdapter().getInstance().set('trust proxy', 1)`. Verificar con un log temporal de `req.ip` en producción, antes y después. | 🔶 Código en B0.1; verificación en producción pendiente (después del merge) |
+| B-22 | Importante | Todos los `@Param('id')` | Un id que no tiene forma de UUID hace fallar la consulta de Prisma, y se responde 500 en vez de 404. | `ParseUUIDPipe` en todos los parámetros de id. | ✅ Corregido en B0.1 (`ParseIdPipe` propio) |
+| B-25 | Importante | `auth.module.ts` (`expiresIn: '7d'`) | No hay token de renovación ni forma de revocar sesiones. En móvil, el usuario tendría que iniciar sesión cada 7 días, y un teléfono perdido conserva el acceso hasta que el token vence. | Token de acceso corto (por ejemplo 1 hora) + token de renovación guardado en la base de datos con su hash (tabla `SesionDispositivo`), rotación en cada uso, `POST /auth/logout` y "cerrar todas las sesiones". Puede ir en el Bloque 0.6 si hace falta priorizar. | ⬜ Bloque 0.6 |
+| B-30 | Menor | Filtros de subida | El tipo de archivo se valida con el `mimetype` que declara el cliente, no con el contenido real. | Validar los bytes iniciales del archivo (paquete `file-type`) en el mismo paso. | ⬜ Sin bloque asignado (menor) |
 
 ### 3.2 Pagos y mora (el motor de cobro)
 
@@ -66,6 +69,8 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 5. Un período vence **al día siguiente** de su fecha límite, en hora de Colombia.
 6. Nuevo endpoint `GET /inquilino/contratos/:id/estado-cuenta` (y su equivalente para el arrendador) con la lista de períodos. La app lo usa en "Mis Pagos", y el Panel lo puede usar para "recaudo esperado vs. real".
 7. Aceptar el encabezado `Idempotency-Key` en `POST /pagos` (y en `POST /solicitudes-mantenimiento`): si llega dos veces la misma clave, se devuelve el mismo registro. Es necesario para la cola sin conexión de la app.
+8. **B-38** (nuevo, ver 3.7): con contrato terminado, el inquilino debe poder seguir reportando pagos de períodos anteriores al cierre que sigan vencidos.
+9. **B-39** (nuevo, ver 3.7): `fecha_reportada` no puede ser anterior a `fecha_inicio` del contrato.
 
 **Decisión D-3, confirmada el 26/09/2026:** el **primer período** vence en el primer día de pago igual o posterior a `fecha_inicio`. Un contrato que inicia el 20 de septiembre con día de pago 5 tiene su primera fecha límite el 5 de octubre, y antes de esa fecha no puede estar En mora.
 
@@ -82,6 +87,9 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 | B-16 | Importante | `ContratoService.crear()` | Permite crear el contrato sin la cédula del arrendador; el PDF sale con "[cédula pendiente de registrar]". | Responder 409 con un mensaje que lleve al perfil. |
 | B-26 | Menor | DTOs de Inmueble y Unidad | Estrato y campos residenciales siempre obligatorios; `metros_cuadrados >= 1` incluso para un parqueadero. Además se puede cambiar `uso_permitido`/`tipo` con un contrato activo. | Validación condicional según la sección 5.3/5.4 del contexto; bloquear el cambio de uso o tipo mientras haya un contrato ACTIVO. |
 | B-28 | Menor | `enum EstadoContrato` | `PROXIMO_A_VENCER` existe pero no se usa. | Eliminarlo con su migración (o documentar que nunca se guarda). |
+| B-35 | Importante (nuevo) | `ContratoController` no tiene ningún `PATCH` | Un dato mal escrito al confirmar el contrato (canon, día de pago) es imposible de corregir sin terminar el contrato y crear otro, lo que genera un historial falso. | Permitir corregir los términos mientras el contrato **no esté vinculado** por el inquilino, regenerando el PDF. Una vez vinculado, un cambio de canon o día de pago es un otrosí, no una corrección. |
+| B-41 | Importante (nuevo) | `ContratoService.crear()` | No valida que `fecha_inicio` sea de hoy en adelante. El contrato nace `ACTIVO` de inmediato con fecha futura, bloqueando la unidad antes de tiempo. | Aceptar fecha futura, pero no contar períodos antes del inicio (lo resuelve el estado de cuenta de 0.2) y no bloquear la unidad hasta la fecha de inicio real. |
+| B-43 | Menor (nuevo) | Creación automática de la Unidad principal | Se crea con `metros_cuadrados: 0` y otros valores que el propio validador del DTO rechazaría si un usuario los enviara. | Crear la unidad principal con valores que pasen las mismas validaciones, o marcarla como "pendiente de completar". |
 
 ### 3.4 Identidad del inquilino y contratos múltiples
 
@@ -91,6 +99,7 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 | B-15 | Importante | Correo sin normalizar (índice único sensible a mayúsculas), sin verificación cruzada Arrendador ↔ Inquilino, y mensajes que revelan si un correo existe ("El correo ya está registrado", "El correo ya está en uso"). | Guardar y comparar en minúsculas y sin espacios (`trim().toLowerCase()`) + migración de datos; verificar ambas tablas antes de registrar o activar; mensaje genérico. |
 | B-17 | Importante | `GET /inquilino/mi-panel`, `mi-contrato` y `mi-contrato/solicitar-terminacion-anticipada` resuelven **un** contrato (el ACTIVO o el más reciente). | `GET /inquilino/contratos` (lista) y rutas con id: `/inquilino/contratos/:id/panel`, `/:id`, `/:id/estado-cuenta`, `/:id/solicitar-terminacion`. Mantener las rutas viejas solo mientras la web las use. |
 | B-21 | Importante | `completar-registro` recibe JSON con `foto_cedula_url` como texto; la web manda la foto en base64 dentro del JSON. Con una foto real, el límite de tamaño del cuerpo JSON la rechaza (413), y cuando cabe, queda guardada como texto en la base de datos. | Resuelto por B-03: subida real multipart, separada del registro (`POST /inquilino/perfil/foto-cedula`). |
+| B-40 | Importante (nuevo) | `InquilinoPanelService.obtenerMiContrato()` filtraba `fotos_inventario` por `momento: ENTREGA`; nunca devolvía las de `DEVOLUCION`. | Traer todas las fotos y separarlas en la respuesta en `fotos_entrega` y `fotos_devolucion`. | ✅ Corregido en B0.1 (adelantado desde B0.4-B) |
 
 ### 3.5 Diseño recomendado: inquilino global con vinculación por código
 
@@ -114,37 +123,35 @@ Objetivo: una sola cuenta por persona, sin que un arrendador pueda "pegarle" con
 | B-19 | Importante | Todo se calcula con la hora del servidor (UTC). El cron de vencimiento corre a las 23:55 UTC con `fecha_fin < now()`, así que un contrato que termina el día X se marca vencido el mismo día X (hacia las 6:55 pm hora de Colombia). | Hora oficial del negocio: `America/Bogota`. Una utilidad `hoyEnBogota()` usada por las tareas diarias, el estado de cuenta y los validadores de fecha. El contrato vence cuando **termina** el día `fecha_fin`. |
 | B-20 | Importante | Las 6 tareas diarias son `@Cron` dentro del proceso. En Render gratis, si el servicio está dormido o se reinicia a esa hora, **ese día no corren** y nada lo recupera. | Un solo endpoint interno `POST /interno/tareas-diarias`, protegido con un encabezado secreto (`TAREAS_SECRET`), que ejecuta las tareas en orden (primero la de vencimiento). Lo llama **cron-job.org** (ya en uso) todos los días a las 00:05 hora de Colombia, con reintento. Las tareas deben poder correr dos veces sin duplicar nada. Se quitan los `@Cron`. |
 | B-23 | Menor | El ZIP de documentos incluye comprobantes RECHAZADOS y REEMPLAZADOS. | Solo los APROBADOS. |
-| B-24 | Importante | Muchos DTOs no tienen `@ApiProperty`, así que Swagger los muestra vacíos y no se pueden generar tipos para la app. | Activar el plugin de Swagger de Nest CLI en `nest-cli.json` (`"compilerOptions": { "plugins": ["@nestjs/swagger"] }`), que documenta los DTOs automáticamente, y declarar el tipo de respuesta de los endpoints principales. |
+| B-24 | Importante | Muchos DTOs no tienen `@ApiProperty`, así que Swagger los muestra vacíos y no se pueden generar tipos para la app. | Activar el plugin de Swagger de Nest CLI en `nest-cli.json` (`"compilerOptions": { "plugins": ["@nestjs/swagger"] }`), que documenta los DTOs automáticamente, y declarar el tipo de respuesta de los endpoints principales. | ✅ Plugin activado en B0.0; tipos de respuesta pendientes desde B0.2 |
 | B-27 | Importante | Ningún listado tiene paginación. Cada elemento con archivo genera **una llamada a Supabase** para firmar su URL (una lista de 50 pagos son 50 llamadas). | Paginación por cursor (`?cursor=&limite=20`) en pagos, contratos, solicitudes y alertas, con la respuesta `{ items, siguienteCursor }`. Firmar URLs en lote (`createSignedUrls`) o bajo demanda. |
 | B-29 | Menor | `GET /solicitudes-mantenimiento/mias` y `GET /solicitudes-mantenimiento/:id` están en dos controladores distintos; que funcione depende del orden en que se registran. | Cambiar la ruta del inquilino a `/inquilino/solicitudes` (en línea con B-17). |
-| B-31 | Menor | `main.ts`, función de validación de origen de CORS (líneas 19 a 24) | Los parámetros `origin` y `callback` quedaron sin tipo, así que son `any`: `npm run lint` reporta 2 errores y 2 advertencias (`no-unsafe-call`, `no-unsafe-argument`). Entró con el cambio de CORS al cierre del Paso 11, que no pasó por lint. No afecta el funcionamiento ni el build. Detectado el 26/09/2026. | Tipar explícitamente los dos parámetros (`origin: string \| undefined` y el `callback`), o anotar el objeto de opciones con el tipo `CorsOptions` de Nest para que los tipos se infieran solos. Se corrige en el Bloque 0.1, que ya toca `main.ts`. Criterio: `npm run lint` queda sin ninguna salida. |
-| — | Importante | Formato de error inconsistente. | Un filtro global de excepciones que responda siempre `{ statusCode, codigo, mensaje, detalles? }`, con `codigo` estable (por ejemplo `CONTRATO_NO_ACTIVO`) para que la app muestre textos propios sin analizar mensajes. |
+| B-31 | Menor | `main.ts`, función de validación de origen de CORS (líneas 19 a 24) | Los parámetros `origin` y `callback` quedaron sin tipo, así que son `any`: `npm run lint` reporta 2 errores y 2 advertencias (`no-unsafe-call`, `no-unsafe-argument`). Entró con el cambio de CORS al cierre del Paso 11, que no pasó por lint. No afecta el funcionamiento ni el build. Detectado el 26/09/2026. | Tipar explícitamente los dos parámetros (`origin: string \| undefined` y el `callback`), o anotar el objeto de opciones con el tipo `CorsOptions` de Nest para que los tipos se infieran solos. Se corrige en el Bloque 0.1, que ya toca `main.ts`. Criterio: `npm run lint` queda sin ninguna salida. | ✅ Corregido en B0.1 |
+| — | Importante | Formato de error inconsistente. | Un filtro global de excepciones que responda siempre `{ statusCode, codigo, mensaje, detalles? }`, con `codigo` estable (por ejemplo `CONTRATO_NO_ACTIVO`) para que la app muestre textos propios sin analizar mensajes. | ✅ Corregido en B0.1 (`src/common/filtros/filtro-excepciones-global.ts`) |
 
-### 3.7 Hallazgos de la revisión de escenarios operativos (B-32 a B-46)
+### 3.7 Hallazgos adicionales — auditoría de escenarios operativos (26-27/09/2026)
 
-El 26/09/2026 se hizo una segunda revisión, esta vez recorriendo 30 situaciones reales de uso (un contrato que vence, un pago que llega antes, un inmueble que queda vacío, Supabase caído, dos usuarios tocando lo mismo) y comparando qué hace el código con qué debería hacer. El detalle completo de cada escenario, con su explicación, está en **`claude/RentCheck_Escenarios_Operativos.md`**.
+Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos, ya repartidos entre los bloques de la sección 4:
 
-De ahí salieron 15 hallazgos que no estaban en las secciones 3.1 a 3.6. Tres son de privacidad o pérdida de datos:
+| ID | Sev. | Resumen | Bloque | Estado |
+|---|---|---|---|---|
+| B-32 | Crítico (privacidad) | `mi-contrato` exponía `datos_recaudo` con el contrato ya terminado (viola la regla 11 del contexto) | 0.1 | ✅ Corregido |
+| B-33 | Importante | Eliminar un inmueble con documentos cargados responde 500 por llave foránea en vez de 409 con mensaje | 0.1-B | ✅ Corregido |
+| B-34 | Importante | No existe forma de regenerar el PDF de un contrato si su generación falló al crearlo | 0.3-B | ⬜ |
+| B-35 | Importante | No existe `PATCH` de contrato: un dato mal escrito es imposible de corregir sin terminar el contrato | 0.3-A | ⬜ |
+| B-36 | Importante | Transiciones de estado sin escritura condicional (doble aprobación de pago, doble confirmación de terminación, doble cambio de estado de mantenimiento); además, ediciones concurrentes sin control de versión | 0.1-B (transiciones) / 0.5 (control de versión) | 🔶 Transiciones corregidas en B0.1-B; control de versión pendiente en 0.5 |
+| B-37 | Importante | Un fallo al firmar la URL de un solo archivo tumba con 500 el listado completo (`Promise.all` sin tolerancia a fallos) | 0.5 | ⬜ |
+| B-38 | Importante | Con contrato terminado, el inquilino no puede reportar lo que quedó debiendo de períodos anteriores al cierre | 0.2-B | ⬜ |
+| B-39 | Menor | `fecha_reportada` de un pago no se valida contra la fecha de inicio del contrato | 0.2-B | ⬜ |
+| B-40 | Importante | `mi-contrato` nunca devolvía las fotos de devolución (solo las de entrega) | 0.1 | ✅ Corregido |
+| B-41 | Importante | Un contrato con fecha de inicio futura nace `ACTIVO` de inmediato y bloquea la unidad antes de tiempo | 0.3-A | ⬜ |
+| B-42 | Importante | Comprobantes reemplazados y rechazados se acumulan en el bucket sin política de retención | 0.5 | ⬜ |
+| B-43 | Menor | La unidad principal se crea automáticamente con valores que el propio validador del DTO rechazaría | 0.3-A | ⬜ |
+| B-44 | Importante | El ZIP de documentos descarga todo a memoria en una sola petición: riesgo de tiempo agotado con historiales grandes | 0.5 | ⬜ |
+| B-45 | Importante | No se puede anular una aprobación de pago hecha por error | 0.6 | ⬜ |
+| B-46 | Importante | No existe baja de cuenta del inquilino (Ley 1581 de 2012 y requisito de Google Play para publicar) | Antes de usuarios reales | ⬜ |
 
-| ID | Qué es | Severidad | Bloque |
-|---|---|---|---|
-| B-32 | `GET /inquilino/mi-contrato` devuelve `datos_recaudo` aunque el contrato ya haya terminado: los datos bancarios del arrendador quedan expuestos a un exinquilino. Viola la regla 11 del contexto. | Crítico | 0.1-B (adelantado desde 0.4-B: es una fuga viva en producción y la corrección son tres líneas) |
-| B-33 | `InmuebleService.eliminar()` solo cuenta unidades; con documentos asociados, el `delete` falla por llave foránea y responde 500. | Importante | 0.1-B |
-| B-34 | Si la generación del PDF falla, no existe ningún endpoint para regenerarlo: el contrato queda sin documento hasta su próxima renovación. | Importante | 0.3-B |
-| B-35 | No existe `PATCH /contratos/:id`: un canon o un día de pago mal escritos no se pueden corregir sin terminar el contrato y crear otro. | Importante | 0.3-A |
-| B-36 | Las transiciones de estado (aprobar pago, cambiar estado de mantenimiento, confirmar terminación) leen y luego escriben, sin escritura condicional: un doble clic las ejecuta dos veces. Las ediciones normales no tienen control de versión y la última escritura gana en silencio. | Importante | 0.1-B (estados) / 0.5 (versión) |
-| B-37 | Los listados firman las URLs con `Promise.all`: si falla la firma de **un** archivo, la petición completa responde 500 y el arrendador no ve ni los datos correctos. | Importante | 0.5 |
-| B-38 | Con el contrato terminado, `POST /pagos` responde 409, así que el inquilino no puede reportar el mes que quedó debiendo. | Importante | 0.2-B |
-| B-39 | `fecha_reportada` solo se valida como "no futura": se acepta una fecha anterior al inicio del contrato, que no cubre ningún período. | Menor | 0.2-B |
-| B-40 | `mi-contrato` solo devuelve las fotos de entrega; el inquilino nunca ve las de devolución, que son la evidencia para discutir un descuento del depósito. | Importante | 0.4-B |
-| B-41 | Un contrato con `fecha_inicio` futura nace `ACTIVO`, bloquea la unidad desde ya y aparece como vigente sin haber empezado. | Importante | 0.3-A |
-| B-42 | Los comprobantes de pagos `REEMPLAZADO` y `RECHAZADO` quedan en el bucket indefinidamente; sin política de retención, el límite de 1 GB del plan gratuito se alcanza y **toda** subida empieza a fallar. | Importante | 0.5 |
-| B-43 | La unidad principal se crea automáticamente con `metros_cuadrados: 0`, valor que `CrearUnidadDto` rechazaría (`@Min(1)`): el sistema genera datos que no aceptaría de un usuario. | Menor | 0.3-A |
-| B-44 | El ZIP descarga cada archivo a memoria dentro de la misma petición HTTP: con años de historial, agota tiempo o memoria en una instancia gratuita. | Importante | 0.5 |
-| B-45 | No se puede anular una aprobación de pago equivocada: `aprobar` exige estado `PENDIENTE`, así que un pago ya aprobado no admite corrección desde la API. | Importante | 0.6 |
-| B-46 | No existe baja de cuenta. La Ley 1581 de 2012 da derecho a la supresión de datos y Google Play la exige para publicar. Requiere decidir antes qué se conserva por valor fiscal y qué se anonimiza. | Importante | Antes de usuarios reales |
-
-**Un hallazgo adicional de diagnóstico, sin ID propio:** en `ContratoService.crear()`, el `catch` traduce **cualquier** violación de índice único (`P2002`) al mensaje "Esta unidad ya tiene un contrato activo". Un choque de cédula o de correo muestra un error sobre la unidad y manda a buscar el problema al lugar equivocado. Se corrige junto con B-14 distinguiendo qué índice falló.
+Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
 ---
 
@@ -154,17 +161,18 @@ Cada bloque es **una entrega**: una rama, uno o dos prompts, una verificación c
 
 | Bloque | Contenido | IDs | Prompts estimados | Requisito previo |
 |---|---|---|---|---|
-| **0.1-A Seguridad inmediata** | Selects explícitos, quitar rutas escritas por el cliente, `trust proxy`, `ParseUUIDPipe`, límite de intentos en activación, filtro global de errores, plugin de Swagger, tipar el callback de CORS, configuración compartida de la app para que las pruebas usen la misma que `main.ts` | B-01, B-03 (quitar campos), B-04, B-22, B-24, B-31, límite de B-02, formato de error | 1 | — |
-| **0.1-B Integridad de escrituras** | Escrituras condicionales en las transiciones de estado, revisar hijos antes de eliminar un inmueble, `datos_recaudo` solo con contrato activo | B-32, B-33, B-36 (estados) | 1 | 0.1-A |
-| **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pago de deudas con contrato ya cerrado | B-05, B-06 (cálculo), B-07, B-19, B-38, B-39 | 2 (A: función pura + pruebas; B: integración + migración + e2e) | D-3 confirmada |
-| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, corrección de términos antes de vincular, contratos con inicio futuro | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-34, B-35, B-41, B-43 | 2 (A: reglas y endpoints; B: PDF y versiones) | D-1 y D-2 confirmadas |
-| **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad, fotos de devolución en "Mi Contrato" | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29, B-40 | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
-| **0.5 Infraestructura** | Endpoint de tareas diarias + cron-job.org, zona horaria en tareas, paginación, firma de URLs tolerante a fallos, ZIP solo aprobados y por año, política de retención de archivos, control de versión en ediciones | B-19 (tareas), B-20, B-23, B-27, B-36 (versión), B-37, B-42, B-44 | 1 | 0.2 |
-| **0.6 Para la app (en paralelo con móvil)** | Alertas del inquilino, tokens de notificación y envío, sesiones con token de renovación, anulación de aprobaciones con auditoría | B-18, B-25, B-45, push | 2 | 0.4 |
+| **0.0 Preparación** | AGENTS.md, CLAUDE.md, docs/, plugin de Swagger, JSON en /api-json | B-24 | 1 | — |
+| **0.1 Seguridad inmediata** | Selects explícitos, quitar rutas escritas por el cliente, `trust proxy`, `ParseIdPipe`, límite de intentos en activación, filtro global de errores, tipar el callback de CORS, datos de recaudo por estado, fotos de entrega/devolución separadas | B-01, B-03 (quitar campos), B-04, B-22, B-31, límite de B-02, formato de error, B-32, B-40 | 1 | 0.0 |
+| **0.1-B Consistencia de escrituras** | Eliminar inmueble con documentos (409 en vez de 500), escrituras condicionales en transiciones de estado (pago, terminación, mantenimiento) | B-33, B-36 (transiciones) | 1 | 0.1 |
+| **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pagos de contrato terminado, validación de fecha reportada | B-05, B-06 (cálculo), B-07, B-19, B-38, B-39 | 2 (A: función pura + pruebas; B: integración + migración + e2e) | D-3 confirmada |
+| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-35, B-41, B-43, B-34 | 2 (A: reglas y endpoints; B: PDF y versiones) | D-1 y D-2 confirmadas |
+| **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29 | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
+| **0.5 Infraestructura** | Endpoint de tareas diarias + cron-job.org, zona horaria en tareas, paginación, firma de URLs en lote, ZIP solo aprobados, tolerancia a fallos al firmar, política de retención del bucket, ZIP sin memoria, control de versión en ediciones | B-19 (tareas), B-20, B-23, B-27, B-37, B-42, B-44, B-36 (control de versión) | 1 | 0.2 |
+| **0.6 Para la app (en paralelo con móvil)** | Alertas del inquilino, tokens de notificación y envío, sesiones con token de renovación, anular aprobación de pago | B-18, B-25, push, B-45 | 2 | 0.4 |
 
 Después de cada bloque: `npx prisma generate`, `npx tsc --noEmit`, `npm run lint`, `npm run test:e2e` (con la salida completa), redespliegue en Render y una prueba real en Swagger de producción. Las migraciones de datos (IPC, correos, períodos) siempre muestran el conteo de registros antes de aplicarse.
 
-**Antes de manejar usuarios reales** (no bloquea el desarrollo): doble factor para el arrendador, auditoría de acciones sensibles, detección de comprobantes duplicados (hash del archivo), verificación de correo y recuperación de contraseña (requieren un proveedor de correo; ver 7.4), consentimiento de datos personales (Ley 1581), política de retención y **baja de cuenta (B-46)**, que además es requisito de Google Play para publicar.
+**Antes de manejar usuarios reales** (no bloquea el desarrollo): B-46 (baja de cuenta), doble factor para el arrendador, auditoría de acciones sensibles, detección de comprobantes duplicados (hash del archivo), verificación de correo y recuperación de contraseña (requieren un proveedor de correo; ver 7.4), consentimiento de datos personales (Ley 1581) y política de retención.
 
 ---
 
@@ -178,7 +186,7 @@ Después de cada bloque: `npx prisma generate`, `npx tsc --noEmit`, `npm run lin
 | Navegación | **Expo Router** (rutas por archivos) | Grupos `(auth)`, `(arrendador)`, `(inquilino)`; el diseño de cada grupo protege por rol. |
 | Datos del servidor | **TanStack Query** | Caché, reintentos, recarga al volver a la app y soporte de persistencia para leer sin conexión. |
 | Formularios | **React Hook Form + Zod** | Los esquemas de Zod reflejan las reglas del backend (el servidor sigue siendo quien valida). |
-| Tipos de la API | **openapi-typescript** desde `/api-json` | Script `npm run api:tipos`. Requiere B-24. |
+| Tipos de la API | **openapi-typescript** desde `/api-json` | Script `npm run api:tipos`. Ya disponible desde B0.0. |
 | Sesión | **expo-secure-store** | Token de acceso y de renovación. Nunca AsyncStorage para esto. |
 | Cámara y galería | **expo-image-picker** + **expo-image-manipulator** | Redimensionar a unos 1600 px, JPEG al 70-80 %. Volver a codificar la imagen elimina los metadatos EXIF (ubicación); igual el backend debe limpiarlos también. |
 | Documentos | **expo-document-picker**, **expo-file-system**, **expo-sharing** | Comprobante en PDF; descargar y compartir el PDF del contrato por WhatsApp o correo. |
@@ -235,6 +243,6 @@ Reglas del cliente de API: tiempo de espera de 60 s en la primera petición (arr
 
 ## 8. Orden de trabajo
 
-1. **Fase 0** (sección 4): bloques 0.1-A → 0.5, en orden. Las decisiones D-1, D-2 y D-3 quedaron confirmadas el 26/09/2026, así que ningún bloque está bloqueado.
+1. **Fase 0** (sección 4): bloques 0.0 → 0.6, en orden (0.1-B se hace justo después de 0.1). Las decisiones D-1, D-2 y D-3 quedaron confirmadas el 26/09/2026, así que ningún bloque está bloqueado.
 2. **App móvil**, por entregas E1 → E12 (lista, alcance y criterios en `RentCheck_instrucciones_desarrollo_movil.md`). El bloque 0.6 se hace en paralelo, justo antes de las entregas que lo necesitan (alertas del inquilino antes de E9, push antes de E10, sesiones antes de E12).
 3. **Web**: se reconstruye al final, contra la API ya corregida, reutilizando los tipos generados.
