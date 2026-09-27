@@ -188,13 +188,19 @@ export function calcularEstadoCuenta(
 
 /**
  * Deriva el estado de pago del contrato a partir de sus períodos:
- * `PENDIENTE` si todavía no hay ningún período generado, `EN_MORA` si algún
- * período quedó `VENCIDO` o `PARCIAL`, `AL_DIA` en cualquier otro caso.
+ * `PENDIENTE` si todavía no hay ningún período generado, o si los que hay
+ * están todos `PENDIENTE` (ninguno ha vencido ni se ha pagado: contrato
+ * recién iniciado); `EN_MORA` si algún período quedó `VENCIDO` o `PARCIAL`;
+ * `AL_DIA` en cualquier otro caso (al menos un período ya resuelto —
+ * `PAGADO` o `EN_REVISION` — y ninguno vencido).
  */
 export function derivarEstadoPagoContrato(
   periodos: PeriodoEstadoCuenta[],
 ): EstadoPagoContratoDerivado {
-  if (periodos.length === 0) {
+  if (
+    periodos.length === 0 ||
+    periodos.every((periodo) => periodo.estado === 'PENDIENTE')
+  ) {
     return 'PENDIENTE';
   }
   const hayPeriodoEnMora = periodos.some(

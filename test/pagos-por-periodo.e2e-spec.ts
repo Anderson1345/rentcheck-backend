@@ -191,13 +191,15 @@ describe('Pagos por período (e2e)', () => {
 
     await alertaScheduler.ejecutarInquilinoEnMora();
 
-    // El único período generado está PENDIENTE (aún no vence), así que el
-    // estado derivado del contrato es AL_DIA: nunca EN_MORA el primer día.
+    // El único período generado está PENDIENTE (aún no vence, ninguno se ha
+    // pagado ni revisado), así que el estado derivado del contrato sigue
+    // siendo PENDIENTE (regla 7.2: "aún no vence ningún período, contrato
+    // recién iniciado") — nunca EN_MORA el primer día.
     const contratoEnBd = await prisma.contrato.findUnique({
       where: { id: contrato.id },
     });
     expect(contratoEnBd?.estado_pago).not.toBe('EN_MORA');
-    expect(contratoEnBd?.estado_pago).toBe('AL_DIA');
+    expect(contratoEnBd?.estado_pago).toBe('PENDIENTE');
 
     const alerta = await prisma.alerta.findFirst({
       where: { tipo: 'INQUILINO_EN_MORA', contrato_id: contrato.id },

@@ -237,6 +237,11 @@ describe('derivarEstadoPagoContrato', () => {
     expect(derivarEstadoPagoContrato([])).toBe('PENDIENTE');
   });
 
+  it('devuelve PENDIENTE cuando el único período generado está PENDIENTE (contrato recién iniciado)', () => {
+    const periodos = [periodo({ estado: 'PENDIENTE' })];
+    expect(derivarEstadoPagoContrato(periodos)).toBe('PENDIENTE');
+  });
+
   it('devuelve AL_DIA cuando ningún período está VENCIDO ni PARCIAL', () => {
     const periodos = [
       periodo({ estado: 'PAGADO' }),
