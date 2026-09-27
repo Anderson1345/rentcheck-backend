@@ -153,6 +153,17 @@ export class InmuebleService {
       );
     }
 
+    const documentosAsociados = await this.prisma.documentoInmueble.count({
+      where: { inmueble_id: id },
+    });
+    if (documentosAsociados > 0) {
+      throw new ConflictException({
+        codigo: 'INMUEBLE_CON_DOCUMENTOS',
+        mensaje:
+          'No se puede eliminar: este inmueble tiene documentos asociados, elimínalos primero',
+      });
+    }
+
     return this.exponerUrlFirmadaInmueble(
       await this.prisma.inmueble.delete({ where: { id } }),
     );

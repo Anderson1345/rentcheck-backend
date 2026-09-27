@@ -169,53 +169,69 @@ export class PagoService {
   }
 
   async aprobar(id: string, arrendadorId: string) {
-    const pago = await this.obtenerPagoPendiente(id, arrendadorId);
-
-    const [pagoActualizado] = await this.prisma.$transaction([
-      this.prisma.pago.update({
-        where: { id: pago.id },
-        data: { estado: EstadoPago.APROBADO },
-        include: this.INCLUDE_PAGO,
-      }),
-      this.prisma.contrato.update({
-        where: { id: pago.contrato_id },
-        data: { estado_pago: EstadoPagoContrato.AL_DIA },
-      }),
-    ]);
-
+    const pagoActualizado = await this.ejecutarTransicionPago(
+      id,
+      arrendadorId,
+      EstadoPago.APROBADO,
+    );
     return this.exponerUrlFirmada(pagoActualizado);
   }
 
   async rechazar(id: string, arrendadorId: string) {
-    const pago = await this.obtenerPagoPendiente(id, arrendadorId);
-
-    const pagoActualizado = await this.prisma.pago.update({
-      where: { id: pago.id },
-      data: { estado: EstadoPago.RECHAZADO },
-      include: this.INCLUDE_PAGO,
-    });
-
+    const pagoActualizado = await this.ejecutarTransicionPago(
+      id,
+      arrendadorId,
+      EstadoPago.RECHAZADO,
+    );
     return this.exponerUrlFirmada(pagoActualizado);
   }
 
-  private async obtenerPagoPendiente(id: string, arrendadorId: string) {
-    const pago = await this.prisma.pago.findFirst({
-      where: { id, arrendador_id: arrendadorId },
+  private async ejecutarTransicionPago(
+    id: string,
+    arrendadorId: string,
+    nuevoEstado: Extract<EstadoPago, 'APROBADO' | 'RECHAZADO'>,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const pagoExistente = await tx.pago.findFirst({
+        where: { id, arrendador_id: arrendadorId },
+        select: { contrato_id: true },
+      });
+
+      if (!pagoExistente) {
+        throw new NotFoundException(
+          'Pago no encontrado o no pertenece al arrendador autenticado.',
+        );
+      }
+
+      const resultado = await tx.pago.updateMany({
+        where: {
+          id,
+          arrendador_id: arrendadorId,
+          estado: EstadoPago.PENDIENTE,
+        },
+        data: { estado: nuevoEstado },
+      });
+
+      if (resultado.count === 0) {
+        throw new ConflictException({
+          codigo: 'PAGO_YA_PROCESADO',
+          mensaje:
+            'El pago ya fue procesado y no puede aprobarse ni rechazarse nuevamente.',
+        });
+      }
+
+      if (nuevoEstado === EstadoPago.APROBADO) {
+        await tx.contrato.update({
+          where: { id: pagoExistente.contrato_id },
+          data: { estado_pago: EstadoPagoContrato.AL_DIA },
+        });
+      }
+
+      return tx.pago.findUniqueOrThrow({
+        where: { id },
+        include: this.INCLUDE_PAGO,
+      });
     });
-
-    if (!pago) {
-      throw new NotFoundException(
-        'Pago no encontrado o no pertenece al arrendador autenticado.',
-      );
-    }
-
-    if (pago.estado !== EstadoPago.PENDIENTE) {
-      throw new ConflictException(
-        'El pago ya fue procesado y no puede aprobarse ni rechazarse nuevamente.',
-      );
-    }
-
-    return pago;
   }
 
   private async exponerUrlFirmada<

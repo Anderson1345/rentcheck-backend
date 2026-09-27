@@ -677,31 +677,68 @@ export class ContratoService {
   }
 
   async confirmarTerminacionAnticipada(id: string, arrendadorId: string) {
-    const contrato = await this.prisma.contrato.findFirst({
-      where: {
-        id,
-        unidad: {
-          inmueble: { arrendador_id: arrendadorId },
+    return this.prisma.$transaction(async (tx) => {
+      const contratoExistente = await tx.contrato.findFirst({
+        where: {
+          id,
+          unidad: {
+            inmueble: { arrendador_id: arrendadorId },
+          },
         },
-      },
-    });
+        select: { estado: true, terminacionAnticipadaSolicitada: true },
+      });
 
-    if (!contrato) {
-      throw new NotFoundException('Contrato no encontrado.');
-    }
+      if (!contratoExistente) {
+        throw new NotFoundException('Contrato no encontrado.');
+      }
 
-    if (!contrato.terminacionAnticipadaSolicitada) {
-      throw new ConflictException(
-        'No hay una solicitud de terminación anticipada pendiente para confirmar.',
-      );
-    }
+      const resultado = await tx.contrato.updateMany({
+        where: {
+          id,
+          unidad: {
+            inmueble: { arrendador_id: arrendadorId },
+          },
+          estado: EstadoContrato.ACTIVO,
+          terminacionAnticipadaSolicitada: true,
+        },
+        data: {
+          estado: EstadoContrato.TERMINADO_ANTICIPADAMENTE,
+          terminacionAnticipadaConfirmadaEn: new Date(),
+        },
+      });
 
-    return this.prisma.contrato.update({
-      where: { id: contrato.id },
-      data: {
-        estado: EstadoContrato.TERMINADO_ANTICIPADAMENTE,
-        terminacionAnticipadaConfirmadaEn: new Date(),
-      },
+      if (resultado.count === 0) {
+        if (
+          contratoExistente.estado === EstadoContrato.TERMINADO_ANTICIPADAMENTE
+        ) {
+          throw new ConflictException({
+            codigo: 'TERMINACION_YA_CONFIRMADA',
+            mensaje: 'La terminación anticipada ya fue confirmada.',
+          });
+        }
+        if (contratoExistente.estado !== EstadoContrato.ACTIVO) {
+          throw new ConflictException({
+            codigo: 'CONTRATO_NO_ACTIVO',
+            mensaje: 'El contrato no está activo.',
+          });
+        }
+        if (!contratoExistente.terminacionAnticipadaSolicitada) {
+          throw new ConflictException({
+            codigo: 'TERMINACION_NO_SOLICITADA',
+            mensaje:
+              'No hay una solicitud de terminación anticipada pendiente para confirmar.',
+          });
+        }
+        // El contrato estaba ACTIVO y con solicitud pendiente en la lectura,
+        // pero otra petición ya confirmó la terminación entre la lectura y
+        // esta escritura condicional.
+        throw new ConflictException({
+          codigo: 'TERMINACION_YA_CONFIRMADA',
+          mensaje: 'La terminación anticipada ya fue confirmada.',
+        });
+      }
+
+      return tx.contrato.findUniqueOrThrow({ where: { id } });
     });
   }
 }

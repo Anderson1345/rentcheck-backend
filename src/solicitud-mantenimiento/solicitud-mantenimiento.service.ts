@@ -154,34 +154,48 @@ export class SolicitudMantenimientoService {
     arrendadorId: string,
     dto: ActualizarEstadoSolicitudMantenimientoDto,
   ) {
-    const solicitud = await this.prisma.solicitudMantenimiento.findFirst({
-      where: { id, arrendador_id: arrendadorId },
-    });
-    if (!solicitud) {
-      throw new NotFoundException(
-        'Solicitud de mantenimiento no encontrada o no pertenece al arrendador autenticado.',
-      );
-    }
+    const actualizada = await this.prisma.$transaction(async (tx) => {
+      const solicitudExistente = await tx.solicitudMantenimiento.findFirst({
+        where: { id, arrendador_id: arrendadorId },
+        select: { id: true },
+      });
+      if (!solicitudExistente) {
+        throw new NotFoundException(
+          'Solicitud de mantenimiento no encontrada o no pertenece al arrendador autenticado.',
+        );
+      }
 
-    if (solicitud.estado === EstadoSolicitudMantenimiento.RESUELTO) {
-      throw new ConflictException(
-        'La solicitud ya está resuelta y no puede cambiar de estado.',
-      );
-    }
+      // Reglas de transición: RESUELTO no cambia de estado; EN_PROCESO solo
+      // puede pasar a RESUELTO (no "cambiar" a EN_PROCESO otra vez).
+      const estadosOrigenValidos =
+        dto.estado === EstadoSolicitudMantenimiento.EN_PROCESO
+          ? [EstadoSolicitudMantenimiento.PENDIENTE]
+          : [
+              EstadoSolicitudMantenimiento.PENDIENTE,
+              EstadoSolicitudMantenimiento.EN_PROCESO,
+            ];
 
-    if (
-      solicitud.estado === EstadoSolicitudMantenimiento.EN_PROCESO &&
-      dto.estado === EstadoSolicitudMantenimiento.EN_PROCESO
-    ) {
-      throw new ConflictException(
-        'Una solicitud en proceso solo puede pasar a resuelto.',
-      );
-    }
+      const resultado = await tx.solicitudMantenimiento.updateMany({
+        where: {
+          id,
+          arrendador_id: arrendadorId,
+          estado: { in: estadosOrigenValidos },
+        },
+        data: { estado: dto.estado },
+      });
 
-    const actualizada = await this.prisma.solicitudMantenimiento.update({
-      where: { id: solicitud.id },
-      data: { estado: dto.estado },
-      include: this.INCLUDE_SOLICITUD,
+      if (resultado.count === 0) {
+        throw new ConflictException({
+          codigo: 'TRANSICION_INVALIDA',
+          mensaje:
+            'La transición de estado no es válida para el estado actual de la solicitud.',
+        });
+      }
+
+      return tx.solicitudMantenimiento.findUniqueOrThrow({
+        where: { id },
+        include: this.INCLUDE_SOLICITUD,
+      });
     });
 
     return this.exponerUrlFirmada(actualizada);
