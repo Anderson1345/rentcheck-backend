@@ -31,7 +31,7 @@ export class SolicitudMantenimientoService {
       inquilino_id: inquilinoId,
     };
     const include = {
-      unidad: { include: { inmueble: true } },
+      unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
     };
 
     const contrato =
@@ -99,7 +99,20 @@ export class SolicitudMantenimientoService {
   }
 
   private readonly INCLUDE_SOLICITUD = {
-    unidad: { include: { inmueble: true } },
+    unidad: {
+      include: {
+        inmueble: {
+          select: {
+            id: true,
+            direccion: true,
+            ciudad: true,
+            estrato: true,
+            matricula_inmobiliaria: true,
+            creado_en: true,
+          },
+        },
+      },
+    },
     inquilino: {
       select: { id: true, nombre: true, cedula: true, telefono: true },
     },

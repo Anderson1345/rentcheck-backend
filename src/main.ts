@@ -1,30 +1,12 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { configurarApp } from './configurar-app';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-    }),
-  );
-
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
-      const esLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(origin);
-      const esVercel = /(^|\.)vercel\.app$/.test(origin);
-      callback(null, esLocalhost || esVercel);
-    },
-    credentials: false,
-  });
+  configurarApp(app);
 
   const config = new DocumentBuilder()
     .setTitle('RentCheck API')

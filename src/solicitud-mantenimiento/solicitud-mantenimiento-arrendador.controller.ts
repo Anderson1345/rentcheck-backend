@@ -22,6 +22,7 @@ import {
   ArrendadorGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ActualizarEstadoSolicitudMantenimientoDto } from './dto/actualizar-estado-solicitud-mantenimiento.dto';
 import { ListarSolicitudesMantenimientoQueryDto } from './dto/listar-solicitudes-mantenimiento-query.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
@@ -80,7 +81,7 @@ export class SolicitudMantenimientoArrendadorController {
       'Solicitud no encontrada o no pertenece al arrendador autenticado.',
   })
   encontrarUno(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.solicitudMantenimientoService.encontrarUno(id, arrendadorId);
@@ -113,7 +114,7 @@ export class SolicitudMantenimientoArrendadorController {
       'La transición de estado no es válida (ya resuelta o transición no permitida).',
   })
   actualizarEstado(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: ActualizarEstadoSolicitudMantenimientoDto,
     @ArrendadorActual() arrendadorId: string,
   ) {

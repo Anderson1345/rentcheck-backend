@@ -1,8 +1,9 @@
-import { HttpStatus, INestApplication, ValidationPipe } from '@nestjs/common';
+import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { configurarApp } from '../src/configurar-app';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
   contratoValido,
@@ -40,9 +41,7 @@ describe('ContratoController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
+    configurarApp(app);
     await app.init();
   });
 

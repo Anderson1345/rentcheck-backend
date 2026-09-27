@@ -1,11 +1,9 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
   IsNumber,
-  IsOptional,
   IsString,
   Min,
 } from 'class-validator';
@@ -44,9 +42,4 @@ export class CrearUnidadDto {
 
   @IsEnum(UsoPermitido)
   uso_permitido!: UsoPermitido;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  foto_principal_url?: string;
 }

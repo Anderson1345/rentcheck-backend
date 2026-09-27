@@ -51,7 +51,12 @@ export class AlertaSchedulerService {
         fecha_fin: { gte: hoy, lte: limite },
       },
       include: {
-        unidad: { include: { inmueble: true } },
+        unidad: {
+          select: {
+            nombre: true,
+            inmueble: { select: { arrendador_id: true } },
+          },
+        },
       },
     });
 
@@ -102,7 +107,12 @@ export class AlertaSchedulerService {
         estado: EstadoContrato.ACTIVO,
       },
       include: {
-        unidad: { include: { inmueble: true } },
+        unidad: {
+          select: {
+            nombre: true,
+            inmueble: { select: { arrendador_id: true } },
+          },
+        },
         pagos: true,
       },
     });
@@ -181,7 +191,12 @@ export class AlertaSchedulerService {
         creado_en: { lte: limite },
       },
       include: {
-        unidad: { include: { inmueble: true } },
+        unidad: {
+          select: {
+            nombre: true,
+            inmueble: { select: { arrendador_id: true } },
+          },
+        },
       },
     });
 
@@ -238,7 +253,12 @@ export class AlertaSchedulerService {
         estado: EstadoContrato.ACTIVO,
       },
       include: {
-        unidad: { include: { inmueble: true } },
+        unidad: {
+          select: {
+            nombre: true,
+            inmueble: { select: { arrendador_id: true } },
+          },
+        },
         incrementos_ipc: true,
       },
     });
@@ -304,7 +324,12 @@ export class AlertaSchedulerService {
         estado: EstadoContrato.ACTIVO,
       },
       include: {
-        unidad: { include: { inmueble: true } },
+        unidad: {
+          select: {
+            nombre: true,
+            inmueble: { select: { arrendador_id: true } },
+          },
+        },
         pagos: true,
       },
     });

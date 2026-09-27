@@ -21,6 +21,7 @@ import {
   ArrendadorGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ContratoService } from './contrato.service';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
@@ -51,7 +52,7 @@ export class ContratoController {
     description: 'Contrato no encontrado o no pertenece al arrendador.',
   })
   async encontrarUno(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     const contrato = await this.contratoService.encontrarUno(id, arrendadorId);
@@ -74,7 +75,10 @@ export class ContratoController {
   @ApiConflictResponse({
     description: 'El contrato no está activo y no puede renovarse.',
   })
-  renovar(@Param('id') id: string, @ArrendadorActual() arrendadorId: string) {
+  renovar(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
     return this.contratoService.renovar(id, arrendadorId);
   }
 
@@ -86,7 +90,7 @@ export class ContratoController {
       'Contrato no encontrado, no pertenece al arrendador o no tiene código de acceso.',
   })
   regenerarCodigo(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.contratoService.regenerarCodigo(id, arrendadorId);
@@ -126,7 +130,7 @@ export class ContratoController {
       'El contrato no está activo o ya tiene una solicitud de terminación anticipada pendiente.',
   })
   solicitarTerminacionAnticipada(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: SolicitarTerminacionAnticipadaDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
@@ -152,7 +156,7 @@ export class ContratoController {
       'No hay una solicitud de terminación anticipada pendiente para confirmar.',
   })
   confirmarTerminacionAnticipada(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.contratoService.confirmarTerminacionAnticipada(

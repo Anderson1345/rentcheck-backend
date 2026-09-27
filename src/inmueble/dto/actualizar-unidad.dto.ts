@@ -60,9 +60,4 @@ export class ActualizarUnidadDto {
   @IsEnum(UsoPermitido)
   @ApiPropertyOptional()
   uso_permitido?: UsoPermitido;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  foto_principal_url?: string;
 }

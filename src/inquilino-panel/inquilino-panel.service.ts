@@ -16,7 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const INCLUDE_CONTRATO_PANEL = {
   incrementos_ipc: { orderBy: { fecha_aplicacion: 'asc' } },
-  fotos_inventario: { where: { momento: Momento.ENTREGA } },
+  fotos_inventario: true,
 } as const satisfies Prisma.ContratoInclude;
 
 type ContratoPanel = Prisma.ContratoGetPayload<{
@@ -84,13 +84,23 @@ export class InquilinoPanelService {
       );
     }
 
+    const fotosEntrega = contrato.fotos_inventario.filter(
+      (f) => f.momento === Momento.ENTREGA,
+    );
+    const fotosDevolucion = contrato.fotos_inventario.filter(
+      (f) => f.momento === Momento.DEVOLUCION,
+    );
+
     return {
       contratoId: contrato.id,
       canon_centavos: contrato.canon_centavos,
       dia_pago: contrato.dia_pago,
       forma_pago: contrato.forma_pago,
       deposito_centavos: contrato.deposito_centavos,
-      datos_recaudo: contrato.datos_recaudo,
+      datos_recaudo:
+        contrato.estado === EstadoContrato.ACTIVO
+          ? contrato.datos_recaudo
+          : null,
       fecha_inicio: contrato.fecha_inicio,
       fecha_fin: contrato.fecha_fin,
       pdf_contrato_url: contrato.pdf_contrato_ruta
@@ -100,7 +110,10 @@ export class InquilinoPanelService {
         : null,
       incrementos_ipc: contrato.incrementos_ipc,
       fotos_entrega: await Promise.all(
-        contrato.fotos_inventario.map((f) => this.exponerUrlFirmada(f)),
+        fotosEntrega.map((f) => this.exponerUrlFirmada(f)),
+      ),
+      fotos_devolucion: await Promise.all(
+        fotosDevolucion.map((f) => this.exponerUrlFirmada(f)),
       ),
     };
   }

@@ -61,7 +61,7 @@ export class PagoService {
         inquilino_id: inquilinoId,
       },
       include: {
-        unidad: { include: { inmueble: true } },
+        unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
       },
     });
 

@@ -1,12 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
 
 export class CrearInmuebleDto {
   @IsString()
@@ -25,9 +17,4 @@ export class CrearInmuebleDto {
   @IsString()
   @IsNotEmpty()
   matricula_inmobiliaria!: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  foto_portada_ruta?: string;
 }

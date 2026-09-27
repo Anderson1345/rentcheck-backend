@@ -1,8 +1,7 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   IsEmail,
   IsNotEmpty,
-  IsOptional,
   IsString,
   Matches,
   MinLength,
@@ -26,9 +25,4 @@ export class CompletarRegistroInquilinoDto {
       'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
   })
   contrasena: string;
-
-  @ApiPropertyOptional({ example: 'https://ejemplo.com/cedula.jpg' })
-  @IsOptional()
-  @IsString()
-  foto_cedula_url?: string;
 }

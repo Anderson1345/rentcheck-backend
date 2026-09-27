@@ -67,9 +67,17 @@ export class AuthService {
     const codigoAcceso = await this.prisma.codigoAcceso.findUnique({
       where: { codigo: dto.codigo },
       include: {
-        inquilino: true,
-        unidad: { include: { inmueble: true } },
-        contrato: true,
+        inquilino: {
+          select: {
+            id: true,
+            nombre: true,
+            correo: true,
+            contrasena_hash: true,
+          },
+        },
+        unidad: {
+          select: { nombre: true, inmueble: { select: { direccion: true } } },
+        },
       },
     });
 
@@ -98,7 +106,11 @@ export class AuthService {
   async completarRegistroInquilino(dto: CompletarRegistroInquilinoDto) {
     const codigoAcceso = await this.prisma.codigoAcceso.findUnique({
       where: { codigo: dto.codigo },
-      include: { inquilino: true },
+      include: {
+        inquilino: {
+          select: { id: true, correo: true, contrasena_hash: true },
+        },
+      },
     });
 
     if (!codigoAcceso) {
@@ -129,7 +141,6 @@ export class AuthService {
       data: {
         correo: dto.correo,
         contrasena_hash,
-        foto_cedula_url: dto.foto_cedula_url,
       },
     });
 
@@ -183,7 +194,6 @@ export class AuthService {
     nombre: string;
     correo: string | null;
     telefono: string;
-    foto_cedula_url: string | null;
     creado_en: Date;
   }) {
     return {
@@ -193,7 +203,6 @@ export class AuthService {
         nombre: inquilino.nombre,
         correo: inquilino.correo,
         telefono: inquilino.telefono,
-        foto_cedula_url: inquilino.foto_cedula_url,
         creado_en: inquilino.creado_en,
       },
     };

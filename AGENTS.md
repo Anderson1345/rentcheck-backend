@@ -19,6 +19,11 @@ Los archivos de docs/ son copias de solo lectura: no los modifiques; si encuentr
 - Nada con valor legal o financiero se borra físicamente; los PDF se versionan.
 - ArrendadorActual/InquilinoActual se exportan con `export` de TypeScript, nunca en `exports: []` de @Module.
 - Tras cambiar schema.prisma: npx prisma generate.
+- Errores: el filtro global responde `{ statusCode, codigo, mensaje, detalles?, message }`; para un código propio se lanza, por ejemplo, `new ConflictException({ codigo: 'CONTRATO_NO_ACTIVO', mensaje: '...' })`.
+- Ids de ruta: siempre con el pipe de B-22 (`ParseIdPipe`, en `src/common/pipes/parse-id.pipe.ts`).
+- Pruebas e2e: siempre `configurarApp(app)` (`src/configurar-app.ts`), nunca `useGlobalPipes` a mano.
+- DTOs: nunca aceptan rutas ni URLs de archivos.
+- Datos de recaudo: solo se devuelven al inquilino con contrato ACTIVO (regla 11).
 
 ## Verificación antes de reportar
 npx prisma generate && npx tsc --noEmit && npm run lint && npm run test:e2e
