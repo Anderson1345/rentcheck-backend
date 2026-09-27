@@ -1,20 +1,40 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  EstadoContrato,
-  EstadoPago,
-  EstadoPagoContrato,
-  Prisma,
-} from '@prisma/client';
+import { EstadoContrato, EstadoPago, Prisma } from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { calcularCicloPagoActual } from '../common/ciclo-pago.util';
+import {
+  calcularEstadoCuenta,
+  derivarEstadoPagoContrato,
+  PeriodoEstadoCuenta,
+} from '../common/estado-cuenta.util';
+import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { CrearPagoDto } from './dto/crear-pago.dto';
+
+const SELECT_PARA_ESTADO_CUENTA = {
+  fecha_inicio: true,
+  fecha_fin: true,
+  dia_pago: true,
+  canon_centavos: true,
+  estado_pago: true,
+  incrementos_ipc: {
+    select: { fecha_aplicacion: true, canon_nuevo_centavos: true },
+  },
+  pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
+} as const satisfies Prisma.ContratoSelect;
+
+function mismoMesUTC(a: Date, b: Date): boolean {
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth()
+  );
+}
 
 @Injectable()
 export class PagoService {
@@ -62,6 +82,12 @@ export class PagoService {
       },
       include: {
         unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
+        incrementos_ipc: {
+          select: { fecha_aplicacion: true, canon_nuevo_centavos: true },
+        },
+        pagos: {
+          select: { periodo: true, estado: true, monto_centavos: true },
+        },
       },
     });
 
@@ -71,12 +97,75 @@ export class PagoService {
       );
     }
 
-    if (contrato.estado !== EstadoContrato.ACTIVO) {
-      throw new ConflictException(
-        'No puedes reportar pagos, tu contrato ya no está activo.',
-      );
+    // B-39: no se puede reportar un pago anterior al inicio del contrato.
+    if (dto.fecha_reportada.getTime() < contrato.fecha_inicio.getTime()) {
+      throw new BadRequestException({
+        codigo: 'FECHA_REPORTADA_ANTERIOR_A_INICIO',
+        mensaje:
+          'La fecha reportada no puede ser anterior a la fecha de inicio del contrato.',
+      });
     }
 
+    const periodos = calcularEstadoCuenta(
+      {
+        fecha_inicio: contrato.fecha_inicio,
+        fecha_fin: contrato.fecha_fin,
+        dia_pago: contrato.dia_pago,
+        canon_centavos: contrato.canon_centavos,
+      },
+      contrato.incrementos_ipc,
+      contrato.pagos,
+      hoyEnBogota(),
+    );
+
+    let periodoEncontrado: PeriodoEstadoCuenta | undefined;
+
+    if (dto.periodo) {
+      const periodoSolicitado = dto.periodo;
+      periodoEncontrado = periodos.find((periodo) =>
+        mismoMesUTC(periodo.periodo, periodoSolicitado),
+      );
+      if (!periodoEncontrado) {
+        throw new BadRequestException({
+          codigo: 'PERIODO_INVALIDO',
+          mensaje:
+            'El período indicado no corresponde a ningún período del contrato.',
+        });
+      }
+      if (periodoEncontrado.estado === 'PAGADO') {
+        throw new ConflictException({
+          codigo: 'PERIODO_YA_PAGADO',
+          mensaje: 'El período indicado ya está pagado.',
+        });
+      }
+    } else {
+      periodoEncontrado = periodos.find(
+        (periodo) => periodo.estado !== 'PAGADO',
+      );
+      if (!periodoEncontrado) {
+        throw new ConflictException({
+          codigo: 'SIN_PERIODOS_PENDIENTES',
+          mensaje: 'No hay períodos pendientes de pago para este contrato.',
+        });
+      }
+    }
+
+    // B-38: con el contrato ya no activo, solo se permite reportar un
+    // período explícito que haya quedado VENCIDO o PARCIAL al cierre.
+    if (contrato.estado !== EstadoContrato.ACTIVO) {
+      const permitidoPorCierre =
+        dto.periodo !== undefined &&
+        (periodoEncontrado.estado === 'VENCIDO' ||
+          periodoEncontrado.estado === 'PARCIAL');
+      if (!permitidoPorCierre) {
+        throw new ConflictException({
+          codigo: 'CONTRATO_NO_ACTIVO',
+          mensaje: 'No puedes reportar pagos, tu contrato ya no está activo.',
+        });
+      }
+    }
+
+    const periodoElegido = periodoEncontrado.periodo;
     const arrendadorId = contrato.unidad.inmueble.arrendador_id;
     const rutaDestino = `pagos/${contrato.id}/${Date.now()}-${this.sanitizarNombreArchivo(comprobante.originalname)}`;
 
@@ -87,40 +176,39 @@ export class PagoService {
     );
 
     try {
-      const cicloActual = calcularCicloPagoActual(contrato.dia_pago);
+      const nuevoPago = await this.prisma.$transaction(async (tx) => {
+        const pagoPendienteDelPeriodo = await tx.pago.findFirst({
+          where: {
+            contrato_id: contrato.id,
+            estado: EstadoPago.PENDIENTE,
+            periodo: periodoElegido,
+          },
+        });
 
-      const pagoPendienteDelCiclo = await this.prisma.pago.findFirst({
-        where: {
+        const datosNuevoPago: Prisma.PagoUncheckedCreateInput = {
+          arrendador_id: arrendadorId,
           contrato_id: contrato.id,
+          monto_centavos: dto.monto_centavos,
+          fecha_reportada: dto.fecha_reportada,
+          periodo: periodoElegido,
+          comprobante_ruta: rutaDestino,
           estado: EstadoPago.PENDIENTE,
-          fecha_reportada: { gte: cicloActual },
-        },
-      });
+        };
 
-      const datosNuevoPago: Prisma.PagoUncheckedCreateInput = {
-        arrendador_id: arrendadorId,
-        contrato_id: contrato.id,
-        monto_centavos: dto.monto_centavos,
-        fecha_reportada: dto.fecha_reportada,
-        comprobante_ruta: rutaDestino,
-        estado: EstadoPago.PENDIENTE,
-      };
-
-      if (pagoPendienteDelCiclo) {
-        const [, nuevoPago] = await this.prisma.$transaction([
-          this.prisma.pago.update({
-            where: { id: pagoPendienteDelCiclo.id },
+        if (pagoPendienteDelPeriodo) {
+          await tx.pago.update({
+            where: { id: pagoPendienteDelPeriodo.id },
             data: { estado: EstadoPago.REEMPLAZADO },
-          }),
-          this.prisma.pago.create({ data: datosNuevoPago }),
-        ]);
+          });
+        }
 
-        return this.exponerUrlFirmada(nuevoPago);
-      }
+        const creado = await tx.pago.create({ data: datosNuevoPago });
 
-      const nuevoPago = await this.prisma.pago.create({
-        data: datosNuevoPago,
+        await this.recalcularEstadoPagoContrato(tx, contrato.id);
+
+        return creado;
       });
+
       return this.exponerUrlFirmada(nuevoPago);
     } catch (error) {
       await this.eliminarArchivoHuérfano(rutaDestino);
@@ -220,18 +308,49 @@ export class PagoService {
         });
       }
 
-      if (nuevoEstado === EstadoPago.APROBADO) {
-        await tx.contrato.update({
-          where: { id: pagoExistente.contrato_id },
-          data: { estado_pago: EstadoPagoContrato.AL_DIA },
-        });
-      }
+      await this.recalcularEstadoPagoContrato(tx, pagoExistente.contrato_id);
 
       return tx.pago.findUniqueOrThrow({
         where: { id },
         include: this.INCLUDE_PAGO,
       });
     });
+  }
+
+  /**
+   * Recalcula `estado_pago` del contrato con `calcularEstadoCuenta` +
+   * `derivarEstadoPagoContrato`, usando los pagos ya actualizados dentro de
+   * la transacción. Nunca lo fija a mano.
+   */
+  private async recalcularEstadoPagoContrato(
+    tx: Prisma.TransactionClient,
+    contratoId: string,
+  ): Promise<void> {
+    const contrato = await tx.contrato.findUniqueOrThrow({
+      where: { id: contratoId },
+      select: SELECT_PARA_ESTADO_CUENTA,
+    });
+
+    const periodos = calcularEstadoCuenta(
+      {
+        fecha_inicio: contrato.fecha_inicio,
+        fecha_fin: contrato.fecha_fin,
+        dia_pago: contrato.dia_pago,
+        canon_centavos: contrato.canon_centavos,
+      },
+      contrato.incrementos_ipc,
+      contrato.pagos,
+      hoyEnBogota(),
+    );
+
+    const nuevoEstadoPago = derivarEstadoPagoContrato(periodos);
+
+    if (nuevoEstadoPago !== contrato.estado_pago) {
+      await tx.contrato.update({
+        where: { id: contratoId },
+        data: { estado_pago: nuevoEstadoPago },
+      });
+    }
   }
 
   private async exponerUrlFirmada<

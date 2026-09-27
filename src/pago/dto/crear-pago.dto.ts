@@ -3,6 +3,7 @@ import {
   IsDate,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsPositive,
   IsString,
   Min,
@@ -24,4 +25,9 @@ export class CrearPagoDto {
   @IsDate()
   @NoEsFechaFutura()
   fecha_reportada!: Date;
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  periodo?: Date;
 }

@@ -15,7 +15,23 @@ import { randomInt } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  calcularEstadoCuenta,
+  construirRespuestaEstadoCuenta,
+} from '../common/estado-cuenta.util';
+import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
+
+const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
+  fecha_inicio: true,
+  fecha_fin: true,
+  dia_pago: true,
+  canon_centavos: true,
+  incrementos_ipc: {
+    select: { fecha_aplicacion: true, canon_nuevo_centavos: true },
+  },
+  pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
+} as const satisfies Prisma.ContratoSelect;
 
 const SELECT_INMUEBLE_RESUMEN = {
   id: true,
@@ -346,6 +362,36 @@ export class ContratoService {
     });
 
     return contrato ? this.exponerUrlFirmada(contrato) : null;
+  }
+
+  async obtenerEstadoCuenta(id: string, arrendadorId: string) {
+    const contrato = await this.prisma.contrato.findFirst({
+      where: {
+        id,
+        unidad: {
+          inmueble: { arrendador_id: arrendadorId },
+        },
+      },
+      select: SELECT_CONTRATO_PARA_ESTADO_CUENTA,
+    });
+
+    if (!contrato) {
+      return null;
+    }
+
+    const periodos = calcularEstadoCuenta(
+      {
+        fecha_inicio: contrato.fecha_inicio,
+        fecha_fin: contrato.fecha_fin,
+        dia_pago: contrato.dia_pago,
+        canon_centavos: contrato.canon_centavos,
+      },
+      contrato.incrementos_ipc,
+      contrato.pagos,
+      hoyEnBogota(),
+    );
+
+    return construirRespuestaEstadoCuenta(periodos);
   }
 
   async renovar(id: string, arrendadorId: string) {

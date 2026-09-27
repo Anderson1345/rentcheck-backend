@@ -62,6 +62,28 @@ export class ContratoController {
     return contrato;
   }
 
+  @Get(':id/estado-cuenta')
+  @ApiOperation({ summary: 'Obtener el estado de cuenta de un contrato' })
+  @ApiOkResponse({
+    description: 'Estado de pago derivado y períodos calculados.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  async obtenerEstadoCuenta(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    const estadoCuenta = await this.contratoService.obtenerEstadoCuenta(
+      id,
+      arrendadorId,
+    );
+    if (!estadoCuenta) {
+      throw new NotFoundException('Contrato no encontrado.');
+    }
+    return estadoCuenta;
+  }
+
   @Post(':id/renovar')
   @ApiOperation({
     summary: 'Renovar un contrato activo aplicando el IPC vigente',

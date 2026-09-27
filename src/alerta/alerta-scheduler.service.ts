@@ -2,14 +2,37 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   EstadoContrato,
-  EstadoPago,
   EstadoPagoContrato,
   EstadoSolicitudMantenimiento,
   TipoAlerta,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { calcularProximaFechaPago } from '../common/calcular-fecha-pago';
-import { calcularCicloPagoActual } from '../common/ciclo-pago.util';
+import {
+  calcularEstadoCuenta,
+  derivarEstadoPagoContrato,
+} from '../common/estado-cuenta.util';
+import { hoyEnBogota } from '../common/hoy-bogota.util';
+
+const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
+  fecha_aplicacion: true,
+  canon_nuevo_centavos: true,
+} as const;
+
+const SELECT_PAGOS_PARA_ESTADO_CUENTA = {
+  periodo: true,
+  estado: true,
+  monto_centavos: true,
+} as const;
+
+function restarDiasUTC(fecha: Date, dias: number): Date {
+  return new Date(
+    Date.UTC(
+      fecha.getUTCFullYear(),
+      fecha.getUTCMonth(),
+      fecha.getUTCDate() - dias,
+    ),
+  );
+}
 
 @Injectable()
 export class AlertaSchedulerService {
@@ -99,8 +122,7 @@ export class AlertaSchedulerService {
     revisados: number;
     creadas: number;
   }> {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    const hoy = hoyEnBogota();
 
     const contratos = await this.prisma.contrato.findMany({
       where: {
@@ -113,32 +135,39 @@ export class AlertaSchedulerService {
             inmueble: { select: { arrendador_id: true } },
           },
         },
-        pagos: true,
+        incrementos_ipc: { select: SELECT_INCREMENTOS_PARA_ESTADO_CUENTA },
+        pagos: { select: SELECT_PAGOS_PARA_ESTADO_CUENTA },
       },
     });
 
-    const limiteReciente = new Date(hoy);
-    limiteReciente.setDate(limiteReciente.getDate() - 20);
+    const limiteReciente = restarDiasUTC(hoy, 20);
 
     let creadas = 0;
     for (const contrato of contratos) {
-      const proximaFechaPago = calcularProximaFechaPago(contrato.dia_pago, hoy);
-      const diferenciaDias = Math.round(
-        (proximaFechaPago.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24),
+      const periodos = calcularEstadoCuenta(
+        {
+          fecha_inicio: contrato.fecha_inicio,
+          fecha_fin: contrato.fecha_fin,
+          dia_pago: contrato.dia_pago,
+          canon_centavos: contrato.canon_centavos,
+        },
+        contrato.incrementos_ipc,
+        contrato.pagos,
+        hoy,
       );
-      if (diferenciaDias < 0 || diferenciaDias > 3) {
-        continue;
-      }
 
-      const fechaVencimiento = calcularCicloPagoActual(contrato.dia_pago, hoy);
+      const periodoProximo = periodos.find((periodo) => {
+        if (periodo.estado !== 'PENDIENTE') {
+          return false;
+        }
+        const diferenciaDias = Math.round(
+          (periodo.fecha_limite.getTime() - hoy.getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+        return diferenciaDias >= 0 && diferenciaDias <= 3;
+      });
 
-      const pagoQueCubre = contrato.pagos.some(
-        (pago) =>
-          (pago.estado === EstadoPago.PENDIENTE ||
-            pago.estado === EstadoPago.APROBADO) &&
-          pago.fecha_reportada >= fechaVencimiento,
-      );
-      if (pagoQueCubre) {
+      if (!periodoProximo) {
         continue;
       }
 
@@ -154,7 +183,7 @@ export class AlertaSchedulerService {
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-      const fechaPago = proximaFechaPago.toLocaleDateString('es-CO');
+      const fechaPago = periodoProximo.fecha_limite.toLocaleDateString('es-CO');
 
       await this.prisma.alerta.create({
         data: {
@@ -316,8 +345,7 @@ export class AlertaSchedulerService {
     enMora: number;
     creadas: number;
   }> {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    const hoy = hoyEnBogota();
 
     const contratos = await this.prisma.contrato.findMany({
       where: {
@@ -330,31 +358,47 @@ export class AlertaSchedulerService {
             inmueble: { select: { arrendador_id: true } },
           },
         },
-        pagos: true,
+        incrementos_ipc: { select: SELECT_INCREMENTOS_PARA_ESTADO_CUENTA },
+        pagos: { select: SELECT_PAGOS_PARA_ESTADO_CUENTA },
       },
     });
 
     let enMora = 0;
     let creadas = 0;
     for (const contrato of contratos) {
-      const fechaVencimiento = calcularCicloPagoActual(contrato.dia_pago, hoy);
-
-      const pagoQueCubre = contrato.pagos.some(
-        (pago) =>
-          (pago.estado === EstadoPago.PENDIENTE ||
-            pago.estado === EstadoPago.APROBADO) &&
-          pago.fecha_reportada >= fechaVencimiento,
+      const periodos = calcularEstadoCuenta(
+        {
+          fecha_inicio: contrato.fecha_inicio,
+          fecha_fin: contrato.fecha_fin,
+          dia_pago: contrato.dia_pago,
+          canon_centavos: contrato.canon_centavos,
+        },
+        contrato.incrementos_ipc,
+        contrato.pagos,
+        hoy,
       );
-      if (pagoQueCubre) {
-        continue;
-      }
+      const estadoDerivado = derivarEstadoPagoContrato(periodos);
 
-      enMora += 1;
-      if (contrato.estado_pago !== EstadoPagoContrato.EN_MORA) {
+      // Entra y sale de mora en ambos sentidos: se guarda siempre que el
+      // estado derivado difiera del guardado, no solo al entrar en mora.
+      if (estadoDerivado !== contrato.estado_pago) {
         await this.prisma.contrato.update({
           where: { id: contrato.id },
-          data: { estado_pago: EstadoPagoContrato.EN_MORA },
+          data: { estado_pago: estadoDerivado },
         });
+      }
+
+      if (estadoDerivado !== EstadoPagoContrato.EN_MORA) {
+        continue;
+      }
+      enMora += 1;
+
+      const periodoEnMoraMasAntiguo = periodos.find(
+        (periodo) =>
+          periodo.estado === 'VENCIDO' || periodo.estado === 'PARCIAL',
+      );
+      if (!periodoEnMoraMasAntiguo) {
+        continue;
       }
 
       const yaExiste = await this.prisma.alerta.findFirst({
@@ -369,7 +413,8 @@ export class AlertaSchedulerService {
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-      const fechaVencimientoStr = fechaVencimiento.toLocaleDateString('es-CO');
+      const fechaVencimientoStr =
+        periodoEnMoraMasAntiguo.fecha_limite.toLocaleDateString('es-CO');
 
       await this.prisma.alerta.create({
         data: {

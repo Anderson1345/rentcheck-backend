@@ -13,10 +13,16 @@ import {
 import { calcularProximaFechaPago } from '../common/calcular-fecha-pago';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  calcularEstadoCuenta,
+  construirRespuestaEstadoCuenta,
+} from '../common/estado-cuenta.util';
+import { hoyEnBogota } from '../common/hoy-bogota.util';
 
 const INCLUDE_CONTRATO_PANEL = {
   incrementos_ipc: { orderBy: { fecha_aplicacion: 'asc' } },
   fotos_inventario: true,
+  pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
 } as const satisfies Prisma.ContratoInclude;
 
 type ContratoPanel = Prisma.ContratoGetPayload<{
@@ -116,6 +122,30 @@ export class InquilinoPanelService {
         fotosDevolucion.map((f) => this.exponerUrlFirmada(f)),
       ),
     };
+  }
+
+  async obtenerEstadoCuenta(inquilinoId: string) {
+    const contrato = await this.resolverContrato(inquilinoId);
+
+    if (!contrato) {
+      throw new NotFoundException(
+        'El inquilino autenticado no tiene ningún contrato.',
+      );
+    }
+
+    const periodos = calcularEstadoCuenta(
+      {
+        fecha_inicio: contrato.fecha_inicio,
+        fecha_fin: contrato.fecha_fin,
+        dia_pago: contrato.dia_pago,
+        canon_centavos: contrato.canon_centavos,
+      },
+      contrato.incrementos_ipc,
+      contrato.pagos,
+      hoyEnBogota(),
+    );
+
+    return construirRespuestaEstadoCuenta(periodos);
   }
 
   async solicitarTerminacionAnticipada(inquilinoId: string, motivo: string) {

@@ -177,6 +177,12 @@ export class PagoController {
           format: 'date',
           description: 'Fecha en la que se realizó el pago.',
         },
+        periodo: {
+          type: 'string',
+          format: 'date',
+          description:
+            'Período (mes) que cubre el pago. Opcional: si no se envía, se usa el período no pagado más antiguo.',
+        },
         comprobante: {
           type: 'string',
           format: 'binary',
@@ -186,13 +192,16 @@ export class PagoController {
     },
   })
   @ApiCreatedResponse({ description: 'Pago creado exitosamente.' })
-  @ApiBadRequestResponse({ description: 'Datos del formulario inválidos.' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos del formulario inválidos, fecha_reportada anterior al inicio del contrato (FECHA_REPORTADA_ANTERIOR_A_INICIO) o periodo que no corresponde a ningún período del contrato (PERIODO_INVALIDO).',
+  })
   @ApiNotFoundResponse({
     description: 'Contrato no encontrado o no pertenece al inquilino.',
   })
   @ApiConflictResponse({
     description:
-      'El contrato del inquilino ya no está activo y no puede reportar pagos.',
+      'El contrato ya no está activo y el período indicado no quedó pendiente al cierre (CONTRATO_NO_ACTIVO), no hay períodos pendientes (SIN_PERIODOS_PENDIENTES), o el período indicado ya está pagado (PERIODO_YA_PAGADO).',
   })
   @ApiUnsupportedMediaTypeResponse({
     description: 'El tipo de archivo del comprobante no está permitido.',

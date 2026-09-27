@@ -3,6 +3,8 @@ import {
   DatosContratoParaEstadoCuenta,
   DatosIncrementoParaEstadoCuenta,
   DatosPagoParaEstadoCuenta,
+  derivarEstadoPagoContrato,
+  PeriodoEstadoCuenta,
 } from './estado-cuenta.util';
 
 describe('calcularEstadoCuenta', () => {
@@ -214,5 +216,49 @@ describe('calcularEstadoCuenta', () => {
     const periodos = calcularEstadoCuenta(contrato, [], [], hoy);
 
     expect(periodos).toHaveLength(1);
+  });
+});
+
+describe('derivarEstadoPagoContrato', () => {
+  function periodo(
+    overrides: Partial<PeriodoEstadoCuenta>,
+  ): PeriodoEstadoCuenta {
+    return {
+      periodo: new Date(Date.UTC(2026, 0, 1)),
+      fecha_limite: new Date(Date.UTC(2026, 0, 5)),
+      canon_vigente_centavos: 1_000_000,
+      monto_aprobado_centavos: 1_000_000,
+      estado: 'PAGADO',
+      ...overrides,
+    };
+  }
+
+  it('devuelve PENDIENTE cuando no hay ningún período generado', () => {
+    expect(derivarEstadoPagoContrato([])).toBe('PENDIENTE');
+  });
+
+  it('devuelve AL_DIA cuando ningún período está VENCIDO ni PARCIAL', () => {
+    const periodos = [
+      periodo({ estado: 'PAGADO' }),
+      periodo({ estado: 'PENDIENTE' }),
+      periodo({ estado: 'EN_REVISION' }),
+    ];
+    expect(derivarEstadoPagoContrato(periodos)).toBe('AL_DIA');
+  });
+
+  it('devuelve EN_MORA cuando algún período está VENCIDO', () => {
+    const periodos = [
+      periodo({ estado: 'PAGADO' }),
+      periodo({ estado: 'VENCIDO' }),
+    ];
+    expect(derivarEstadoPagoContrato(periodos)).toBe('EN_MORA');
+  });
+
+  it('devuelve EN_MORA cuando algún período está PARCIAL', () => {
+    const periodos = [
+      periodo({ estado: 'PENDIENTE' }),
+      periodo({ estado: 'PARCIAL' }),
+    ];
+    expect(derivarEstadoPagoContrato(periodos)).toBe('EN_MORA');
   });
 });

@@ -59,11 +59,14 @@ describe('PagoController (e2e)', () => {
     );
     const inmueble = await crearInmueble(app, access_token);
     const inquilino = await crearInquilino(app, access_token);
+    // fecha_inicio = hoy para que solo exista un período de estado de
+    // cuenta: aprobar el único pago pendiente debe dejar el contrato al día.
     const contrato = await crearContrato(
       app,
       access_token,
       inmueble.unidades[0].id,
       inquilino.id,
+      { fecha_inicio: fechaHoyLocal() },
     );
     const inquilinoToken = await autenticarInquilino(
       app,

@@ -11,6 +11,7 @@ import {
   crearContrato,
   crearInmueble,
   crearInquilino,
+  fechaHoyLocal,
   registrarArrendador,
   reportarPago,
   RespuestaCrearContrato,
@@ -167,11 +168,15 @@ describe('Consistencia de escrituras (e2e)', () => {
       );
       const inmueble = await crearInmueble(app, access_token, `PAG-${sufijo}`);
       const inquilino = await crearInquilino(app, access_token);
+      // fecha_inicio = hoy para que solo exista un período de estado de
+      // cuenta: aprobar/rechazar el único pago pendiente deja el contrato
+      // en un estado predecible (AL_DIA), sin períodos anteriores en mora.
       const contrato = await crearContrato(
         app,
         access_token,
         inmueble.unidades[0].id,
         inquilino.id,
+        { fecha_inicio: fechaHoyLocal() },
       );
       const inquilinoToken = await autenticarInquilino(
         app,

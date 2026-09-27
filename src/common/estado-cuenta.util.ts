@@ -27,6 +27,19 @@ export interface PeriodoEstadoCuenta {
   estado: EstadoPeriodo;
 }
 
+export type EstadoPagoContratoDerivado = 'AL_DIA' | 'PENDIENTE' | 'EN_MORA';
+
+export interface RespuestaEstadoCuenta {
+  estadoPago: 'al_dia' | 'en_mora' | 'pendiente';
+  periodos: Array<{
+    periodo: Date;
+    fechaLimite: Date;
+    canonVigenteCentavos: number;
+    estado: EstadoPeriodo;
+    montoAprobadoCentavos: number;
+  }>;
+}
+
 function ultimoDiaDelMesUTC(anio: number, mesIndiceCero: number): number {
   return new Date(Date.UTC(anio, mesIndiceCero + 1, 0)).getUTCDate();
 }
@@ -171,4 +184,48 @@ export function calcularEstadoCuenta(
   }
 
   return periodos;
+}
+
+/**
+ * Deriva el estado de pago del contrato a partir de sus períodos:
+ * `PENDIENTE` si todavía no hay ningún período generado, `EN_MORA` si algún
+ * período quedó `VENCIDO` o `PARCIAL`, `AL_DIA` en cualquier otro caso.
+ */
+export function derivarEstadoPagoContrato(
+  periodos: PeriodoEstadoCuenta[],
+): EstadoPagoContratoDerivado {
+  if (periodos.length === 0) {
+    return 'PENDIENTE';
+  }
+  const hayPeriodoEnMora = periodos.some(
+    (periodo) => periodo.estado === 'VENCIDO' || periodo.estado === 'PARCIAL',
+  );
+  return hayPeriodoEnMora ? 'EN_MORA' : 'AL_DIA';
+}
+
+/**
+ * Da forma a la respuesta pública de los endpoints de estado de cuenta
+ * (`GET /contratos/:id/estado-cuenta` y `GET /inquilino/mi-contrato/estado-cuenta`).
+ */
+export function construirRespuestaEstadoCuenta(
+  periodos: PeriodoEstadoCuenta[],
+): RespuestaEstadoCuenta {
+  const estadoDerivado = derivarEstadoPagoContrato(periodos);
+  const estadoPago =
+    estadoDerivado === 'AL_DIA'
+      ? 'al_dia'
+      : estadoDerivado === 'EN_MORA'
+        ? 'en_mora'
+        : 'pendiente';
+
+  return {
+    estadoPago,
+    periodos: periodos.map((periodo) => ({
+      periodo: periodo.periodo,
+      fechaLimite: periodo.fecha_limite,
+      canonVigenteCentavos: periodo.canon_vigente_centavos,
+      estado: periodo.estado,
+      montoAprobadoCentavos: periodo.monto_aprobado_centavos,
+    })),
+  };
 }

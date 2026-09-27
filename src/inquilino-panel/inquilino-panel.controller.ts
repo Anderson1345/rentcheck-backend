@@ -49,6 +49,21 @@ export class InquilinoPanelController {
     return this.inquilinoPanelService.obtenerMiContrato(inquilinoId);
   }
 
+  @Get('mi-contrato/estado-cuenta')
+  @ApiOperation({
+    summary:
+      'Obtener el estado de cuenta del contrato del inquilino autenticado',
+  })
+  @ApiOkResponse({
+    description: 'Estado de pago derivado y períodos calculados.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El inquilino autenticado no tiene ningún contrato.',
+  })
+  obtenerEstadoCuenta(@InquilinoActual() inquilinoId: string) {
+    return this.inquilinoPanelService.obtenerEstadoCuenta(inquilinoId);
+  }
+
   @Post('mi-contrato/solicitar-terminacion-anticipada')
   @ApiOperation({
     summary: 'Solicitar la terminación anticipada del contrato del inquilino',
