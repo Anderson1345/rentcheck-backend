@@ -23,9 +23,4 @@ export class ActualizarInmuebleDto {
   @IsString()
   @ApiPropertyOptional()
   matricula_inmobiliaria?: string;
-
-  @IsOptional()
-  @IsString()
-  @ApiPropertyOptional()
-  foto_portada_ruta?: string;
 }

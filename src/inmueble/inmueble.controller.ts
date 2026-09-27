@@ -47,6 +47,7 @@ import {
   TIPOS_ARCHIVO_DOCUMENTO,
   TIPOS_ARCHIVO_FOTO_INVENTARIO,
 } from '../common/limites-archivo.constants';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
 import { CrearDocumentoInmuebleDto } from './dto/crear-documento-inmueble.dto';
@@ -82,7 +83,7 @@ export class InmuebleController {
     description: 'Inmueble no encontrado.',
   })
   async encontrarUno(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     const inmueble = await this.inmuebleService.encontrarUno(id, arrendadorId);
@@ -101,7 +102,7 @@ export class InmuebleController {
     description: 'Inmueble no encontrado.',
   })
   async actualizar(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @Body() dto: ActualizarInmuebleDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
@@ -126,7 +127,7 @@ export class InmuebleController {
     description: 'El inmueble tiene unidades asociadas y no puede eliminarse.',
   })
   async eliminar(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     const inmueble = await this.inmuebleService.eliminar(id, arrendadorId);
@@ -159,7 +160,7 @@ export class InmuebleController {
     description: 'Inmueble no encontrado o no pertenece al arrendador.',
   })
   async crearUnidad(
-    @Param('inmuebleId') inmuebleId: string,
+    @Param('inmuebleId', ParseIdPipe) inmuebleId: string,
     @Body() dto: CrearUnidadDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
@@ -183,8 +184,8 @@ export class InmuebleController {
     description: 'Inmueble o unidad no encontrada.',
   })
   async actualizarUnidad(
-    @Param('inmuebleId') inmuebleId: string,
-    @Param('unidadId') unidadId: string,
+    @Param('inmuebleId', ParseIdPipe) inmuebleId: string,
+    @Param('unidadId', ParseIdPipe) unidadId: string,
     @Body() dto: ActualizarUnidadDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
@@ -210,8 +211,8 @@ export class InmuebleController {
     description: 'La unidad tiene contratos asociados y no puede eliminarse.',
   })
   async eliminarUnidad(
-    @Param('inmuebleId') inmuebleId: string,
-    @Param('unidadId') unidadId: string,
+    @Param('inmuebleId', ParseIdPipe) inmuebleId: string,
+    @Param('unidadId', ParseIdPipe) unidadId: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     const unidad = await this.inmuebleService.eliminarUnidad(
@@ -278,7 +279,7 @@ export class InmuebleController {
     description: 'El tipo de archivo del documento no está permitido.',
   })
   async crearDocumento(
-    @Param('inmuebleId') inmuebleId: string,
+    @Param('inmuebleId', ParseIdPipe) inmuebleId: string,
     @UploadedFile() archivo: Express.Multer.File,
     @Body() dto: CrearDocumentoInmuebleDto,
     @ArrendadorActual() arrendadorId: string,
@@ -351,7 +352,7 @@ export class InmuebleController {
     description: 'El tipo de archivo de la foto no está permitido.',
   })
   async subirFotoPortada(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @UploadedFile() foto: Express.Multer.File,
     @ArrendadorActual() arrendadorId: string,
   ) {
@@ -391,7 +392,7 @@ export class InmuebleController {
     description: 'Inmueble no encontrado o no pertenece al arrendador.',
   })
   async listarDocumentos(
-    @Param('inmuebleId') inmuebleId: string,
+    @Param('inmuebleId', ParseIdPipe) inmuebleId: string,
     @Query() query: ListarDocumentosInmuebleQueryDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
@@ -427,7 +428,7 @@ export class InmuebleController {
     description: 'Inmueble no encontrado o no pertenece al arrendador.',
   })
   async descargarDocumentos(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
     @Res() res: Response,
   ) {

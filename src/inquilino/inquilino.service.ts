@@ -7,15 +7,22 @@ import { normalizarCedula } from '../common/utils/normalizar-cedula';
 type InquilinoSeguro = Prisma.InquilinoGetPayload<{
   select: {
     id: true;
-    arrendador_id: true;
     nombre: true;
     cedula: true;
     telefono: true;
     correo: true;
-    foto_cedula_url: true;
     creado_en: true;
   };
 }>;
+
+const SELECT_INQUILINO_SEGURO = {
+  id: true,
+  nombre: true,
+  cedula: true,
+  telefono: true,
+  correo: true,
+  creado_en: true,
+} as const satisfies Prisma.InquilinoSelect;
 
 @Injectable()
 export class InquilinoService {
@@ -25,16 +32,7 @@ export class InquilinoService {
     return this.prisma.inquilino.findMany({
       where: { arrendador_id: arrendadorId },
       orderBy: { creado_en: 'desc' },
-      select: {
-        id: true,
-        arrendador_id: true,
-        nombre: true,
-        cedula: true,
-        telefono: true,
-        correo: true,
-        foto_cedula_url: true,
-        creado_en: true,
-      },
+      select: SELECT_INQUILINO_SEGURO,
     });
   }
 
@@ -44,16 +42,7 @@ export class InquilinoService {
   ): Promise<InquilinoSeguro | null> {
     return this.prisma.inquilino.findFirst({
       where: { id, arrendador_id: arrendadorId },
-      select: {
-        id: true,
-        arrendador_id: true,
-        nombre: true,
-        cedula: true,
-        telefono: true,
-        correo: true,
-        foto_cedula_url: true,
-        creado_en: true,
-      },
+      select: SELECT_INQUILINO_SEGURO,
     });
   }
 
@@ -74,16 +63,7 @@ export class InquilinoService {
         cedula,
         telefono: dto.telefono,
       },
-      select: {
-        id: true,
-        arrendador_id: true,
-        nombre: true,
-        cedula: true,
-        telefono: true,
-        correo: true,
-        foto_cedula_url: true,
-        creado_en: true,
-      },
+      select: SELECT_INQUILINO_SEGURO,
     });
   }
 }

@@ -17,12 +17,52 @@ import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service'
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 
+const SELECT_INMUEBLE_RESUMEN = {
+  id: true,
+  direccion: true,
+  ciudad: true,
+  estrato: true,
+  matricula_inmobiliaria: true,
+  creado_en: true,
+} as const satisfies Prisma.InmuebleSelect;
+
+const SELECT_INQUILINO_RESUMEN = {
+  id: true,
+  nombre: true,
+  cedula: true,
+  telefono: true,
+} as const satisfies Prisma.InquilinoSelect;
+
+const SELECT_ARRENDADOR_RESUMEN_PDF = {
+  nombre: true,
+  cedula: true,
+} as const satisfies Prisma.ArrendadorSelect;
+
+const SELECT_CONTRATO_PARA_PDF = {
+  id: true,
+  estado: true,
+  tipo_plantilla: true,
+  canon_centavos: true,
+  deposito_centavos: true,
+  dia_pago: true,
+  forma_pago: true,
+  datos_recaudo: true,
+  datos_fiador_o_poliza: true,
+  condicionesParticularesTexto: true,
+  fecha_inicio: true,
+  fecha_fin: true,
+  unidad: {
+    select: {
+      nombre: true,
+      inmueble: { select: { direccion: true, ciudad: true } },
+    },
+  },
+  inquilino: { select: { nombre: true, cedula: true } },
+  arrendador: { select: SELECT_ARRENDADOR_RESUMEN_PDF },
+} as const satisfies Prisma.ContratoSelect;
+
 type ContratoParaPdf = Prisma.ContratoGetPayload<{
-  include: {
-    unidad: { include: { inmueble: true } };
-    inquilino: true;
-    arrendador: true;
-  };
+  select: typeof SELECT_CONTRATO_PARA_PDF;
 }>;
 
 const PLANTILLA_VIVIENDA_URBANA_LEY_820 = `CONTRATO DE ARRENDAMIENTO DE VIVIENDA URBANA
@@ -297,7 +337,7 @@ export class ContratoService {
       },
       include: {
         unidad: true,
-        inquilino: true,
+        inquilino: { select: SELECT_INQUILINO_RESUMEN },
         incrementos_ipc: true,
         codigo_acceso: {
           select: { codigo: true },
@@ -316,11 +356,7 @@ export class ContratoService {
           inmueble: { arrendador_id: arrendadorId },
         },
       },
-      include: {
-        unidad: { include: { inmueble: true } },
-        inquilino: true,
-        arrendador: true,
-      },
+      select: SELECT_CONTRATO_PARA_PDF,
     });
 
     if (!contrato) {
@@ -547,11 +583,7 @@ export class ContratoService {
     try {
       const contratoParaPdf = await this.prisma.contrato.findUniqueOrThrow({
         where: { id: contratoConfirmado.id },
-        include: {
-          unidad: { include: { inmueble: true } },
-          inquilino: true,
-          arrendador: true,
-        },
+        select: SELECT_CONTRATO_PARA_PDF,
       });
 
       const bufferPdf = await this.generarPdfContrato(contratoParaPdf);
@@ -573,8 +605,10 @@ export class ContratoService {
           where: { id: contratoConfirmado.id },
           include: {
             codigo_acceso: true,
-            unidad: { include: { inmueble: true } },
-            inquilino: true,
+            unidad: {
+              include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
+            },
+            inquilino: { select: SELECT_INQUILINO_RESUMEN },
           },
         }),
       );
@@ -591,8 +625,10 @@ export class ContratoService {
           where: { id: contratoConfirmado.id },
           include: {
             codigo_acceso: true,
-            unidad: { include: { inmueble: true } },
-            inquilino: true,
+            unidad: {
+              include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
+            },
+            inquilino: { select: SELECT_INQUILINO_RESUMEN },
           },
         }),
       );

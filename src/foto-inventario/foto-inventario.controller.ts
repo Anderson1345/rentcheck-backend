@@ -37,6 +37,7 @@ import {
   TAMANO_MAXIMO_FOTO_INVENTARIO,
   TIPOS_ARCHIVO_FOTO_INVENTARIO,
 } from '../common/limites-archivo.constants';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { CrearFotoInventarioDto } from './dto/crear-foto-inventario.dto';
 import { ListarFotosInventarioQueryDto } from './dto/listar-fotos-inventario-query.dto';
 import { FotoInventarioService } from './foto-inventario.service';
@@ -103,7 +104,7 @@ export class FotoInventarioController {
     description: 'El tipo de archivo de la foto no está permitido.',
   })
   crear(
-    @Param('contratoId') contratoId: string,
+    @Param('contratoId', ParseIdPipe) contratoId: string,
     @UploadedFile() foto: Express.Multer.File,
     @Body() dto: CrearFotoInventarioDto,
     @ArrendadorActual() arrendadorId: string,
@@ -136,7 +137,7 @@ export class FotoInventarioController {
     description: 'Contrato no encontrado o no pertenece al arrendador.',
   })
   listar(
-    @Param('contratoId') contratoId: string,
+    @Param('contratoId', ParseIdPipe) contratoId: string,
     @Query() query: ListarFotosInventarioQueryDto,
     @ArrendadorActual() arrendadorId: string,
   ) {

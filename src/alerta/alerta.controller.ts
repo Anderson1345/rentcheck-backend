@@ -19,6 +19,7 @@ import {
   ArrendadorGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { AlertaService } from './alerta.service';
 import { ListarAlertasQueryDto } from './dto/listar-alertas-query.dto';
 
@@ -54,7 +55,7 @@ export class AlertaController {
     description: 'Alerta no encontrada o no pertenece al arrendador.',
   })
   marcarComoLeida(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.alertaService.marcarComoLeida(id, arrendadorId);

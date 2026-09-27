@@ -63,7 +63,6 @@ export class InmuebleService {
           ciudad: dto.ciudad,
           estrato: dto.estrato,
           matricula_inmobiliaria: dto.matricula_inmobiliaria,
-          foto_portada_ruta: dto.foto_portada_ruta,
         },
       });
 
@@ -182,7 +181,6 @@ export class InmuebleService {
         ocupantes_maximos: dto.ocupantes_maximos,
         acepta_mascotas: dto.acepta_mascotas,
         uso_permitido: dto.uso_permitido,
-        foto_principal_url: dto.foto_principal_url,
       },
     });
   }
@@ -215,8 +213,6 @@ export class InmuebleService {
     if (dto.acepta_mascotas !== undefined)
       data.acepta_mascotas = dto.acepta_mascotas;
     if (dto.uso_permitido !== undefined) data.uso_permitido = dto.uso_permitido;
-    if (dto.foto_principal_url !== undefined)
-      data.foto_principal_url = dto.foto_principal_url;
 
     const resultado = await this.prisma.unidad.updateMany({
       where: { id: unidadId, inmueble_id: inmuebleId },

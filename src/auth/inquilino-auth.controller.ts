@@ -13,6 +13,7 @@ export class InquilinoAuthController {
 
   @Post('validar-codigo')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Validar un código de acceso de inquilino' })
   @ApiBody({ type: ValidarCodigoAccesoDto })
   @ApiResponse({
@@ -34,6 +35,7 @@ export class InquilinoAuthController {
 
   @Post('completar-registro')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Completar el registro de un inquilino' })
   @ApiBody({ type: CompletarRegistroInquilinoDto })
   @ApiResponse({

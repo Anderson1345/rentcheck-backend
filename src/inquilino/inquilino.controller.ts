@@ -20,6 +20,7 @@ import {
   ArrendadorGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { CrearInquilinoDto } from './dto/crear-inquilino.dto';
 import { InquilinoService } from './inquilino.service';
 
@@ -44,7 +45,7 @@ export class InquilinoController {
     description: 'Inquilino no encontrado o no pertenece al arrendador.',
   })
   async encontrarUno(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     const inquilino = await this.inquilinoService.encontrarUno(

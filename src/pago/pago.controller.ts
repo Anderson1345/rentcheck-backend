@@ -38,6 +38,7 @@ import {
   TAMANO_MAXIMO_COMPROBANTE,
   TIPOS_ARCHIVO_COMPROBANTE,
 } from '../common/limites-archivo.constants';
+import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 import { ListarPagosQueryDto } from './dto/listar-pagos-query.dto';
 import { PagoService } from './pago.service';
@@ -89,7 +90,7 @@ export class PagoController {
     description: 'Pago no encontrado o no pertenece al arrendador.',
   })
   encontrarUno(
-    @Param('id') id: string,
+    @Param('id', ParseIdPipe) id: string,
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.pagoService.encontrarUno(id, arrendadorId);
@@ -107,7 +108,10 @@ export class PagoController {
   @ApiConflictResponse({
     description: 'El pago ya fue procesado y no puede aprobarse ni rechazarse.',
   })
-  aprobar(@Param('id') id: string, @ArrendadorActual() arrendadorId: string) {
+  aprobar(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
     return this.pagoService.aprobar(id, arrendadorId);
   }
 
@@ -121,7 +125,10 @@ export class PagoController {
   @ApiConflictResponse({
     description: 'El pago ya fue procesado y no puede aprobarse ni rechazarse.',
   })
-  rechazar(@Param('id') id: string, @ArrendadorActual() arrendadorId: string) {
+  rechazar(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
     return this.pagoService.rechazar(id, arrendadorId);
   }
 
