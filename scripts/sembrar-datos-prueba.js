@@ -93,6 +93,7 @@ async function limpiarDatosDeNegocio() {
   await prisma.pago.deleteMany();
   await prisma.incrementoIPC.deleteMany();
   await prisma.codigoAcceso.deleteMany();
+  await prisma.prorroga.deleteMany();
   await prisma.contrato.deleteMany();
   await prisma.documentoInmueble.deleteMany();
   await prisma.unidad.deleteMany();

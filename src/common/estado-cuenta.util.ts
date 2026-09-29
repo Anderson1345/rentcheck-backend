@@ -5,11 +5,16 @@ export interface DatosContratoParaEstadoCuenta {
   fecha_inicio: Date; // @db.Date de Prisma (medianoche UTC)
   fecha_fin: Date; // @db.Date de Prisma
   dia_pago: number; // 1-31
-  canon_centavos: number; // canon base, antes de cualquier incremento
+  /**
+   * Canon VIGENTE hoy (el último tras todos los incrementos aplicados). El
+   * canon de un período pasado se deriva del historial de incrementos.
+   */
+  canon_centavos: number;
 }
 
 export interface DatosIncrementoParaEstadoCuenta {
   fecha_aplicacion: Date; // @db.Date de Prisma
+  canon_anterior_centavos: number;
   canon_nuevo_centavos: number;
 }
 
@@ -92,24 +97,43 @@ function mismoMesCalendarioUTC(a: Date, b: Date): boolean {
   );
 }
 
+/**
+ * Canon que rige en `fechaLimite`. `contrato.canon_centavos` es el canon
+ * vigente hoy, así que el de un período pasado sale del historial:
+ * - sin incrementos: el del contrato;
+ * - fecha límite anterior al primer incremento: su `canon_anterior`;
+ * - en otro caso: el `canon_nuevo` del incremento más reciente con
+ *   `fecha_aplicacion <= fechaLimite`.
+ */
 function canonVigenteEn(
   contrato: DatosContratoParaEstadoCuenta,
   incrementos: DatosIncrementoParaEstadoCuenta[],
   fechaLimite: Date,
 ): number {
-  const aplicables = incrementos.filter(
-    (incremento) =>
-      incremento.fecha_aplicacion.getTime() <= fechaLimite.getTime(),
-  );
-  if (aplicables.length === 0) {
+  if (incrementos.length === 0) {
     return contrato.canon_centavos;
   }
-  const masReciente = aplicables.reduce((masRecienteHastaAhora, actual) =>
-    actual.fecha_aplicacion.getTime() >
-    masRecienteHastaAhora.fecha_aplicacion.getTime()
+
+  const primero = incrementos.reduce((masAntiguo, actual) =>
+    actual.fecha_aplicacion.getTime() < masAntiguo.fecha_aplicacion.getTime()
       ? actual
-      : masRecienteHastaAhora,
+      : masAntiguo,
   );
+  if (fechaLimite.getTime() < primero.fecha_aplicacion.getTime()) {
+    return primero.canon_anterior_centavos;
+  }
+
+  const masReciente = incrementos
+    .filter(
+      (incremento) =>
+        incremento.fecha_aplicacion.getTime() <= fechaLimite.getTime(),
+    )
+    .reduce((masRecienteHastaAhora, actual) =>
+      actual.fecha_aplicacion.getTime() >
+      masRecienteHastaAhora.fecha_aplicacion.getTime()
+        ? actual
+        : masRecienteHastaAhora,
+    );
   return masReciente.canon_nuevo_centavos;
 }
 

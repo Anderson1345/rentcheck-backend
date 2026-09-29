@@ -148,6 +148,7 @@ model Contrato {
   terminacionAnticipadaMotivo        String?
   terminacionAnticipadaConfirmadaEn  DateTime?
   incrementos_ipc       IncrementoIPC[]
+  prorrogas             Prorroga[]
   codigo_acceso         CodigoAcceso?
   pagos                 Pago[]
   fotos_inventario      FotoInventario[]
@@ -163,7 +164,28 @@ model IncrementoIPC {
   canon_anterior_centavos  Int
   canon_nuevo_centavos     Int
   porcentaje_ipc_aplicado  Decimal
+  ipc_referencia_anio        Int?
+  ipc_referencia_porcentaje  Decimal?
   creado_en                DateTime  @default(now())
+}
+
+enum TipoProrroga {
+  MANUAL
+  AUTOMATICA
+}
+
+model Prorroga {
+  id                 String       @id @default(uuid()) @db.Uuid
+  contrato_id        String       @db.Uuid
+  contrato           Contrato     @relation(fields: [contrato_id], references: [id])
+  fecha_aplicacion   DateTime     @db.Date
+  fecha_fin_anterior DateTime     @db.Date
+  fecha_fin_nueva    DateTime     @db.Date
+  meses              Int
+  tipo               TipoProrroga
+  creado_en          DateTime     @default(now())
+
+  @@index([contrato_id])
 }
 
 model ConfiguracionIpc {

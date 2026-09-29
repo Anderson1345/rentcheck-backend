@@ -29,7 +29,11 @@ const SELECT_PARA_ESTADO_CUENTA = {
   canon_centavos: true,
   estado_pago: true,
   incrementos_ipc: {
-    select: { fecha_aplicacion: true, canon_nuevo_centavos: true },
+    select: {
+      fecha_aplicacion: true,
+      canon_anterior_centavos: true,
+      canon_nuevo_centavos: true,
+    },
   },
   pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
 } as const satisfies Prisma.ContratoSelect;
@@ -111,7 +115,11 @@ export class PagoService {
       include: {
         unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
         incrementos_ipc: {
-          select: { fecha_aplicacion: true, canon_nuevo_centavos: true },
+          select: {
+            fecha_aplicacion: true,
+            canon_anterior_centavos: true,
+            canon_nuevo_centavos: true,
+          },
         },
         pagos: {
           select: { periodo: true, estado: true, monto_centavos: true },

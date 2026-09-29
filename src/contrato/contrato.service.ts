@@ -11,17 +11,26 @@ import {
   Prisma,
   RolSolicitante,
   TipoPlantillaContrato,
+  TipoProrroga,
 } from '@prisma/client';
 import { randomInt } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { calcularCanonNuevo } from '../common/canon-incremento.util';
 import {
   calcularEstadoCuenta,
   construirRespuestaEstadoCuenta,
 } from '../common/estado-cuenta.util';
+import {
+  mesesDeTermino,
+  sumarDiasUTC,
+  sumarMesesUTC,
+} from '../common/fechas-contrato.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
+import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
 import { construirTextoContrato } from './plantillas-contrato';
 
 const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
@@ -30,7 +39,11 @@ const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
   dia_pago: true,
   canon_centavos: true,
   incrementos_ipc: {
-    select: { fecha_aplicacion: true, canon_nuevo_centavos: true },
+    select: {
+      fecha_aplicacion: true,
+      canon_anterior_centavos: true,
+      canon_nuevo_centavos: true,
+    },
   },
   pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
 } as const satisfies Prisma.ContratoSelect;
@@ -240,99 +253,218 @@ export class ContratoService {
     return construirRespuestaEstadoCuenta(periodos);
   }
 
-  async renovar(id: string, arrendadorId: string) {
-    const contrato = await this.prisma.contrato.findFirst({
-      where: {
-        id,
-        unidad: {
-          inmueble: { arrendador_id: arrendadorId },
+  /**
+   * Aplica un incremento de canon (Ley 820, art. 20): solo cada 12 meses, con
+   * el IPC del año calendario anterior. No cambia `fecha_fin` ni toca el PDF.
+   */
+  async aplicarIncremento(
+    id: string,
+    arrendadorId: string,
+    dto: AplicarIncrementoDto,
+  ) {
+    const hoy = hoyEnBogota();
+
+    return this.prisma.$transaction(async (tx) => {
+      const contrato = await tx.contrato.findFirst({
+        where: { id, unidad: { inmueble: { arrendador_id: arrendadorId } } },
+        select: {
+          id: true,
+          estado: true,
+          tipo_plantilla: true,
+          canon_centavos: true,
+          fecha_inicio: true,
+          incrementos_ipc: {
+            select: { fecha_aplicacion: true },
+            orderBy: { fecha_aplicacion: 'desc' },
+            take: 1,
+          },
         },
-      },
-      select: SELECT_CONTRATO_PARA_PDF,
-    });
-
-    if (!contrato) {
-      throw new NotFoundException('Contrato no encontrado.');
-    }
-
-    if (contrato.estado !== EstadoContrato.ACTIVO) {
-      throw new ConflictException(
-        'No se puede renovar un contrato que no está activo.',
-      );
-    }
-
-    const configuracionIpc = await this.prisma.configuracionIpc.findFirst({
-      orderBy: [{ anio: 'desc' }, { actualizadoEn: 'desc' }],
-    });
-    if (!configuracionIpc) {
-      throw new InternalServerErrorException(
-        'No hay un valor de IPC configurado para renovar el contrato.',
-      );
-    }
-
-    const porcentajeIpc = configuracionIpc.porcentaje.toNumber();
-    const canonNuevo = Math.round(
-      contrato.canon_centavos + (contrato.canon_centavos * porcentajeIpc) / 100,
-    );
-    const nuevaFechaFin = new Date(contrato.fecha_fin);
-    nuevaFechaFin.setFullYear(nuevaFechaFin.getFullYear() + 1);
-    const fechaAplicacion = new Date();
-
-    const [contratoActualizado, incrementoIpc] = await this.prisma.$transaction(
-      [
-        this.prisma.contrato.update({
-          where: { id: contrato.id },
-          data: {
-            canon_centavos: canonNuevo,
-            fecha_fin: nuevaFechaFin,
-          },
-        }),
-        this.prisma.incrementoIPC.create({
-          data: {
-            contrato_id: contrato.id,
-            canon_anterior_centavos: contrato.canon_centavos,
-            canon_nuevo_centavos: canonNuevo,
-            porcentaje_ipc_aplicado: configuracionIpc.porcentaje,
-            fecha_aplicacion: fechaAplicacion,
-          },
-        }),
-      ],
-    );
-
-    let contratoConPdf = contratoActualizado;
-    const pdfContratoRuta = `contratos/${contrato.id}/contrato.pdf`;
-    let archivoSubido = false;
-    try {
-      const bufferPdf = await this.generarPdfContrato({
-        ...contrato,
-        canon_centavos: canonNuevo,
-        fecha_fin: nuevaFechaFin,
       });
-      await this.almacenamiento.subirArchivo(
-        bufferPdf,
-        pdfContratoRuta,
-        'application/pdf',
-        true,
-      );
-      archivoSubido = true;
-      contratoConPdf = await this.prisma.contrato.update({
-        where: { id: contrato.id },
-        data: { pdf_contrato_ruta: pdfContratoRuta },
-      });
-    } catch (error) {
-      if (archivoSubido) {
-        await this.eliminarPdfContrato(pdfContratoRuta);
+
+      if (!contrato) {
+        throw new NotFoundException('Contrato no encontrado.');
       }
-      this.logger.error(
-        `No fue posible regenerar o guardar el PDF del contrato ${contrato.id}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
+      if (contrato.estado !== EstadoContrato.ACTIVO) {
+        throw new ConflictException({
+          codigo: 'CONTRATO_NO_ACTIVO',
+          mensaje: 'El contrato no está activo.',
+        });
+      }
 
-    return {
-      contrato: await this.exponerUrlFirmada(contratoConPdf),
-      incremento_ipc: incrementoIpc,
-    };
+      const referencia =
+        contrato.incrementos_ipc[0]?.fecha_aplicacion ?? contrato.fecha_inicio;
+      const puedeDesde = sumarMesesUTC(referencia, 12);
+      if (hoy.getTime() < puedeDesde.getTime()) {
+        throw new ConflictException({
+          codigo: 'INCREMENTO_ANTES_DE_12_MESES',
+          mensaje:
+            'Solo se puede aplicar un incremento cuando pasaron 12 meses desde el último incremento o desde el inicio del contrato.',
+          detalles: {
+            puede_aplicarse_desde: puedeDesde.toISOString().slice(0, 10),
+          },
+        });
+      }
+
+      const anioIpc = hoy.getUTCFullYear() - 1;
+      const ipc = await tx.configuracionIpc.findUnique({
+        where: { anio: anioIpc },
+      });
+      if (!ipc) {
+        throw new ConflictException({
+          codigo: 'IPC_NO_CONFIGURADO',
+          mensaje: `No hay un IPC configurado para el año ${anioIpc}.`,
+          detalles: { anio: anioIpc },
+        });
+      }
+
+      const ipcPorcentaje = ipc.porcentaje.toNumber();
+      const porcentaje = dto.porcentaje ?? ipcPorcentaje;
+      if (
+        contrato.tipo_plantilla ===
+          TipoPlantillaContrato.VIVIENDA_URBANA_LEY_820 &&
+        porcentaje > ipcPorcentaje
+      ) {
+        throw new BadRequestException({
+          codigo: 'PORCENTAJE_SUPERIOR_AL_IPC',
+          mensaje:
+            'En vivienda urbana el incremento no puede superar el IPC del año calendario anterior (Ley 820 de 2003, art. 20).',
+          detalles: { ipc_referencia_porcentaje: ipcPorcentaje },
+        });
+      }
+
+      const canonNuevo = calcularCanonNuevo(
+        contrato.canon_centavos,
+        porcentaje,
+      );
+
+      const resultado = await tx.contrato.updateMany({
+        where: {
+          id,
+          estado: EstadoContrato.ACTIVO,
+          canon_centavos: contrato.canon_centavos,
+        },
+        data: { canon_centavos: canonNuevo },
+      });
+      if (resultado.count === 0) {
+        throw new ConflictException({
+          codigo: 'INCREMENTO_YA_APLICADO',
+          mensaje: 'Otra petición ya aplicó un incremento a este contrato.',
+        });
+      }
+
+      const incremento = await tx.incrementoIPC.create({
+        data: {
+          contrato_id: id,
+          fecha_aplicacion: hoy,
+          canon_anterior_centavos: contrato.canon_centavos,
+          canon_nuevo_centavos: canonNuevo,
+          porcentaje_ipc_aplicado: porcentaje,
+          ipc_referencia_anio: anioIpc,
+          ipc_referencia_porcentaje: ipc.porcentaje,
+        },
+      });
+
+      return {
+        contrato: await tx.contrato.findUniqueOrThrow({
+          where: { id },
+          omit: { pdf_contrato_ruta: true },
+        }),
+        incremento_ipc: incremento,
+      };
+    });
+  }
+
+  /**
+   * Prórroga manual (Ley 820, art. 6): solo dentro de los 90 días previos al
+   * vencimiento. Alarga `fecha_fin`, no cambia el canon ni toca el PDF.
+   */
+  async prorrogar(id: string, arrendadorId: string, dto: ProrrogarContratoDto) {
+    const hoy = hoyEnBogota();
+
+    return this.prisma.$transaction(async (tx) => {
+      const contrato = await tx.contrato.findFirst({
+        where: { id, unidad: { inmueble: { arrendador_id: arrendadorId } } },
+        select: {
+          id: true,
+          estado: true,
+          fecha_inicio: true,
+          fecha_fin: true,
+          prorrogas: {
+            select: { fecha_fin_anterior: true },
+            orderBy: [{ fecha_aplicacion: 'asc' }, { creado_en: 'asc' }],
+            take: 1,
+          },
+        },
+      });
+
+      if (!contrato) {
+        throw new NotFoundException('Contrato no encontrado.');
+      }
+      if (contrato.estado !== EstadoContrato.ACTIVO) {
+        throw new ConflictException({
+          codigo: 'CONTRATO_NO_ACTIVO',
+          mensaje: 'El contrato no está activo.',
+        });
+      }
+
+      const ventanaDesde = sumarDiasUTC(contrato.fecha_fin, -90);
+      if (
+        hoy.getTime() < ventanaDesde.getTime() ||
+        hoy.getTime() > contrato.fecha_fin.getTime()
+      ) {
+        throw new ConflictException({
+          codigo: 'PRORROGA_FUERA_DE_VENTANA',
+          mensaje:
+            'La prórroga solo se puede hacer dentro de los 90 días previos al vencimiento del contrato.',
+          detalles: {
+            puede_prorrogarse_desde: ventanaDesde.toISOString().slice(0, 10),
+            puede_prorrogarse_hasta: contrato.fecha_fin
+              .toISOString()
+              .slice(0, 10),
+          },
+        });
+      }
+
+      const finOriginal =
+        contrato.prorrogas[0]?.fecha_fin_anterior ?? contrato.fecha_fin;
+      const meses =
+        dto.meses ?? mesesDeTermino(contrato.fecha_inicio, finOriginal);
+      const fechaFinNueva = sumarMesesUTC(contrato.fecha_fin, meses);
+
+      const resultado = await tx.contrato.updateMany({
+        where: {
+          id,
+          estado: EstadoContrato.ACTIVO,
+          fecha_fin: contrato.fecha_fin,
+        },
+        data: { fecha_fin: fechaFinNueva },
+      });
+      if (resultado.count === 0) {
+        throw new ConflictException({
+          codigo: 'PRORROGA_YA_APLICADA',
+          mensaje: 'Otra petición ya prorrogó este contrato.',
+        });
+      }
+
+      const prorroga = await tx.prorroga.create({
+        data: {
+          contrato_id: id,
+          fecha_aplicacion: hoy,
+          fecha_fin_anterior: contrato.fecha_fin,
+          fecha_fin_nueva: fechaFinNueva,
+          meses,
+          tipo: TipoProrroga.MANUAL,
+        },
+      });
+
+      return {
+        contrato: await tx.contrato.findUniqueOrThrow({
+          where: { id },
+          omit: { pdf_contrato_ruta: true },
+        }),
+        prorroga,
+      };
+    });
   }
 
   async regenerarCodigo(id: string, arrendadorId: string) {

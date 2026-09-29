@@ -88,16 +88,17 @@ describe('calcularEstadoCuenta', () => {
     expect(periodoEnero.monto_aprobado_centavos).toBe(400_000);
   });
 
-  it('incremento a mitad de año: los períodos antes del incremento usan el canon base y los posteriores el nuevo', () => {
+  it('incremento a mitad de año: los períodos antes del incremento usan el canon anterior y los posteriores el nuevo', () => {
     const contrato: DatosContratoParaEstadoCuenta = {
       fecha_inicio: new Date(Date.UTC(2026, 0, 5)), // 2026-01-05
       fecha_fin: new Date(Date.UTC(2027, 0, 4)),
       dia_pago: 5,
-      canon_centavos: 1_000_000,
+      canon_centavos: 1_100_000, // canon vigente hoy (ya con el incremento)
     };
     const incrementos: DatosIncrementoParaEstadoCuenta[] = [
       {
         fecha_aplicacion: new Date(Date.UTC(2026, 5, 5)), // 2026-06-05, justo la fecha límite de junio
+        canon_anterior_centavos: 1_000_000,
         canon_nuevo_centavos: 1_100_000,
       },
     ];
@@ -143,21 +144,24 @@ describe('calcularEstadoCuenta', () => {
       fecha_inicio: new Date(Date.UTC(2026, 0, 1)), // 2026-01-01
       fecha_fin: new Date(Date.UTC(2027, 0, 1)),
       dia_pago: 1,
-      canon_centavos: 1_000_000,
+      canon_centavos: 1_300_000, // canon vigente hoy (tras el incremento de julio)
     };
     // Orden deliberadamente desordenado: ni el primero ni el último del
     // arreglo son el "más reciente aplicable" en todos los casos.
     const incrementos: DatosIncrementoParaEstadoCuenta[] = [
       {
         fecha_aplicacion: new Date(Date.UTC(2026, 6, 1)), // julio
+        canon_anterior_centavos: 1_200_000,
         canon_nuevo_centavos: 1_300_000,
       },
       {
         fecha_aplicacion: new Date(Date.UTC(2026, 4, 1)), // mayo
+        canon_anterior_centavos: 1_100_000,
         canon_nuevo_centavos: 1_200_000,
       },
       {
         fecha_aplicacion: new Date(Date.UTC(2026, 2, 1)), // marzo
+        canon_anterior_centavos: 1_000_000,
         canon_nuevo_centavos: 1_100_000,
       },
     ];
@@ -216,6 +220,112 @@ describe('calcularEstadoCuenta', () => {
     const periodos = calcularEstadoCuenta(contrato, [], [], hoy);
 
     expect(periodos).toHaveLength(1);
+  });
+});
+
+describe('calcularEstadoCuenta: canon vigente por período (B-49)', () => {
+  // dia_pago = 1: las fechas límite son 1-ene, 1-feb, 1-mar, ...
+  function contrato(canonVigenteHoy: number): DatosContratoParaEstadoCuenta {
+    return {
+      fecha_inicio: new Date(Date.UTC(2026, 0, 1)),
+      fecha_fin: new Date(Date.UTC(2027, 0, 1)),
+      dia_pago: 1,
+      canon_centavos: canonVigenteHoy,
+    };
+  }
+  const hoy = new Date(Date.UTC(2026, 5, 15)); // 2026-06-15 → 7 períodos (límites 1-ene .. 1-jul)
+
+  function canones(
+    canonVigenteHoy: number,
+    incrementos: DatosIncrementoParaEstadoCuenta[],
+  ): number[] {
+    return calcularEstadoCuenta(
+      contrato(canonVigenteHoy),
+      incrementos,
+      [],
+      hoy,
+    ).map((periodo) => periodo.canon_vigente_centavos);
+  }
+
+  it('sin incrementos: todos los períodos usan el canon del contrato', () => {
+    expect(canones(1_000_000, [])).toEqual([
+      1_000_000, 1_000_000, 1_000_000, 1_000_000, 1_000_000, 1_000_000,
+      1_000_000,
+    ]);
+  });
+
+  it('un incremento: antes usa el canon anterior; desde su fecha, el nuevo', () => {
+    const incrementos: DatosIncrementoParaEstadoCuenta[] = [
+      {
+        fecha_aplicacion: new Date(Date.UTC(2026, 3, 1)), // = fecha límite de abril
+        canon_anterior_centavos: 1_000_000,
+        canon_nuevo_centavos: 1_100_000,
+      },
+    ];
+    expect(canones(1_100_000, incrementos)).toEqual([
+      1_000_000, 1_000_000, 1_000_000, 1_100_000, 1_100_000, 1_100_000,
+      1_100_000,
+    ]);
+  });
+
+  it('dos incrementos: cada período toma el canon que regía en su fecha límite', () => {
+    const incrementos: DatosIncrementoParaEstadoCuenta[] = [
+      {
+        fecha_aplicacion: new Date(Date.UTC(2026, 1, 15)),
+        canon_anterior_centavos: 1_000_000,
+        canon_nuevo_centavos: 1_100_000,
+      },
+      {
+        fecha_aplicacion: new Date(Date.UTC(2026, 4, 1)),
+        canon_anterior_centavos: 1_100_000,
+        canon_nuevo_centavos: 1_210_000,
+      },
+    ];
+    // límites: 1-ene, 1-feb, 1-mar, 1-abr, 1-may, 1-jun, 1-jul
+    expect(canones(1_210_000, incrementos)).toEqual([
+      1_000_000, 1_000_000, 1_100_000, 1_100_000, 1_210_000, 1_210_000,
+      1_210_000,
+    ]);
+  });
+
+  it('período anterior al primer incremento: usa canon_anterior del primero, no el canon vigente del contrato', () => {
+    const incrementos: DatosIncrementoParaEstadoCuenta[] = [
+      {
+        fecha_aplicacion: new Date(Date.UTC(2026, 5, 10)), // 10-jun
+        canon_anterior_centavos: 900_000,
+        canon_nuevo_centavos: 990_000,
+      },
+    ];
+    // límites 1-ene..1-jun son anteriores al incremento (10-jun); 1-jul ya no.
+    expect(canones(990_000, incrementos)).toEqual([
+      900_000, 900_000, 900_000, 900_000, 900_000, 900_000, 990_000,
+    ]);
+  });
+
+  it('un período pagado por el canon original sigue PAGADO tras un incremento posterior', () => {
+    const incrementos: DatosIncrementoParaEstadoCuenta[] = [
+      {
+        fecha_aplicacion: new Date(Date.UTC(2026, 5, 10)),
+        canon_anterior_centavos: 1_000_000,
+        canon_nuevo_centavos: 1_100_000,
+      },
+    ];
+    const pagos: DatosPagoParaEstadoCuenta[] = [
+      {
+        periodo: new Date(Date.UTC(2026, 0, 1)),
+        estado: 'APROBADO',
+        monto_centavos: 1_000_000,
+      },
+    ];
+
+    const periodos = calcularEstadoCuenta(
+      contrato(1_100_000),
+      incrementos,
+      pagos,
+      hoy,
+    );
+
+    expect(periodos[0].estado).toBe('PAGADO');
   });
 });
 

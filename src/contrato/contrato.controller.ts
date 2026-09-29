@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -23,7 +24,9 @@ import {
 } from '../auth/auth.module';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ContratoService } from './contrato.service';
+import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
+import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
 import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
 
 @ApiTags('Contratos')
@@ -84,24 +87,57 @@ export class ContratoController {
     return estadoCuenta;
   }
 
-  @Post(':id/renovar')
+  @Post(':id/aplicar-incremento')
   @ApiOperation({
-    summary: 'Renovar un contrato activo aplicando el IPC vigente',
+    summary: 'Aplicar el incremento anual del canon',
+    description:
+      'Solo si pasaron 12 meses desde el último incremento (o desde el inicio). Usa el IPC del año calendario anterior; en vivienda el porcentaje no puede superarlo. No cambia la fecha de fin ni el PDF.',
   })
-  @ApiOkResponse({
-    description: 'Contrato renovado e incremento IPC registrado exitosamente.',
+  @ApiCreatedResponse({
+    description: 'Contrato con el canon nuevo e incremento registrado.',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'PORCENTAJE_SUPERIOR_AL_IPC (vivienda) o cuerpo inválido (VALIDACION).',
   })
   @ApiNotFoundResponse({
     description: 'Contrato no encontrado o no pertenece al arrendador.',
   })
   @ApiConflictResponse({
-    description: 'El contrato no está activo y no puede renovarse.',
+    description:
+      'CONTRATO_NO_ACTIVO, INCREMENTO_ANTES_DE_12_MESES, IPC_NO_CONFIGURADO o INCREMENTO_YA_APLICADO.',
   })
-  renovar(
+  aplicarIncremento(
     @Param('id', ParseIdPipe) id: string,
+    @Body() dto: AplicarIncrementoDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
-    return this.contratoService.renovar(id, arrendadorId);
+    return this.contratoService.aplicarIncremento(id, arrendadorId, dto);
+  }
+
+  @Post(':id/prorrogar')
+  @ApiOperation({
+    summary: 'Prorrogar el contrato',
+    description:
+      'Solo dentro de los 90 días previos al vencimiento. Alarga la fecha de fin (por defecto, por el término inicial) sin cambiar el canon ni el PDF, y registra la prórroga.',
+  })
+  @ApiCreatedResponse({
+    description: 'Contrato con la nueva fecha de fin y prórroga registrada.',
+  })
+  @ApiBadRequestResponse({ description: 'Cuerpo inválido (VALIDACION).' })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description:
+      'CONTRATO_NO_ACTIVO, PRORROGA_FUERA_DE_VENTANA o PRORROGA_YA_APLICADA.',
+  })
+  prorrogar(
+    @Param('id', ParseIdPipe) id: string,
+    @Body() dto: ProrrogarContratoDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.contratoService.prorrogar(id, arrendadorId, dto);
   }
 
   @Post(':id/regenerar-codigo')

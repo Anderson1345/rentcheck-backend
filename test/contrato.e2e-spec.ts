@@ -14,15 +14,6 @@ import {
 } from './helpers/crear-datos.helper';
 import { limpiarBd } from './helpers/limpiar-bd';
 
-interface RespuestaRenovarContrato {
-  contrato: { canon_centavos: number; fecha_fin: string };
-  incremento_ipc: {
-    canon_anterior_centavos: number;
-    canon_nuevo_centavos: number;
-    porcentaje_ipc_aplicado: number | string;
-  };
-}
-
 interface ContratoListado {
   id: string;
 }
@@ -162,7 +153,7 @@ describe('ContratoController (e2e)', () => {
       .expect(HttpStatus.NOT_FOUND);
 
     await request(app.getHttpServer())
-      .post(`/contratos/${contrato.id}/renovar`)
+      .post(`/contratos/${contrato.id}/aplicar-incremento`)
       .set('Authorization', `Bearer ${arrendadorB.access_token}`)
       .expect(HttpStatus.NOT_FOUND);
 
@@ -229,38 +220,6 @@ describe('ContratoController (e2e)', () => {
     );
     expect(ids).toHaveLength(2);
     expect(ids).toEqual(expect.arrayContaining([contratoA1.id, contratoA2.id]));
-  });
-
-  it('renueva un contrato activo aplicando el IPC configurado', async () => {
-    const { access_token } = await registrarArrendador(
-      app,
-      'Arrendador A',
-      'ipc@correo.com',
-    );
-    const inmueble = await crearInmueble(app, access_token);
-    const inquilino = await crearInquilino(app, access_token);
-    const contrato = await crearContrato(
-      app,
-      access_token,
-      inmueble.unidades[0].id,
-      inquilino.id,
-    );
-
-    await prisma.configuracionIpc.create({
-      data: { porcentaje: 10, anio: new Date().getFullYear() },
-    });
-
-    const respuesta = await request(app.getHttpServer())
-      .post(`/contratos/${contrato.id}/renovar`)
-      .set('Authorization', `Bearer ${access_token}`)
-      .expect(HttpStatus.CREATED);
-
-    const resultado = respuesta.body as RespuestaRenovarContrato;
-    expect(resultado.contrato.canon_centavos).toBe(1100000);
-    expect(resultado.contrato.fecha_fin).toContain('2027-12-31');
-    expect(resultado.incremento_ipc.canon_anterior_centavos).toBe(1000000);
-    expect(resultado.incremento_ipc.canon_nuevo_centavos).toBe(1100000);
-    expect(String(resultado.incremento_ipc.porcentaje_ipc_aplicado)).toBe('10');
   });
 
   it('rechaza con 409 un segundo contrato activo en la misma unidad', async () => {

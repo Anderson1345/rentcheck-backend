@@ -15,6 +15,7 @@ import { hoyEnBogota } from '../common/hoy-bogota.util';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
   fecha_aplicacion: true,
+  canon_anterior_centavos: true,
   canon_nuevo_centavos: true,
 } as const;
 
