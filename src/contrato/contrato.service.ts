@@ -14,7 +14,6 @@ import {
   TipoProrroga,
 } from '@prisma/client';
 import { randomInt } from 'crypto';
-import PDFDocument from 'pdfkit';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularCanonNuevo } from '../common/canon-incremento.util';
@@ -31,7 +30,7 @@ import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
-import { construirTextoContrato } from './plantillas-contrato';
+import { DocumentoContratoService } from './documento-contrato.service';
 
 const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
   fecha_inicio: true,
@@ -64,38 +63,6 @@ const SELECT_INQUILINO_RESUMEN = {
   telefono: true,
 } as const satisfies Prisma.InquilinoSelect;
 
-const SELECT_ARRENDADOR_RESUMEN_PDF = {
-  nombre: true,
-  cedula: true,
-} as const satisfies Prisma.ArrendadorSelect;
-
-const SELECT_CONTRATO_PARA_PDF = {
-  id: true,
-  estado: true,
-  tipo_plantilla: true,
-  canon_centavos: true,
-  deposito_centavos: true,
-  dia_pago: true,
-  forma_pago: true,
-  datos_recaudo: true,
-  datos_fiador_o_poliza: true,
-  condicionesParticularesTexto: true,
-  fecha_inicio: true,
-  fecha_fin: true,
-  unidad: {
-    select: {
-      nombre: true,
-      inmueble: { select: { direccion: true, ciudad: true } },
-    },
-  },
-  inquilino: { select: { nombre: true, cedula: true } },
-  arrendador: { select: SELECT_ARRENDADOR_RESUMEN_PDF },
-} as const satisfies Prisma.ContratoSelect;
-
-type ContratoParaPdf = Prisma.ContratoGetPayload<{
-  select: typeof SELECT_CONTRATO_PARA_PDF;
-}>;
-
 @Injectable()
 export class ContratoService {
   private readonly logger = new Logger(ContratoService.name);
@@ -103,30 +70,8 @@ export class ContratoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
+    private readonly documentos: DocumentoContratoService,
   ) {}
-
-  private generarPdfContrato(contrato: ContratoParaPdf): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const documento = new PDFDocument();
-      const fragmentos: Buffer[] = [];
-
-      documento.on('data', (fragmento: Buffer) => fragmentos.push(fragmento));
-      documento.on('end', () => resolve(Buffer.concat(fragmentos)));
-      documento.on('error', reject);
-
-      documento.fontSize(11);
-      documento.text(construirTextoContrato(contrato));
-      documento.end();
-    });
-  }
-
-  private async eliminarPdfContrato(ruta: string): Promise<void> {
-    try {
-      await this.almacenamiento.eliminarArchivo(ruta);
-    } catch {
-      // La limpieza no debe ocultar el error original de la transacción.
-    }
-  }
 
   private async exponerUrlFirmada<
     T extends { pdf_contrato_ruta: string | null },
@@ -255,7 +200,9 @@ export class ContratoService {
 
   /**
    * Aplica un incremento de canon (Ley 820, art. 20): solo cada 12 meses, con
-   * el IPC del año calendario anterior. No cambia `fecha_fin` ni toca el PDF.
+   * el IPC del año calendario anterior. No cambia `fecha_fin`. Una vez
+   * confirmado, genera el otrosí de incremento (si falla, el incremento queda
+   * aplicado y el documento pendiente de regeneración).
    */
   async aplicarIncremento(
     id: string,
@@ -264,7 +211,7 @@ export class ContratoService {
   ) {
     const hoy = hoyEnBogota();
 
-    return this.prisma.$transaction(async (tx) => {
+    const resultado = await this.prisma.$transaction(async (tx) => {
       const contrato = await tx.contrato.findFirst({
         where: { id, unidad: { inmueble: { arrendador_id: arrendadorId } } },
         select: {
@@ -372,16 +319,21 @@ export class ContratoService {
         incremento_ipc: incremento,
       };
     });
+
+    await this.documentos.generarSinPropagarErrores(id);
+    return resultado;
   }
 
   /**
    * Prórroga manual (Ley 820, art. 6): solo dentro de los 90 días previos al
-   * vencimiento. Alarga `fecha_fin`, no cambia el canon ni toca el PDF.
+   * vencimiento. Alarga `fecha_fin` y no cambia el canon. Una vez confirmada,
+   * genera el otrosí de prórroga (si falla, la prórroga queda aplicada y el
+   * documento pendiente de regeneración).
    */
   async prorrogar(id: string, arrendadorId: string, dto: ProrrogarContratoDto) {
     const hoy = hoyEnBogota();
 
-    return this.prisma.$transaction(async (tx) => {
+    const resultado = await this.prisma.$transaction(async (tx) => {
       const contrato = await tx.contrato.findFirst({
         where: { id, unidad: { inmueble: { arrendador_id: arrendadorId } } },
         select: {
@@ -465,6 +417,9 @@ export class ContratoService {
         prorroga,
       };
     });
+
+    await this.documentos.generarSinPropagarErrores(id);
+    return resultado;
   }
 
   async regenerarCodigo(id: string, arrendadorId: string) {
@@ -626,61 +581,22 @@ export class ContratoService {
       );
     }
 
-    const pdfContratoRuta = `contratos/${contratoConfirmado.id}/contrato.pdf`;
-    let archivoSubido = false;
-    try {
-      const contratoParaPdf = await this.prisma.contrato.findUniqueOrThrow({
+    // El contrato ya está confirmado: si el PDF falla no se pierde el contrato
+    // y el original se puede generar luego con POST /contratos/:id/documentos/regenerar.
+    await this.documentos.generarSinPropagarErrores(contratoConfirmado.id);
+
+    return this.exponerUrlFirmada(
+      await this.prisma.contrato.findUniqueOrThrow({
         where: { id: contratoConfirmado.id },
-        select: SELECT_CONTRATO_PARA_PDF,
-      });
-
-      const bufferPdf = await this.generarPdfContrato(contratoParaPdf);
-      await this.almacenamiento.subirArchivo(
-        bufferPdf,
-        pdfContratoRuta,
-        'application/pdf',
-        true,
-      );
-      archivoSubido = true;
-
-      await this.prisma.contrato.update({
-        where: { id: contratoConfirmado.id },
-        data: { pdf_contrato_ruta: pdfContratoRuta },
-      });
-
-      return this.exponerUrlFirmada(
-        await this.prisma.contrato.findUniqueOrThrow({
-          where: { id: contratoConfirmado.id },
-          include: {
-            codigo_acceso: true,
-            unidad: {
-              include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
-            },
-            inquilino: { select: SELECT_INQUILINO_RESUMEN },
+        include: {
+          codigo_acceso: true,
+          unidad: {
+            include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
           },
-        }),
-      );
-    } catch (error) {
-      if (archivoSubido) {
-        await this.eliminarPdfContrato(pdfContratoRuta);
-      }
-      this.logger.error(
-        `No fue posible generar o guardar el PDF del contrato ${contratoConfirmado.id}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-      return this.exponerUrlFirmada(
-        await this.prisma.contrato.findUniqueOrThrow({
-          where: { id: contratoConfirmado.id },
-          include: {
-            codigo_acceso: true,
-            unidad: {
-              include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
-            },
-            inquilino: { select: SELECT_INQUILINO_RESUMEN },
-          },
-        }),
-      );
-    }
+          inquilino: { select: SELECT_INQUILINO_RESUMEN },
+        },
+      }),
+    );
   }
 
   async solicitarTerminacionAnticipada(

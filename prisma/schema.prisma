@@ -138,6 +138,7 @@ model Contrato {
   condicionesParticularesTexto String? @db.Text
   fecha_inicio          DateTime              @db.Date
   fecha_fin             DateTime              @db.Date
+  /// DEPRECADO: ruta del contrato original (v1). La fuente de verdad es DocumentoContrato; se elimina en B0.4-B.
   pdf_contrato_ruta     String?
   estado                EstadoContrato
   estado_pago           EstadoPagoContrato @default(PENDIENTE)
@@ -149,6 +150,7 @@ model Contrato {
   terminacionAnticipadaConfirmadaEn  DateTime?
   incrementos_ipc       IncrementoIPC[]
   prorrogas             Prorroga[]
+  documentos            DocumentoContrato[]
   codigo_acceso         CodigoAcceso?
   pagos                 Pago[]
   fotos_inventario      FotoInventario[]
@@ -167,6 +169,7 @@ model IncrementoIPC {
   ipc_referencia_anio        Int?
   ipc_referencia_porcentaje  Decimal?
   creado_en                DateTime  @default(now())
+  documento                DocumentoContrato?
 }
 
 enum TipoProrroga {
@@ -184,8 +187,37 @@ model Prorroga {
   meses              Int
   tipo               TipoProrroga
   creado_en          DateTime     @default(now())
+  documento          DocumentoContrato?
 
   @@index([contrato_id])
+}
+
+enum TipoDocumentoContrato {
+  CONTRATO_ORIGINAL
+  OTROSI_INCREMENTO
+  OTROSI_PRORROGA
+}
+
+/// Historial inmutable de documentos legales de un contrato: el original y un
+/// otrosí por cada incremento y cada prórroga. Nunca se sobrescribe ni se borra.
+model DocumentoContrato {
+  id            String                @id @default(uuid()) @db.Uuid
+  contrato_id   String                @db.Uuid
+  contrato      Contrato              @relation(fields: [contrato_id], references: [id], onDelete: Restrict)
+  tipo          TipoDocumentoContrato
+  version       Int
+  ruta          String
+  /// Nulo solo en documentos heredados (anteriores a B0.3-B).
+  hash_sha256   String?
+  incremento_id String?               @db.Uuid
+  incremento    IncrementoIPC?        @relation(fields: [incremento_id], references: [id], onDelete: Restrict)
+  prorroga_id   String?               @db.Uuid
+  prorroga      Prorroga?             @relation(fields: [prorroga_id], references: [id], onDelete: Restrict)
+  generado_en   DateTime              @default(now())
+
+  @@unique([contrato_id, version])
+  @@unique([incremento_id])
+  @@unique([prorroga_id])
 }
 
 model ConfiguracionIpc {

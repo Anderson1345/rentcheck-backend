@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   EstadoContrato,
+  EstadoPago,
   Prisma,
   TipoDocumentoInmueble,
   TipoUnidad,
@@ -32,15 +33,33 @@ type InmuebleConUnidadesConUrl = Omit<
   'foto_portada_ruta'
 > & { foto_portada_url: string | null };
 
+const INCLUDE_INMUEBLE_PARA_DESCARGA = {
+  documentos: true,
+  unidades: {
+    select: {
+      contratos: {
+        select: {
+          id: true,
+          pdf_contrato_ruta: true,
+          documentos: {
+            orderBy: { version: 'asc' },
+            select: { tipo: true, version: true, ruta: true },
+          },
+          // Solo los comprobantes aprobados: los rechazados, reemplazados y
+          // pendientes no son evidencia de pago.
+          pagos: {
+            where: { estado: EstadoPago.APROBADO },
+            orderBy: { periodo: 'asc' },
+            select: { id: true, periodo: true, comprobante_ruta: true },
+          },
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.InmuebleInclude;
+
 type InmuebleConDocumentosParaDescarga = Prisma.InmuebleGetPayload<{
-  include: {
-    documentos: true;
-    unidades: {
-      include: {
-        contratos: { include: { pagos: true } };
-      };
-    };
-  };
+  include: typeof INCLUDE_INMUEBLE_PARA_DESCARGA;
 }>;
 
 type DocumentoInmuebleConUrl = Omit<
@@ -560,6 +579,7 @@ export class InmuebleService {
     const agregarArchivo = async (
       ruta: string | null | undefined,
       carpeta: string,
+      nombre: string | null = null,
     ) => {
       if (!ruta) {
         return;
@@ -572,14 +592,14 @@ export class InmuebleService {
           return;
         }
         archivo.file(rutaAbsoluta, {
-          name: `${carpeta}/${basename(ruta)}`,
+          name: `${carpeta}/${nombre ?? basename(ruta)}`,
         });
         return;
       }
       try {
         const buffer = await this.almacenamiento.descargarArchivo(ruta);
         archivo.append(buffer, {
-          name: `${carpeta}/${basename(ruta)}`,
+          name: `${carpeta}/${nombre ?? basename(ruta)}`,
         });
       } catch {
         archivosFallidos.push(ruta);
@@ -591,9 +611,28 @@ export class InmuebleService {
     }
     for (const unidad of inmueble.unidades) {
       for (const contrato of unidad.contratos) {
-        await agregarArchivo(contrato.pdf_contrato_ruta, 'contratos');
+        const contratoCorto = contrato.id.slice(0, 8);
+        const carpetaContrato = `contratos/${contratoCorto}`;
+        // Todas las versiones: el original y cada otrosí.
+        for (const documento of contrato.documentos) {
+          await agregarArchivo(
+            documento.ruta,
+            carpetaContrato,
+            `v${documento.version}-${documento.tipo}.pdf`,
+          );
+        }
+        // Contrato sin historial de documentos: se conserva la ruta heredada.
+        if (contrato.documentos.length === 0) {
+          await agregarArchivo(contrato.pdf_contrato_ruta, carpetaContrato);
+        }
+        // El nombre lleva período e id del pago para que dos comprobantes
+        // con el mismo nombre de archivo no se pisen.
         for (const pago of contrato.pagos) {
-          await agregarArchivo(pago.comprobante_ruta, 'comprobantes');
+          await agregarArchivo(
+            pago.comprobante_ruta,
+            'comprobantes',
+            `${pago.periodo.toISOString().slice(0, 10)}-${pago.id.slice(0, 8)}-${basename(pago.comprobante_ruta ?? '')}`,
+          );
         }
       }
     }
@@ -627,14 +666,7 @@ export class InmuebleService {
   ): Promise<InmuebleConDocumentosParaDescarga | null> {
     return this.prisma.inmueble.findFirst({
       where: { id, arrendador_id: arrendadorId },
-      include: {
-        documentos: true,
-        unidades: {
-          include: {
-            contratos: { include: { pagos: true } },
-          },
-        },
-      },
+      include: INCLUDE_INMUEBLE_PARA_DESCARGA,
     });
   }
 

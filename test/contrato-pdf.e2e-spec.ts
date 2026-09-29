@@ -86,7 +86,7 @@ describe('Contrato PDF (e2e)', () => {
     expect(contrato.pdf_contrato_url).toMatch(PATRON_URL_FIRMADA);
     expect(contrato.pdf_contrato_url).not.toContain('uploads/');
     expect(registro.pdf_contrato_ruta).toBe(
-      `contratos/${contrato.id}/contrato.pdf`,
+      `contratos/${contrato.id}/v1-CONTRATO_ORIGINAL.pdf`,
     );
 
     const buffer = await descargarUrlFirmada(

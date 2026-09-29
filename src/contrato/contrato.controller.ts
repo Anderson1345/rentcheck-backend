@@ -24,6 +24,7 @@ import {
 } from '../auth/auth.module';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ContratoService } from './contrato.service';
+import { DocumentoContratoService } from './documento-contrato.service';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
@@ -34,7 +35,10 @@ import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-a
 @UseGuards(JwtAuthGuard, ArrendadorGuard)
 @ApiBearerAuth()
 export class ContratoController {
-  constructor(private readonly contratoService: ContratoService) {}
+  constructor(
+    private readonly contratoService: ContratoService,
+    private readonly documentoContratoService: DocumentoContratoService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar contratos del arrendador autenticado' })
@@ -91,7 +95,7 @@ export class ContratoController {
   @ApiOperation({
     summary: 'Aplicar el incremento anual del canon',
     description:
-      'Solo si pasaron 12 meses desde el último incremento (o desde el inicio). Usa el IPC del año calendario anterior; en vivienda el porcentaje no puede superarlo. No cambia la fecha de fin ni el PDF.',
+      'Solo si pasaron 12 meses desde el último incremento (o desde el inicio). Usa el IPC del año calendario anterior; en vivienda el porcentaje no puede superarlo. No cambia la fecha de fin. Genera el otrosí de incremento (documento nuevo; el contrato original no se toca).',
   })
   @ApiCreatedResponse({
     description: 'Contrato con el canon nuevo e incremento registrado.',
@@ -119,7 +123,7 @@ export class ContratoController {
   @ApiOperation({
     summary: 'Prorrogar el contrato',
     description:
-      'Solo dentro de los 90 días previos al vencimiento. Alarga la fecha de fin (por defecto, por el término inicial) sin cambiar el canon ni el PDF, y registra la prórroga.',
+      'Solo dentro de los 90 días previos al vencimiento. Alarga la fecha de fin (por defecto, por el término inicial) sin cambiar el canon, registra la prórroga y genera el otrosí de prórroga (documento nuevo; el contrato original no se toca).',
   })
   @ApiCreatedResponse({
     description: 'Contrato con la nueva fecha de fin y prórroga registrada.',
@@ -138,6 +142,46 @@ export class ContratoController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.contratoService.prorrogar(id, arrendadorId, dto);
+  }
+
+  @Get(':id/documentos')
+  @ApiOperation({
+    summary: 'Listar las versiones de documentos del contrato',
+    description:
+      'Contrato original y un otrosí por cada incremento y prórroga, ordenados por versión, con hash SHA-256 (nulo solo en documentos heredados) y URL firmada temporal.',
+  })
+  @ApiOkResponse({
+    description:
+      'Lista de { id, tipo, version, generado_en, hash_sha256, url_firmada }.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  listarDocumentos(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.documentoContratoService.listar(id, arrendadorId);
+  }
+
+  @Post(':id/documentos/regenerar')
+  @ApiOperation({
+    summary: 'Generar los documentos del contrato que falten',
+    description:
+      'Idempotente. Genera solo lo que falta (el contrato original y un otrosí por cada incremento o prórroga sin documento); nunca sobrescribe ni borra documentos existentes. El original se reconstruye con los términos originales (canon y fecha de fin antes de incrementos y prórrogas).',
+  })
+  @ApiCreatedResponse({
+    description:
+      '{ generados: [{ tipo, version }], ya_existian: n }. Si un documento no puede generarse, 500 DOCUMENTO_NO_GENERADO con los ya generados en detalles.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  regenerarDocumentos(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.documentoContratoService.regenerar(id, arrendadorId);
   }
 
   @Post(':id/regenerar-codigo')

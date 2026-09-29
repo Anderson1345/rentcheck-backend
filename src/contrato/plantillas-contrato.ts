@@ -1,8 +1,17 @@
 import { TipoPlantillaContrato } from '@prisma/client';
+import { mesesDeTermino } from '../common/fechas-contrato.util';
+
+/**
+ * Términos que cambian con incrementos y prórrogas. El texto del contrato
+ * original se arma con los términos ORIGINALES; ver `terminosOriginales`.
+ */
+export interface TerminosContrato {
+  canon_centavos: number;
+  fecha_fin: Date;
+}
 
 export interface DatosContratoParaTexto {
   tipo_plantilla: TipoPlantillaContrato;
-  canon_centavos: number;
   deposito_centavos: number | null;
   dia_pago: number;
   forma_pago: string;
@@ -10,7 +19,6 @@ export interface DatosContratoParaTexto {
   datos_fiador_o_poliza: string | null;
   condicionesParticularesTexto: string | null;
   fecha_inicio: Date;
-  fecha_fin: Date;
   arrendador: { nombre: string; cedula: string | null };
   inquilino: { nombre: string; cedula: string };
   unidad: {
@@ -56,11 +64,11 @@ const PLANTILLA_VIVIENDA_URBANA_LEY_820: PlantillaBase = {
     },
     {
       titulo: 'CANON DE ARRENDAMIENTO',
-      texto: `El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado dentro de los primeros {{dia_pago}} días de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.`,
+      texto: `El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado, a más tardar el día {{dia_pago}} de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.`,
     },
     {
       titulo: 'TÉRMINO',
-      texto: `El presente contrato tendrá una duración de un (1) año, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}, prorrogable en los términos previstos por la Ley 820 de 2003.`,
+      texto: `El presente contrato tendrá una duración de {{duracion_en_meses}}, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}, prorrogable en los términos previstos por la Ley 820 de 2003.`,
     },
     {
       titulo: 'GARANTÍAS',
@@ -96,11 +104,11 @@ const PLANTILLA_LOCAL_COMERCIAL: PlantillaBase = {
     },
     {
       titulo: 'CANON DE ARRENDAMIENTO',
-      texto: `El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado dentro de los primeros {{dia_pago}} días de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.`,
+      texto: `El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado, a más tardar el día {{dia_pago}} de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.`,
     },
     {
       titulo: 'TÉRMINO',
-      texto: `El presente contrato tendrá una duración de un (1) año, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}.`,
+      texto: `El presente contrato tendrá una duración de {{duracion_en_meses}}, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}.`,
     },
     {
       titulo: 'DEPÓSITO',
@@ -136,11 +144,11 @@ const PLANTILLA_PARQUEADERO: PlantillaBase = {
     },
     {
       titulo: 'CANON DE ARRENDAMIENTO',
-      texto: `El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado dentro de los primeros {{dia_pago}} días de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.`,
+      texto: `El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado, a más tardar el día {{dia_pago}} de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.`,
     },
     {
       titulo: 'TÉRMINO',
-      texto: `El presente contrato tendrá una duración de un (1) año, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}.`,
+      texto: `El presente contrato tendrá una duración de {{duracion_en_meses}}, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}.`,
     },
     {
       titulo: 'DEPÓSITO',
@@ -191,18 +199,85 @@ function obtenerPlantillaBase(tipo: TipoPlantillaContrato): PlantillaBase {
   }
 }
 
-function formatearCentavosAPesos(centavos: number): string {
+export function formatearCentavosAPesos(centavos: number): string {
   return `$${(centavos / 100).toLocaleString('es-CO')}`;
 }
 
+const UNIDADES = [
+  '',
+  'un',
+  'dos',
+  'tres',
+  'cuatro',
+  'cinco',
+  'seis',
+  'siete',
+  'ocho',
+  'nueve',
+  'diez',
+  'once',
+  'doce',
+  'trece',
+  'catorce',
+  'quince',
+  'dieciséis',
+  'diecisiete',
+  'dieciocho',
+  'diecinueve',
+  'veinte',
+  'veintiún',
+  'veintidós',
+  'veintitrés',
+  'veinticuatro',
+  'veinticinco',
+  'veintiséis',
+  'veintisiete',
+  'veintiocho',
+  'veintinueve',
+];
+
+const DECENAS = [
+  '',
+  '',
+  '',
+  'treinta',
+  'cuarenta',
+  'cincuenta',
+  'sesenta',
+  'setenta',
+  'ochenta',
+  'noventa',
+];
+
+function numeroEnLetras(numero: number): string | null {
+  if (!Number.isInteger(numero) || numero < 1 || numero > 99) {
+    return null;
+  }
+  if (numero < 30) {
+    return UNIDADES[numero];
+  }
+  const decena = DECENAS[Math.floor(numero / 10)];
+  const unidad = numero % 10;
+  return unidad === 0 ? decena : `${decena} y ${UNIDADES[unidad]}`;
+}
+
+/** "doce (12) meses", "un (1) mes"; sin letras si el número es muy grande. */
+function duracionEnTexto(meses: number): string {
+  const unidad = meses === 1 ? 'mes' : 'meses';
+  const letras = numeroEnLetras(meses);
+  return letras ? `${letras} (${meses}) ${unidad}` : `${meses} ${unidad}`;
+}
+
 /**
- * Arma el texto del contrato. El depósito solo aparece en Local y
+ * Arma el texto del contrato con los términos (canon y fecha de fin) que se
+ * le indiquen. La duración se calcula en meses a partir de las fechas. El depósito solo aparece en Local y
  * Parqueadero cuando hay depósito (Ley 820, art. 16, lo prohíbe en
  * vivienda); la vivienda lleva una cláusula de garantías en su lugar. Las
  * cláusulas se numeran según las que efectivamente se incluyen.
  */
 export function construirTextoContrato(
   contrato: DatosContratoParaTexto,
+  terminos: TerminosContrato,
   ahora: Date = new Date(),
 ): string {
   const plantilla = obtenerPlantillaBase(contrato.tipo_plantilla);
@@ -255,7 +330,7 @@ export function construirTextoContrato(
     .split('{{unidad_direccion_completa}}')
     .join(`${contrato.unidad.inmueble.direccion}, ${contrato.unidad.nombre}`)
     .split('{{canon_en_pesos}}')
-    .join(formatearCentavosAPesos(contrato.canon_centavos))
+    .join(formatearCentavosAPesos(terminos.canon_centavos))
     .split('{{dia_pago}}')
     .join(String(contrato.dia_pago))
     .split('{{forma_pago}}')
@@ -267,7 +342,13 @@ export function construirTextoContrato(
     .split('{{fecha_inicio}}')
     .join(contrato.fecha_inicio.toISOString().slice(0, 10))
     .split('{{fecha_fin}}')
-    .join(contrato.fecha_fin.toISOString().slice(0, 10))
+    .join(terminos.fecha_fin.toISOString().slice(0, 10))
+    .split('{{duracion_en_meses}}')
+    .join(
+      duracionEnTexto(
+        mesesDeTermino(contrato.fecha_inicio, terminos.fecha_fin),
+      ),
+    )
     .split('{{datos_fiador_o_poliza}}')
     .join(datosFiadorOPoliza)
     .split('{{condiciones_particulares_o_texto_por_defecto}}')

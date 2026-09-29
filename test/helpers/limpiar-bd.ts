@@ -7,6 +7,7 @@ export async function limpiarBd(prisma: PrismaClient): Promise<void> {
     await tx.codigoAcceso.deleteMany();
     await tx.fotoInventario.deleteMany();
     await tx.pago.deleteMany();
+    await tx.documentoContrato.deleteMany();
     await tx.incrementoIPC.deleteMany();
     await tx.solicitudMantenimiento.deleteMany();
     await tx.documentoInmueble.deleteMany();

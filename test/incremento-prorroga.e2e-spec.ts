@@ -176,12 +176,14 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
   }
 
   function espiarAlmacenamiento() {
-    return [
-      jest.spyOn(almacenamiento, 'subirArchivo'),
-      jest.spyOn(almacenamiento, 'eliminarArchivo'),
-      jest.spyOn(almacenamiento, 'generarUrlFirmada'),
-      jest.spyOn(almacenamiento, 'descargarArchivo'),
-    ];
+    return {
+      subir: jest.spyOn(almacenamiento, 'subirArchivo'),
+      otros: [
+        jest.spyOn(almacenamiento, 'eliminarArchivo'),
+        jest.spyOn(almacenamiento, 'generarUrlFirmada'),
+        jest.spyOn(almacenamiento, 'descargarArchivo'),
+      ],
+    };
   }
 
   // ------------------------------------------------------------------
@@ -330,7 +332,14 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
       });
       expect(despues.pdf_contrato_ruta).toBe(antes.pdf_contrato_ruta);
       expect(despues.fecha_fin).toEqual(antes.fecha_fin);
-      for (const espia of espias) {
+      // B0.3-B: el incremento genera SOLO el otrosí (v2, sin sobrescribir el
+      // original v1); no borra, no firma y no descarga nada.
+      expect(espias.subir).toHaveBeenCalledTimes(1);
+      expect(espias.subir.mock.calls[0][1]).toBe(
+        `contratos/${contrato.id}/v2-OTROSI_INCREMENTO.pdf`,
+      );
+      expect(espias.subir.mock.calls[0][3]).toBe(false);
+      for (const espia of espias.otros) {
         expect(espia).not.toHaveBeenCalled();
       }
       expect(await prisma.incrementoIPC.count()).toBe(1);
@@ -555,7 +564,14 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
       });
       expect(despues.pdf_contrato_ruta).toBe(antes.pdf_contrato_ruta);
       expect(despues.canon_centavos).toBe(antes.canon_centavos);
-      for (const espia of espias) {
+      // B0.3-B: la prórroga genera SOLO el otrosí (v2, sin sobrescribir el
+      // original v1); no borra, no firma y no descarga nada.
+      expect(espias.subir).toHaveBeenCalledTimes(1);
+      expect(espias.subir.mock.calls[0][1]).toBe(
+        `contratos/${contrato.id}/v2-OTROSI_PRORROGA.pdf`,
+      );
+      expect(espias.subir.mock.calls[0][3]).toBe(false);
+      for (const espia of espias.otros) {
         expect(espia).not.toHaveBeenCalled();
       }
       expect(await prisma.prorroga.count()).toBe(1);

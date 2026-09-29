@@ -69,7 +69,12 @@ describe('InmuebleDocumentos (e2e)', () => {
       contrato.codigo_acceso?.codigo ?? '',
       'inquilino-doc@correo.com',
     );
-    await reportarPago(app, inquilinoToken, contrato.id);
+    const pago = await reportarPago(app, inquilinoToken, contrato.id);
+    // Solo los comprobantes APROBADOS van al ZIP (B-23).
+    await request(app.getHttpServer())
+      .patch(`/pagos/${pago.id}/aprobar`)
+      .set('Authorization', `Bearer ${access_token}`)
+      .expect(HttpStatus.OK);
 
     const contenidoDocumento = Buffer.from('documento de prueba pdf');
     const respuesta = await request(app.getHttpServer())
@@ -117,5 +122,8 @@ describe('InmuebleDocumentos (e2e)', () => {
       true,
     );
     expect(cuerpoZip.toString('latin1').includes('comprobantes/')).toBe(true);
+    expect(
+      cuerpoZip.toString('latin1').includes('v1-CONTRATO_ORIGINAL.pdf'),
+    ).toBe(true);
   }, 30000);
 });
