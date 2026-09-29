@@ -1,8 +1,13 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.1 — 26 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.2 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.2 frente a la 2.1** (resultado de construir las reglas de creación, entrega B0.3-A1):
+- **Unidad principal** (5.3): ya no se crea con valores de relleno; el arrendador elige su uso (Residencial por defecto) y queda "por completar" hasta que llene los datos residenciales.
+- **Estrato** (5.3): obligatorio solo si el inmueble tiene alguna Unidad Residencial; no se puede quitar mientras la tenga.
+- **Campos residenciales de la Unidad** (5.4): mínimos definidos (área de 1 m² o más, ocupantes máximos de 1 o más) y exigidos completos al pasar una unidad a Residencial.
 
 **Cambios de la versión 2.1 frente a la 2.0** (resultado de auditar el código real del backend y la Ley 820 de 2003):
 - **Período de cobro** como concepto explícito (5.15): cada pago cubre un mes concreto. La mora se calcula por período, no por "último pago reportado".
@@ -168,7 +173,7 @@ Reglas de cardinalidad:
 | Matrícula inmobiliaria | Sí | — |
 | Foto de portada | No | Se sube como archivo |
 
-Al crear un Inmueble se crea automáticamente una **Unidad principal** con valores de relleno editables.
+Al crear un Inmueble se crea automáticamente una **Unidad principal**. El arrendador elige su uso (por defecto Residencial; si es Comercial se crea como Local). Si es Residencial, el estrato es obligatorio; si es Comercial, no. Sus datos residenciales (área, habitaciones, baños, ocupantes) quedan **vacíos** ("por completar") hasta que el arrendador los llene. El estrato de un inmueble no se puede quitar mientras tenga alguna Unidad Residencial.
 
 ### 5.4 Unidad
 
@@ -178,7 +183,7 @@ Al crear un Inmueble se crea automáticamente una **Unidad principal** con valor
 | Tipo | Apartamento / Casa / Local / Parqueadero / Habitación |
 | Uso permitido | Residencial / Comercial. No se puede cambiar mientras haya un contrato Activo. |
 | Canon base | Referencia para contratos nuevos; **no** es el canon vigente de ningún contrato |
-| Área, habitaciones, baños, ocupantes máximos, acepta mascotas | Obligatorios solo si el uso es Residencial |
+| Área, habitaciones, baños, ocupantes máximos, acepta mascotas | Obligatorios solo si el uso es Residencial (área mínima 1 m², ocupantes máximos mínimo 1). Al crear una unidad Residencial, o al cambiar una a Residencial, deben venir completos; en una edición posterior de una unidad ya Residencial solo se validan los campos que se envían. |
 | Foto principal | Opcional; se sube como archivo. Distinta de las fotos de inventario. |
 
 ### 5.5 Inquilino (identidad global)

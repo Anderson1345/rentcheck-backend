@@ -1,12 +1,20 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 2.3 — 29 de septiembre de 2026.** Reemplaza a la versión 2.2.
+> **Versión 2.5 — 29 de septiembre de 2026.** Reemplaza a la versión 2.4.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
 
+**Qué cambió en la versión 2.5:**
+- El Bloque 0.3 se reparte en cuatro entregas (el diagnóstico de código del 29/09/2026 estimó ~45 archivos y 5 migraciones si se hacía de una vez): **0.3-A1** (reglas de creación, cerrada), **0.3-A2** (B-09: incremento y prórroga separados), **0.3-B** (PDF, versiones y otrosíes: B-10, B-11, B-34) y **0.3-A3** (ciclo de vida: B-13, B-41, B-12, B-47). B-12 va al final porque su prórroga automática necesita el otrosí de 0.3-B. **B-35** pasa a después de 0.4-A: hoy no existe el concepto "sin vincular" (el código de acceso nunca se marca como usado).
+- **0.3-A1 cerrada el 29/09/2026:** B-08, B-16, B-26 y B-43 corregidos; `ConfiguracionIpc` con `@@unique(anio)`; datos de IPC de producción corregidos (2024 = 5,20 %; 2025 = 5,10 %).
+- IDs nuevos: **B-47** (`crear()` no valida que la plantilla corresponda a la unidad) y **B-48** (`actualizarUnidad` verifica y luego escribe).
+
+**Qué cambió en la versión 2.4:**
+- El Bloque **0.2-C** (`Idempotency-Key` en `POST /pagos` y `POST /solicitudes-mantenimiento`, tabla `ClaveIdempotencia`) se cerró el 29/09/2026. El Bloque 0.2 queda completo. Pendiente para el Bloque 0.5: limpieza de claves antiguas.
+
 **Qué cambió en la versión 2.3:**
 - B-05, B-07, B-38 y B-39 se corrigieron en el Bloque **0.2-B** (cerrado el 29/09/2026). B-06 quedó corregido en el cálculo (usa el período próximo y no repite si ya hay pago); el destinatario de la alerta sigue siendo el arrendador hasta B-18 (Bloque 0.6). B-19 quedó parcialmente resuelto: `hoyEnBogota()` ya se usa en el estado de cuenta y en los crons de mora y recordatorio de pago.
-- El Bloque 0.2 se repartió en tres entregas: 0.2-A (función pura, cerrada), 0.2-B (integración, cerrada) y **0.2-C** (`Idempotency-Key`, pendiente; no bloquea nada antes de la entrega E11 de la app).
+- El Bloque 0.2 se repartió en tres entregas: 0.2-A (función pura, cerrada), 0.2-B (integración, cerrada) y **0.2-C** (`Idempotency-Key`, cerrada el 29/09/2026).
 
 **Qué cambió en la versión 2.2:**
 - B-33 (eliminar inmueble con documentos respondía 500) y B-36, la parte de "transiciones de estado sin escritura condicional" (doble aprobación de pago, doble confirmación de terminación anticipada, doble cambio de estado de mantenimiento), se corrigieron en el Bloque **0.1-B** (cerrado el 27/09/2026). La otra mitad de B-36 (control de versión en ediciones concurrentes normales) sigue pendiente para el Bloque 0.5.
@@ -74,7 +82,7 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 4. El reemplazo automático solo ocurre entre pagos PENDIENTES **del mismo período**. *(✅ B0.2-B)*
 5. Un período vence **al día siguiente** de su fecha límite, en hora de Colombia. *(✅ B0.2-A/B)*
 6. Endpoint de estado de cuenta con la lista de períodos: hoy existen `GET /contratos/:id/estado-cuenta` (arrendador) y `GET /inquilino/mi-contrato/estado-cuenta` (inquilino). Cuando B-17 esté hecho (Bloque 0.4-B), el segundo pasa a `GET /inquilino/contratos/:id/estado-cuenta`. La app lo usa en "Mis Pagos", y el Panel lo puede usar para "recaudo esperado vs. real". *(✅ B0.2-B)*
-7. Aceptar el encabezado `Idempotency-Key` en `POST /pagos` (y en `POST /solicitudes-mantenimiento`): si llega dos veces la misma clave, se devuelve el mismo registro. Es necesario para la cola sin conexión de la app. *(⬜ separado en el Bloque **0.2-C**)*
+7. Aceptar el encabezado `Idempotency-Key` en `POST /pagos` (y en `POST /solicitudes-mantenimiento`): si llega dos veces la misma clave, se devuelve el mismo registro. Es necesario para la cola sin conexión de la app. *(✅ B0.2-C)*
 8. **B-38** (nuevo, ver 3.7): con contrato terminado, el inquilino debe poder seguir reportando pagos de períodos anteriores al cierre que sigan vencidos. *(✅ B0.2-B)*
 9. **B-39** (nuevo, ver 3.7): `fecha_reportada` no puede ser anterior a `fecha_inicio` del contrato. *(✅ B0.2-B)*
 
@@ -96,6 +104,14 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 | B-35 | Importante (nuevo) | `ContratoController` no tiene ningún `PATCH` | Un dato mal escrito al confirmar el contrato (canon, día de pago) es imposible de corregir sin terminar el contrato y crear otro, lo que genera un historial falso. | Permitir corregir los términos mientras el contrato **no esté vinculado** por el inquilino, regenerando el PDF. Una vez vinculado, un cambio de canon o día de pago es un otrosí, no una corrección. |
 | B-41 | Importante (nuevo) | `ContratoService.crear()` | No valida que `fecha_inicio` sea de hoy en adelante. El contrato nace `ACTIVO` de inmediato con fecha futura, bloqueando la unidad antes de tiempo. | Aceptar fecha futura, pero no contar períodos antes del inicio (lo resuelve el estado de cuenta de 0.2) y no bloquear la unidad hasta la fecha de inicio real. |
 | B-43 | Menor (nuevo) | Creación automática de la Unidad principal | Se crea con `metros_cuadrados: 0` y otros valores que el propio validador del DTO rechazaría si un usuario los enviara. | Crear la unidad principal con valores que pasen las mismas validaciones, o marcarla como "pendiente de completar". |
+
+**Estado (29/09/2026) — Bloque 0.3-A1 cerrado:**
+- **B-08** ✅ `deposito_centavos` pasa a opcional (nulo si es 0 o no se envía). En Vivienda, un valor mayor que 0 responde 400 `DEPOSITO_NO_PERMITIDO_VIVIENDA`. La plantilla de Vivienda ya no tiene cláusula de depósito y lleva una cláusula de **garantías** (fiador, codeudor o póliza; su redacción debe revisarla un abogado antes de usuarios reales). En Local y Parqueadero la cláusula de depósito solo aparece si hay depósito y las cláusulas se renumeran. Los contratos existentes con depósito no se modificaron. Las plantillas viven ahora en `src/contrato/plantillas-contrato.ts` (función pura con pruebas unitarias).
+- **B-16** ✅ `POST /contratos` sin cédula del arrendador responde 409 `CEDULA_ARRENDADOR_REQUERIDA` y no crea nada.
+- **B-26** ✅ `Inmueble.estrato` y los campos residenciales de `Unidad` (área, habitaciones, baños, ocupantes) son opcionales en la base y se validan según el uso: 400 `ESTRATO_REQUERIDO` y 400 `CAMPOS_RESIDENCIALES_REQUERIDOS`. `POST /inmuebles` acepta `uso_unidad_principal` (RESIDENCIAL por defecto). Cambiar `tipo` o `uso_permitido` de una unidad con contrato ACTIVO responde 409 `UNIDAD_CON_CONTRATO_ACTIVO` (solo si el valor cambia). Límite conocido: B-48.
+- **B-43** ✅ La unidad principal automática se crea con esos campos en `null` (no con ceros) y se muestra como "por completar" en la app.
+- **B-09 (solo el dato)** 🔶 `ConfiguracionIpc` tenía 4 filas con 9,28 % (2025 ×2 y 2026 ×2). Se borraron 3 (una de 2025 y las dos de 2026, porque el IPC de 2026 no existe hasta enero de 2027) y se corrigió a 2024 = 5,20 % y 2025 = 5,10 % (verificado con el DANE). No había `IncrementoIPC` con 9,28 %. Se agregó `@@unique(anio)`. La separación en `aplicar-incremento` y `prorrogar`, y el uso del IPC del año anterior, siguen en 0.3-A2.
+- Hallazgos nuevos: B-47, B-48 (ver 3.7). El script `sembrar-datos-prueba.js` quedó arreglado (los pagos llevan `periodo`, `arrendador.uno` con cédula, `arrendador.dos` sin cédula a propósito para probar B-16).
 
 ### 3.4 Identidad del inquilino y contratos múltiples
 
@@ -137,25 +153,27 @@ Objetivo: una sola cuenta por persona, sin que un arrendador pueda "pegarle" con
 
 ### 3.7 Hallazgos adicionales — auditoría de escenarios operativos (26-27/09/2026)
 
-Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos, ya repartidos entre los bloques de la sección 4:
+Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 y B-48 salieron después, del diagnóstico y la revisión de 0.3-A1:
 
 | ID | Sev. | Resumen | Bloque | Estado |
 |---|---|---|---|---|
 | B-32 | Crítico (privacidad) | `mi-contrato` exponía `datos_recaudo` con el contrato ya terminado (viola la regla 11 del contexto) | 0.1 | ✅ Corregido |
 | B-33 | Importante | Eliminar un inmueble con documentos cargados responde 500 por llave foránea en vez de 409 con mensaje | 0.1-B | ✅ Corregido |
 | B-34 | Importante | No existe forma de regenerar el PDF de un contrato si su generación falló al crearlo | 0.3-B | ⬜ |
-| B-35 | Importante | No existe `PATCH` de contrato: un dato mal escrito es imposible de corregir sin terminar el contrato | 0.3-A | ⬜ |
+| B-35 | Importante | No existe `PATCH` de contrato: un dato mal escrito es imposible de corregir sin terminar el contrato | 0.4 (después de 0.4-A: necesita "sin vincular") | ⬜ |
 | B-36 | Importante | Transiciones de estado sin escritura condicional (doble aprobación de pago, doble confirmación de terminación, doble cambio de estado de mantenimiento); además, ediciones concurrentes sin control de versión | 0.1-B (transiciones) / 0.5 (control de versión) | 🔶 Transiciones corregidas en B0.1-B; control de versión pendiente en 0.5 |
 | B-37 | Importante | Un fallo al firmar la URL de un solo archivo tumba con 500 el listado completo (`Promise.all` sin tolerancia a fallos) | 0.5 | ⬜ |
 | B-38 | Importante | Con contrato terminado, el inquilino no puede reportar lo que quedó debiendo de períodos anteriores al cierre | 0.2-B | ✅ Corregido |
 | B-39 | Menor | `fecha_reportada` de un pago no se valida contra la fecha de inicio del contrato | 0.2-B | ✅ Corregido |
 | B-40 | Importante | `mi-contrato` nunca devolvía las fotos de devolución (solo las de entrega) | 0.1 | ✅ Corregido |
-| B-41 | Importante | Un contrato con fecha de inicio futura nace `ACTIVO` de inmediato y bloquea la unidad antes de tiempo | 0.3-A | ⬜ |
+| B-41 | Importante | Un contrato con fecha de inicio futura nace `ACTIVO` de inmediato y bloquea la unidad antes de tiempo | 0.3-A3 (estado nuevo `PROGRAMADO`) | ⬜ |
 | B-42 | Importante | Comprobantes reemplazados y rechazados se acumulan en el bucket sin política de retención | 0.5 | ⬜ |
-| B-43 | Menor | La unidad principal se crea automáticamente con valores que el propio validador del DTO rechazaría | 0.3-A | ⬜ |
+| B-43 | Menor | La unidad principal se crea automáticamente con valores que el propio validador del DTO rechazaría | 0.3-A1 | ✅ Corregido |
 | B-44 | Importante | El ZIP de documentos descarga todo a memoria en una sola petición: riesgo de tiempo agotado con historiales grandes | 0.5 | ⬜ |
 | B-45 | Importante | No se puede anular una aprobación de pago hecha por error | 0.6 | ⬜ |
 | B-46 | Importante | No existe baja de cuenta del inquilino (Ley 1581 de 2012 y requisito de Google Play para publicar) | Antes de usuarios reales | ⬜ |
+| B-47 | Importante | `ContratoService.crear()` no valida que `tipo_plantilla` corresponda al tipo o uso de la unidad (por ejemplo, plantilla de vivienda sobre un parqueadero o un local). Detectado en el diagnóstico de 0.3-A (29/09/2026) | 0.3-A3 | ⬜ |
+| B-48 | Menor | `InmuebleService.actualizarUnidad()` cuenta los contratos ACTIVO y después escribe; un contrato creado justo entre ambos pasos permitiría cambiar el tipo o uso. Probabilidad muy baja. Detectado en la revisión de 0.3-A1 | 0.5 (junto con el control de versión de B-36) | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
@@ -170,9 +188,9 @@ Cada bloque es **una entrega**: una rama, uno o dos prompts, una verificación c
 | **0.0 Preparación** | AGENTS.md, CLAUDE.md, docs/, plugin de Swagger, JSON en /api-json | B-24 | 1 | — |
 | **0.1 Seguridad inmediata** | Selects explícitos, quitar rutas escritas por el cliente, `trust proxy`, `ParseIdPipe`, límite de intentos en activación, filtro global de errores, tipar el callback de CORS, datos de recaudo por estado, fotos de entrega/devolución separadas | B-01, B-03 (quitar campos), B-04, B-22, B-31, límite de B-02, formato de error, B-32, B-40 | 1 | 0.0 |
 | **0.1-B Consistencia de escrituras** | Eliminar inmueble con documentos (409 en vez de 500), escrituras condicionales en transiciones de estado (pago, terminación, mantenimiento) | B-33, B-36 (transiciones) | 1 | 0.1 |
-| **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pagos de contrato terminado, validación de fecha reportada | B-05, B-06 (cálculo), B-07, B-19 (parcial), B-38, B-39 | 3 (A: función pura + pruebas ✅; B: integración + migración + e2e ✅; C: `Idempotency-Key` ⬜) | D-3 confirmada |
-| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-35, B-41, B-43, B-34 | 2 (A: reglas y endpoints; B: PDF y versiones) | D-1 y D-2 confirmadas |
-| **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29 | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
+| **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pagos de contrato terminado, validación de fecha reportada | B-05, B-06 (cálculo), B-07, B-19 (parcial), B-38, B-39 | 3 (A: función pura + pruebas ✅; B: integración + migración + e2e ✅; C: `Idempotency-Key` ✅) | D-3 confirmada |
+| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga; B: PDF y versiones; A3: ciclo de vida) | D-1 y D-2 confirmadas |
+| **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29, B-35 (después de 0.4-A) | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
 | **0.5 Infraestructura** | Endpoint de tareas diarias + cron-job.org, zona horaria en tareas, paginación, firma de URLs en lote, ZIP solo aprobados, tolerancia a fallos al firmar, política de retención del bucket, ZIP sin memoria, control de versión en ediciones, limpieza de claves de idempotencia antiguas | B-19 (tareas), B-20, B-23, B-27, B-37, B-42, B-44, B-36 (control de versión) | 1 | 0.2 |
 | **0.6 Para la app (en paralelo con móvil)** | Alertas del inquilino, tokens de notificación y envío, sesiones con token de renovación, anular aprobación de pago | B-18, B-25, push, B-45 | 2 | 0.4 |
 
