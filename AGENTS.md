@@ -24,6 +24,8 @@ Los archivos de docs/ son copias de solo lectura: no los modifiques; si encuentr
 - Pruebas e2e: siempre `configurarApp(app)` (`src/configurar-app.ts`), nunca `useGlobalPipes` a mano.
 - DTOs: nunca aceptan rutas ni URLs de archivos.
 - Datos de recaudo: solo se devuelven al inquilino con contrato ACTIVO (regla 11).
+- `Contrato.estado_pago` nunca se asigna a mano: se deriva con `calcularEstadoCuenta` + `derivarEstadoPagoContrato` (src/common/estado-cuenta.util.ts) y se recalcula en `PagoService.crear/aprobar/rechazar` y en el cron de mora. `Pago.periodo` (primer día del mes que cubre, `@db.Date`) es obligatorio, y el reemplazo de pagos pendientes es solo entre pagos del mismo período.
+- Los endpoints que crean registros desde la cola sin conexión de la app (`POST /pagos`, `POST /solicitudes-mantenimiento`) aceptan el encabezado opcional `Idempotency-Key`: misma clave y mismo contenido devuelve el mismo registro sin duplicar; misma clave con distinto contenido responde 422 `IDEMPOTENCY_KEY_REUTILIZADA`; una clave por (inquilino, endpoint). Todo endpoint nuevo de creación que use la app móvil en cola debe seguir este patrón.
 
 ## Verificación antes de reportar
 npx prisma generate && npx tsc --noEmit && npm run lint && npm run test:e2e

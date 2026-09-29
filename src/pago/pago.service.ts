@@ -15,6 +15,11 @@ import {
   PeriodoEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { calcularHuellaPago } from '../common/huella-idempotencia.util';
+import {
+  IdempotenciaService,
+  ParametrosClave,
+} from '../idempotencia/idempotencia.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 
 const SELECT_PARA_ESTADO_CUENTA = {
@@ -68,13 +73,36 @@ export class PagoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
+    private readonly idempotencia: IdempotenciaService,
   ) {}
 
   async crear(
     dto: CrearPagoDto,
     inquilinoId: string,
     comprobante: Express.Multer.File,
+    claveIdempotencia?: string,
   ) {
+    let parametrosClave: ParametrosClave | undefined;
+    if (claveIdempotencia) {
+      parametrosClave = {
+        inquilinoId,
+        endpoint: 'POST /pagos',
+        clave: claveIdempotencia,
+        huella: calcularHuellaPago({
+          contratoId: dto.contratoId,
+          monto_centavos: dto.monto_centavos,
+          fecha_reportada: dto.fecha_reportada,
+          periodo: dto.periodo,
+          comprobante: comprobante.buffer,
+        }),
+      };
+      const recursoId =
+        await this.idempotencia.buscarRecursoExistente(parametrosClave);
+      if (recursoId) {
+        return this.reproducirPago(recursoId);
+      }
+    }
+
     const contrato = await this.prisma.contrato.findFirst({
       where: {
         id: dto.contratoId,
@@ -167,53 +195,103 @@ export class PagoService {
 
     const periodoElegido = periodoEncontrado.periodo;
     const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-    const rutaDestino = `pagos/${contrato.id}/${Date.now()}-${this.sanitizarNombreArchivo(comprobante.originalname)}`;
 
-    await this.almacenamiento.subirArchivo(
-      comprobante.buffer,
-      rutaDestino,
-      comprobante.mimetype,
-    );
+    let reclamoId: string | undefined;
+    if (parametrosClave) {
+      const reclamo = await this.idempotencia.reclamar(parametrosClave);
+      if ('recursoId' in reclamo) {
+        return this.reproducirPago(reclamo.recursoId);
+      }
+      reclamoId = reclamo.reclamoId;
+    }
+
+    const rutaDestino = `pagos/${contrato.id}/${Date.now()}-${this.sanitizarNombreArchivo(comprobante.originalname)}`;
+    let archivoSubido = false;
+    let nuevoPago: Awaited<ReturnType<PagoService['crearRegistroPago']>>;
 
     try {
-      const nuevoPago = await this.prisma.$transaction(async (tx) => {
-        const pagoPendienteDelPeriodo = await tx.pago.findFirst({
-          where: {
-            contrato_id: contrato.id,
-            estado: EstadoPago.PENDIENTE,
-            periodo: periodoElegido,
-          },
-        });
+      await this.almacenamiento.subirArchivo(
+        comprobante.buffer,
+        rutaDestino,
+        comprobante.mimetype,
+      );
+      archivoSubido = true;
 
-        const datosNuevoPago: Prisma.PagoUncheckedCreateInput = {
-          arrendador_id: arrendadorId,
-          contrato_id: contrato.id,
-          monto_centavos: dto.monto_centavos,
-          fecha_reportada: dto.fecha_reportada,
-          periodo: periodoElegido,
-          comprobante_ruta: rutaDestino,
-          estado: EstadoPago.PENDIENTE,
-        };
-
-        if (pagoPendienteDelPeriodo) {
-          await tx.pago.update({
-            where: { id: pagoPendienteDelPeriodo.id },
-            data: { estado: EstadoPago.REEMPLAZADO },
-          });
-        }
-
-        const creado = await tx.pago.create({ data: datosNuevoPago });
-
-        await this.recalcularEstadoPagoContrato(tx, contrato.id);
-
-        return creado;
+      nuevoPago = await this.crearRegistroPago({
+        dto,
+        contratoId: contrato.id,
+        arrendadorId,
+        periodoElegido,
+        rutaDestino,
+        reclamoId,
       });
-
-      return this.exponerUrlFirmada(nuevoPago);
     } catch (error) {
-      await this.eliminarArchivoHuérfano(rutaDestino);
+      if (reclamoId) {
+        await this.idempotencia.liberarReclamo(reclamoId);
+      }
+      if (archivoSubido) {
+        await this.eliminarArchivoHuérfano(rutaDestino);
+      }
       throw error;
     }
+
+    return {
+      pago: await this.exponerUrlFirmada(nuevoPago),
+      reproducido: false,
+    };
+  }
+
+  private crearRegistroPago(datos: {
+    dto: CrearPagoDto;
+    contratoId: string;
+    arrendadorId: string;
+    periodoElegido: Date;
+    rutaDestino: string;
+    reclamoId?: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const pagoPendienteDelPeriodo = await tx.pago.findFirst({
+        where: {
+          contrato_id: datos.contratoId,
+          estado: EstadoPago.PENDIENTE,
+          periodo: datos.periodoElegido,
+        },
+      });
+
+      const datosNuevoPago: Prisma.PagoUncheckedCreateInput = {
+        arrendador_id: datos.arrendadorId,
+        contrato_id: datos.contratoId,
+        monto_centavos: datos.dto.monto_centavos,
+        fecha_reportada: datos.dto.fecha_reportada,
+        periodo: datos.periodoElegido,
+        comprobante_ruta: datos.rutaDestino,
+        estado: EstadoPago.PENDIENTE,
+      };
+
+      if (pagoPendienteDelPeriodo) {
+        await tx.pago.update({
+          where: { id: pagoPendienteDelPeriodo.id },
+          data: { estado: EstadoPago.REEMPLAZADO },
+        });
+      }
+
+      const creado = await tx.pago.create({ data: datosNuevoPago });
+
+      if (datos.reclamoId) {
+        await this.idempotencia.asociarRecurso(tx, datos.reclamoId, creado.id);
+      }
+
+      await this.recalcularEstadoPagoContrato(tx, datos.contratoId);
+
+      return creado;
+    });
+  }
+
+  private async reproducirPago(pagoId: string) {
+    const pago = await this.prisma.pago.findUniqueOrThrow({
+      where: { id: pagoId },
+    });
+    return { pago: await this.exponerUrlFirmada(pago), reproducido: true };
   }
 
   async listar(arrendadorId: string, estado?: EstadoPago) {
