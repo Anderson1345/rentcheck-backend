@@ -1,8 +1,13 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 2.5 — 29 de septiembre de 2026.** Reemplaza a la versión 2.4.
+> **Versión 2.6 — 29 de septiembre de 2026.** Reemplaza a la versión 2.5.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 2.6:**
+- **0.3-A2 cerrada el 29/09/2026:** B-09 corregido (incremento y prórroga separados) y **B-49** (nuevo, crítico, corregido en la misma entrega): tras un incremento, el estado de cuenta calculaba los períodos anteriores con el canon nuevo, porque `renovar()` sobrescribía `Contrato.canon_centavos` y `calcularEstadoCuenta` lo trataba como canon base. Un inquilino que había pagado bien el canon viejo aparecía en `PARCIAL` y el contrato `EN_MORA`. Las pruebas unitarias no lo detectaban porque le pasaban el canon base a mano y ninguna prueba e2e combinaba incremento con estado de cuenta.
+- `POST /contratos/:id/renovar` **eliminado**. Reemplazado por `POST /contratos/:id/aplicar-incremento` y `POST /contratos/:id/prorrogar`. Ninguno regenera ni sobrescribe el PDF (los otrosíes llegan en 0.3-B).
+- Nuevo **B-50** (menor): `estado_pago` no se recalcula tras un incremento ni una prórroga; se corrige en 0.3-A3.
 
 **Qué cambió en la versión 2.5:**
 - El Bloque 0.3 se reparte en cuatro entregas (el diagnóstico de código del 29/09/2026 estimó ~45 archivos y 5 migraciones si se hacía de una vez): **0.3-A1** (reglas de creación, cerrada), **0.3-A2** (B-09: incremento y prórroga separados), **0.3-B** (PDF, versiones y otrosíes: B-10, B-11, B-34) y **0.3-A3** (ciclo de vida: B-13, B-41, B-12, B-47). B-12 va al final porque su prórroga automática necesita el otrosí de 0.3-B. **B-35** pasa a después de 0.4-A: hoy no existe el concepto "sin vincular" (el código de acceso nunca se marca como usado).
@@ -113,6 +118,14 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 - **B-09 (solo el dato)** 🔶 `ConfiguracionIpc` tenía 4 filas con 9,28 % (2025 ×2 y 2026 ×2). Se borraron 3 (una de 2025 y las dos de 2026, porque el IPC de 2026 no existe hasta enero de 2027) y se corrigió a 2024 = 5,20 % y 2025 = 5,10 % (verificado con el DANE). No había `IncrementoIPC` con 9,28 %. Se agregó `@@unique(anio)`. La separación en `aplicar-incremento` y `prorrogar`, y el uso del IPC del año anterior, siguen en 0.3-A2.
 - Hallazgos nuevos: B-47, B-48 (ver 3.7). El script `sembrar-datos-prueba.js` quedó arreglado (los pagos llevan `periodo`, `arrendador.uno` con cédula, `arrendador.dos` sin cédula a propósito para probar B-16).
 
+**Estado (29/09/2026) — Bloque 0.3-A2 cerrado (B-09 ✅, B-49 ✅):**
+- **`POST /contratos/:id/aplicar-incremento`** (body opcional `{ porcentaje }`, hasta 2 decimales, mayor que 0 y máximo 100): contrato ACTIVO; solo si pasaron 12 meses o más desde el último incremento o desde el inicio (`sumarMesesUTC`, con ajuste de 29 de febrero y fin de mes); usa el IPC del **año calendario anterior** a hoy en America/Bogota (nunca "el más reciente"); en Vivienda el porcentaje no puede superar ese IPC (400 `PORCENTAJE_SUPERIOR_AL_IPC`); en Local y Parqueadero es el pactado (por defecto, el IPC). Canon nuevo en enteros (puntos base, redondeo half-up, BigInt). Escritura atómica condicionada al canon leído (409 `INCREMENTO_YA_APLICADO` en carrera). `IncrementoIPC` guarda `ipc_referencia_anio` e `ipc_referencia_porcentaje`. No cambia `fecha_fin`. Errores: `INCREMENTO_ANTES_DE_12_MESES` (con la fecha desde la que se puede), `IPC_NO_CONFIGURADO`, `CONTRATO_NO_ACTIVO`.
+- **`POST /contratos/:id/prorrogar`** (body opcional `{ meses }`, 1 a 60): solo dentro de los 90 días previos al vencimiento (ambos extremos inclusive; 409 `PRORROGA_FUERA_DE_VENTANA`); por defecto alarga el **término inicial** (meses del contrato original, tomado de la primera prórroga registrada si ya hubo alguna); no cambia el canon. Escritura atómica condicionada a la `fecha_fin` leída (409 `PRORROGA_YA_APLICADA`). Cada prórroga queda en la tabla nueva `Prorroga` (fecha, fecha de fin anterior y nueva, meses, tipo `MANUAL`/`AUTOMATICA`; la automática la usará B-12).
+- **B-49:** `Contrato.canon_centavos` es el canon **vigente hoy**; el canon de un período pasado se deriva del historial (`canon_anterior_centavos` / `canon_nuevo_centavos`) en `canonVigenteEn`. El incremento rige para los períodos cuya fecha límite es igual o posterior a la fecha de aplicación.
+- **Límite conocido:** un período futuro ya pagado por adelantado con el canon anterior queda `PENDIENTE` (debe la diferencia) y pasa a `PARCIAL` si vence sin pagarla. La app (E5) debe avisarlo al aplicar un incremento.
+- **Limitación heredada:** las renovaciones hechas con el `renovar()` anterior no dejaron fila en `Prorroga`; el "término inicial" de esos contratos se calcula desde su `fecha_fin` actual.
+- Migración `20260929222435_b03a2_incremento_prorroga` (2 columnas nulas, enum `TipoProrroga` y tabla `Prorroga`; 0 registros afectados).
+
 ### 3.4 Identidad del inquilino y contratos múltiples
 
 | ID | Sev. | Problema | Corrección esperada |
@@ -153,7 +166,7 @@ Objetivo: una sola cuenta por persona, sin que un arrendador pueda "pegarle" con
 
 ### 3.7 Hallazgos adicionales — auditoría de escenarios operativos (26-27/09/2026)
 
-Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 y B-48 salieron después, del diagnóstico y la revisión de 0.3-A1:
+Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 a B-50 salieron después, del diagnóstico y la revisión de 0.3-A1 y del diseño de 0.3-A2:
 
 | ID | Sev. | Resumen | Bloque | Estado |
 |---|---|---|---|---|
@@ -174,6 +187,8 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-46 | Importante | No existe baja de cuenta del inquilino (Ley 1581 de 2012 y requisito de Google Play para publicar) | Antes de usuarios reales | ⬜ |
 | B-47 | Importante | `ContratoService.crear()` no valida que `tipo_plantilla` corresponda al tipo o uso de la unidad (por ejemplo, plantilla de vivienda sobre un parqueadero o un local). Detectado en el diagnóstico de 0.3-A (29/09/2026) | 0.3-A3 | ⬜ |
 | B-48 | Menor | `InmuebleService.actualizarUnidad()` cuenta los contratos ACTIVO y después escribe; un contrato creado justo entre ambos pasos permitiría cambiar el tipo o uso. Probabilidad muy baja. Detectado en la revisión de 0.3-A1 | 0.5 (junto con el control de versión de B-36) | ⬜ |
+| B-49 | Crítico | `renovar()` dejaba `Contrato.canon_centavos` con el canon nuevo mientras `calcularEstadoCuenta` lo trataba como canon base: los períodos anteriores a un incremento se calculaban con el canon nuevo (falsa mora y `PARCIAL`). Detectado al diseñar 0.3-A2 (29/09/2026) | 0.3-A2 | ✅ Corregido |
+| B-50 | Menor | `estado_pago` del contrato no se recalcula al aplicar un incremento ni una prórroga; queda desactualizado hasta el siguiente pago o el cron diario. No afecta la mora real (los períodos vencidos no cambian de canon) | 0.3-A3 | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
@@ -189,7 +204,7 @@ Cada bloque es **una entrega**: una rama, uno o dos prompts, una verificación c
 | **0.1 Seguridad inmediata** | Selects explícitos, quitar rutas escritas por el cliente, `trust proxy`, `ParseIdPipe`, límite de intentos en activación, filtro global de errores, tipar el callback de CORS, datos de recaudo por estado, fotos de entrega/devolución separadas | B-01, B-03 (quitar campos), B-04, B-22, B-31, límite de B-02, formato de error, B-32, B-40 | 1 | 0.0 |
 | **0.1-B Consistencia de escrituras** | Eliminar inmueble con documentos (409 en vez de 500), escrituras condicionales en transiciones de estado (pago, terminación, mantenimiento) | B-33, B-36 (transiciones) | 1 | 0.1 |
 | **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pagos de contrato terminado, validación de fecha reportada | B-05, B-06 (cálculo), B-07, B-19 (parcial), B-38, B-39 | 3 (A: función pura + pruebas ✅; B: integración + migración + e2e ✅; C: `Idempotency-Key` ✅) | D-3 confirmada |
-| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga; B: PDF y versiones; A3: ciclo de vida) | D-1 y D-2 confirmadas |
+| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47, B-49, B-50 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga ✅; B: PDF y versiones; A3: ciclo de vida) | D-1 y D-2 confirmadas |
 | **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29, B-35 (después de 0.4-A) | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
 | **0.5 Infraestructura** | Endpoint de tareas diarias + cron-job.org, zona horaria en tareas, paginación, firma de URLs en lote, ZIP solo aprobados, tolerancia a fallos al firmar, política de retención del bucket, ZIP sin memoria, control de versión en ediciones, limpieza de claves de idempotencia antiguas | B-19 (tareas), B-20, B-23, B-27, B-37, B-42, B-44, B-36 (control de versión) | 1 | 0.2 |
 | **0.6 Para la app (en paralelo con móvil)** | Alertas del inquilino, tokens de notificación y envío, sesiones con token de renovación, anular aprobación de pago | B-18, B-25, push, B-45 | 2 | 0.4 |

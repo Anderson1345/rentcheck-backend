@@ -1,8 +1,12 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.2 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.3 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.3 frente a la 2.2** (resultado de construir el incremento y la prórroga, entrega B0.3-A2):
+- **Incremento** (regla 14, 5.7): aclara desde cuándo rige el canon nuevo y que el canon del contrato es siempre el vigente hoy; el canon de un período pasado sale del historial.
+- **Prórroga** (regla 15): cada prórroga queda registrada con su historial.
 
 **Cambios de la versión 2.2 frente a la 2.1** (resultado de construir las reglas de creación, entrega B0.3-A1):
 - **Unidad principal** (5.3): ya no se crea con valores de relleno; el arrendador elige su uso (Residencial por defecto) y queda "por completar" hasta que llene los datos residenciales.
@@ -220,7 +224,7 @@ Lo que el Arrendador escribe sobre el inquilino (nombre, documento, teléfono) s
 
 ### 5.7 Incremento de IPC
 
-Historial: fecha de aplicación, canon anterior, canon nuevo, porcentaje aplicado y el IPC de referencia (año y valor).
+Historial: fecha de aplicación, canon anterior, canon nuevo, porcentaje aplicado y el IPC de referencia (año y valor). El canon del Contrato es siempre el **vigente hoy**; el canon esperado de un período pasado se deriva de este historial (un incremento no cambia lo que se debía en los períodos anteriores).
 
 - El IPC de referencia es el del **año calendario anterior** a la fecha de aplicación. Lo publica el DANE; lo administra centralmente el equipo de RentCheck una vez al año (D-6). Valores de referencia: IPC 2024 = 5,20 %; IPC 2025 = 5,10 %.
 - Solo se puede aplicar si pasaron **12 meses o más** desde el último incremento (o desde el inicio del contrato).
@@ -297,8 +301,8 @@ Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso rela
 11. Los datos de recaudo solo se muestran al inquilino con un contrato Activo en esa Unidad.
 12. El Inquilino reporta el pago de un período; el Arrendador lo aprueba o lo rechaza. El estado de pago del contrato **se recalcula** a partir de todos los períodos, nunca se fija directamente.
 13. Si el Inquilino reporta un nuevo comprobante **para el mismo período** mientras hay uno Pendiente, el nuevo reemplaza al anterior, que queda como "Reemplazado" en el historial. Pagos de períodos distintos nunca se reemplazan entre sí.
-14. Aplicar un incremento de IPC cambia solo el canon (desde el siguiente período), requiere 12 meses desde el último incremento o desde el inicio, y en vivienda no puede superar el IPC del año calendario anterior. Genera un otrosí.
-15. Prorrogar extiende la fecha de fin (por defecto, el mismo término inicial, contado desde la fecha de fin anterior) sin cambiar el canon. Genera un otrosí. Solo se hace dentro de los 90 días previos al vencimiento.
+14. Aplicar un incremento de IPC cambia solo el canon (el canon nuevo rige para los períodos cuya fecha límite es igual o posterior a la fecha de aplicación; un período ya pagado por adelantado con el canon anterior queda debiendo la diferencia), requiere 12 meses desde el último incremento o desde el inicio, y en vivienda no puede superar el IPC del año calendario anterior. Genera un otrosí.
+15. Prorrogar extiende la fecha de fin (por defecto, el mismo término inicial, contado desde la fecha de fin anterior) sin cambiar el canon. Genera un otrosí. Solo se hace dentro de los 90 días previos al vencimiento (con la fecha de fin incluida). Cada prórroga queda registrada (fecha, fecha de fin anterior y nueva, meses y si fue manual o automática).
 16. Al llegar la fecha de fin: si hay aviso de no renovación, el contrato pasa a **Finalizado** cuando termina ese día; si no lo hay, el contrato se **prorroga automáticamente** por el mismo término inicial, en las mismas condiciones, y se genera un otrosí de prórroga. Aplica a los tres tipos de plantilla (D-1, confirmada).
 17. La terminación anticipada la solicita cualquiera de las partes con motivo y fecha efectiva de entrega, y la **confirma la otra parte**: si la solicitó el Arrendador, confirma el Inquilino, y al contrario (D-2, confirmada). Quien solicitó puede cancelar su solicitud mientras no esté confirmada. Una vez confirmada es irreversible y libera la Unidad en la fecha efectiva.
 18. Un contrato que no está Activo bloquea las acciones operativas del Inquilino; la consulta nunca se bloquea.
