@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Res,
   UnsupportedMediaTypeException,
   UploadedFile,
   UseGuards,
@@ -18,12 +19,14 @@ import {
   ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import {
   InquilinoActual,
@@ -34,6 +37,7 @@ import {
   TAMANO_MAXIMO_ADJUNTO,
   TIPOS_ARCHIVO_ADJUNTO,
 } from '../common/limites-archivo.constants';
+import { ClaveIdempotencia } from '../idempotencia/clave-idempotencia.decorator';
 import { CrearSolicitudMantenimientoDto } from './dto/crear-solicitud-mantenimiento.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
 
@@ -96,6 +100,12 @@ export class SolicitudMantenimientoController {
       },
     },
   })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Clave de idempotencia (8 a 128 caracteres [A-Za-z0-9_-]). La misma clave con el mismo contenido devuelve la misma solicitud con el encabezado Idempotent-Replayed: true; con distinto contenido responde 422 IDEMPOTENCY_KEY_REUTILIZADA.',
+  })
   @ApiCreatedResponse({
     description: 'Solicitud de mantenimiento creada exitosamente.',
   })
@@ -110,12 +120,24 @@ export class SolicitudMantenimientoController {
   @ApiUnsupportedMediaTypeResponse({
     description: 'El tipo de archivo del adjunto no está permitido.',
   })
-  crear(
+  async crear(
     @UploadedFile() adjunto: Express.Multer.File | undefined,
     @Body() dto: CrearSolicitudMantenimientoDto,
     @InquilinoActual() inquilinoId: string,
+    @ClaveIdempotencia() claveIdempotencia: string | undefined,
+    @Res({ passthrough: true }) respuesta: Response,
   ) {
-    return this.solicitudMantenimientoService.crear(dto, inquilinoId, adjunto);
+    const { solicitud, reproducido } =
+      await this.solicitudMantenimientoService.crear(
+        dto,
+        inquilinoId,
+        adjunto,
+        claveIdempotencia,
+      );
+    if (reproducido) {
+      respuesta.setHeader('Idempotent-Replayed', 'true');
+    }
+    return solicitud;
   }
 
   @Get('mias')

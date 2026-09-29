@@ -297,3 +297,16 @@ model FotoInventario {
   creado_en   DateTime @default(now())
 }
 
+
+
+model ClaveIdempotencia {
+  id          String   @id @default(uuid()) @db.Uuid
+  inquilino_id String  @db.Uuid
+  endpoint    String
+  clave       String
+  huella      String
+  recurso_id  String?  @db.Uuid
+  creado_en   DateTime @default(now())
+
+  @@unique([inquilino_id, endpoint, clave])
+}

@@ -4,9 +4,18 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoContrato, EstadoSolicitudMantenimiento } from '@prisma/client';
+import {
+  EstadoContrato,
+  EstadoSolicitudMantenimiento,
+  Prisma,
+} from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
+import { calcularHuellaSolicitud } from '../common/huella-idempotencia.util';
+import {
+  IdempotenciaService,
+  ParametrosClave,
+} from '../idempotencia/idempotencia.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActualizarEstadoSolicitudMantenimientoDto } from './dto/actualizar-estado-solicitud-mantenimiento.dto';
 import { CrearSolicitudMantenimientoDto } from './dto/crear-solicitud-mantenimiento.dto';
@@ -19,13 +28,35 @@ export class SolicitudMantenimientoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
+    private readonly idempotencia: IdempotenciaService,
   ) {}
 
   async crear(
     dto: CrearSolicitudMantenimientoDto,
     inquilinoId: string,
     adjunto?: Express.Multer.File,
+    claveIdempotencia?: string,
   ) {
+    let parametrosClave: ParametrosClave | undefined;
+    if (claveIdempotencia) {
+      parametrosClave = {
+        inquilinoId,
+        endpoint: 'POST /solicitudes-mantenimiento',
+        clave: claveIdempotencia,
+        huella: calcularHuellaSolicitud({
+          unidadId: dto.unidadId,
+          descripcion: dto.descripcion,
+          urgencia: dto.urgencia,
+          adjunto: adjunto?.buffer ?? null,
+        }),
+      };
+      const recursoId =
+        await this.idempotencia.buscarRecursoExistente(parametrosClave);
+      if (recursoId) {
+        return this.reproducirSolicitud(recursoId);
+      }
+    }
+
     const donde = {
       unidad_id: dto.unidadId,
       inquilino_id: inquilinoId,
@@ -57,36 +88,81 @@ export class SolicitudMantenimientoService {
       );
     }
 
-    let adjuntoRuta: string | null = null;
-    if (adjunto) {
-      adjuntoRuta = `solicitudes-mantenimiento/${dto.unidadId}/${Date.now()}-${this.sanitizarNombreArchivo(adjunto.originalname)}`;
-      await this.almacenamiento.subirArchivo(
-        adjunto.buffer,
-        adjuntoRuta,
-        adjunto.mimetype,
-      );
+    let reclamoId: string | undefined;
+    if (parametrosClave) {
+      const reclamo = await this.idempotencia.reclamar(parametrosClave);
+      if ('recursoId' in reclamo) {
+        return this.reproducirSolicitud(reclamo.recursoId);
+      }
+      reclamoId = reclamo.reclamoId;
     }
 
-    try {
-      const solicitud = await this.prisma.solicitudMantenimiento.create({
-        data: {
-          arrendador_id: contrato.unidad.inmueble.arrendador_id,
-          unidad_id: dto.unidadId,
-          inquilino_id: inquilinoId,
-          descripcion: dto.descripcion,
-          adjunto_ruta: adjuntoRuta,
-          urgencia: dto.urgencia,
-          estado: EstadoSolicitudMantenimiento.PENDIENTE,
-        },
-      });
+    let adjuntoRuta: string | null = null;
+    let adjuntoSubido = false;
+    let solicitud: Awaited<
+      ReturnType<PrismaService['solicitudMantenimiento']['create']>
+    >;
 
-      return this.exponerUrlFirmada(solicitud);
+    try {
+      if (adjunto) {
+        adjuntoRuta = `solicitudes-mantenimiento/${dto.unidadId}/${Date.now()}-${this.sanitizarNombreArchivo(adjunto.originalname)}`;
+        await this.almacenamiento.subirArchivo(
+          adjunto.buffer,
+          adjuntoRuta,
+          adjunto.mimetype,
+        );
+        adjuntoSubido = true;
+      }
+
+      const datos = {
+        arrendador_id: contrato.unidad.inmueble.arrendador_id,
+        unidad_id: dto.unidadId,
+        inquilino_id: inquilinoId,
+        descripcion: dto.descripcion,
+        adjunto_ruta: adjuntoRuta,
+        urgencia: dto.urgencia,
+        estado: EstadoSolicitudMantenimiento.PENDIENTE,
+      };
+
+      solicitud = reclamoId
+        ? await this.crearYAsociarReclamo(datos, reclamoId)
+        : await this.prisma.solicitudMantenimiento.create({ data: datos });
     } catch (error) {
-      if (adjuntoRuta) {
+      if (reclamoId) {
+        await this.idempotencia.liberarReclamo(reclamoId);
+      }
+      if (adjuntoSubido && adjuntoRuta) {
         await this.eliminarArchivoHuérfano(adjuntoRuta);
       }
       throw error;
     }
+
+    return {
+      solicitud: await this.exponerUrlFirmada(solicitud),
+      reproducido: false,
+    };
+  }
+
+  private crearYAsociarReclamo(
+    datos: Prisma.SolicitudMantenimientoUncheckedCreateInput,
+    reclamoId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const creada = await tx.solicitudMantenimiento.create({ data: datos });
+      await this.idempotencia.asociarRecurso(tx, reclamoId, creada.id);
+      return creada;
+    });
+  }
+
+  private async reproducirSolicitud(solicitudId: string) {
+    const solicitud =
+      await this.prisma.solicitudMantenimiento.findUniqueOrThrow({
+        where: { id: solicitudId },
+      });
+    return {
+      solicitud: await this.exponerUrlFirmada(solicitud),
+      reproducido: true,
+    };
   }
 
   async listarMias(inquilinoId: string) {

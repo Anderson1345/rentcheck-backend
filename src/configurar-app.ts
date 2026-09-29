@@ -29,6 +29,7 @@ function construirOpcionesCors(): CorsOptions {
       const esVercel = /(^|\.)vercel\.app$/.test(origin);
       callback(null, esLocalhost || esVercel);
     },
+    exposedHeaders: ['Idempotent-Replayed'],
     credentials: false,
   };
 }

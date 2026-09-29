@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UnsupportedMediaTypeException,
   UploadedFile,
   UseGuards,
@@ -20,12 +21,14 @@ import {
   ApiConflictResponse,
   ApiConsumes,
   ApiCreatedResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import {
   ArrendadorActual,
@@ -39,6 +42,7 @@ import {
   TIPOS_ARCHIVO_COMPROBANTE,
 } from '../common/limites-archivo.constants';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
+import { ClaveIdempotencia } from '../idempotencia/clave-idempotencia.decorator';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 import { ListarPagosQueryDto } from './dto/listar-pagos-query.dto';
 import { PagoService } from './pago.service';
@@ -100,7 +104,8 @@ export class PagoController {
   @UseGuards(ArrendadorGuard)
   @ApiOperation({ summary: 'Aprobar un pago pendiente del arrendador' })
   @ApiOkResponse({
-    description: 'Pago aprobado y contrato marcado como al día.',
+    description:
+      'Pago aprobado; el estado de pago del contrato se recalcula a partir de sus períodos.',
   })
   @ApiNotFoundResponse({
     description: 'Pago no encontrado o no pertenece al arrendador.',
@@ -191,6 +196,12 @@ export class PagoController {
       },
     },
   })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Clave de idempotencia (8 a 128 caracteres [A-Za-z0-9_-]). La misma clave con el mismo contenido devuelve el mismo pago con el encabezado Idempotent-Replayed: true; con distinto contenido responde 422 IDEMPOTENCY_KEY_REUTILIZADA.',
+  })
   @ApiCreatedResponse({ description: 'Pago creado exitosamente.' })
   @ApiBadRequestResponse({
     description:
@@ -206,15 +217,26 @@ export class PagoController {
   @ApiUnsupportedMediaTypeResponse({
     description: 'El tipo de archivo del comprobante no está permitido.',
   })
-  crear(
+  async crear(
     @UploadedFile() comprobante: Express.Multer.File,
     @Body() dto: CrearPagoDto,
     @InquilinoActual() inquilinoId: string,
+    @ClaveIdempotencia() claveIdempotencia: string | undefined,
+    @Res({ passthrough: true }) respuesta: Response,
   ) {
     if (!comprobante) {
       throw new BadRequestException('El comprobante es obligatorio.');
     }
 
-    return this.pagoService.crear(dto, inquilinoId, comprobante);
+    const { pago, reproducido } = await this.pagoService.crear(
+      dto,
+      inquilinoId,
+      comprobante,
+      claveIdempotencia,
+    );
+    if (reproducido) {
+      respuesta.setHeader('Idempotent-Replayed', 'true');
+    }
+    return pago;
   }
 }
