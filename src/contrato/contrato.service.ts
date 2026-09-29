@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -21,6 +22,7 @@ import {
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
+import { construirTextoContrato } from './plantillas-contrato';
 
 const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
   fecha_inicio: true,
@@ -81,80 +83,6 @@ type ContratoParaPdf = Prisma.ContratoGetPayload<{
   select: typeof SELECT_CONTRATO_PARA_PDF;
 }>;
 
-const PLANTILLA_VIVIENDA_URBANA_LEY_820 = `CONTRATO DE ARRENDAMIENTO DE VIVIENDA URBANA
-
-Entre los suscritos, {{arrendador_nombre}}, identificado(a) con cédula de ciudadanía No. {{arrendador_cedula}}, quien en adelante se denominará EL ARRENDADOR, y {{inquilino_nombre}}, identificado(a) con cédula de ciudadanía No. {{inquilino_cedula}}, quien en adelante se denominará EL ARRENDATARIO, hemos convenido celebrar el presente contrato de arrendamiento de vivienda urbana, el cual se regirá por la Ley 820 de 2003 y demás normas concordantes, y por las siguientes cláusulas:
-
-PRIMERA — OBJETO. EL ARRENDADOR entrega a título de arrendamiento a EL ARRENDATARIO el inmueble ubicado en {{unidad_direccion_completa}}, para ser destinado exclusivamente a vivienda.
-
-SEGUNDA — CANON DE ARRENDAMIENTO. El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado dentro de los primeros {{dia_pago}} días de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.
-
-TERCERA — TÉRMINO. El presente contrato tendrá una duración de un (1) año, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}, prorrogable en los términos previstos por la Ley 820 de 2003.
-
-CUARTA — DEPÓSITO. EL ARRENDATARIO entrega en este acto a EL ARRENDADOR, a título de depósito en garantía, la suma de {{deposito_en_pesos}}, la cual será restituida al finalizar el contrato, previa verificación del estado del inmueble y de que no existan sumas pendientes por concepto de cánones, servicios públicos o daños imputables a EL ARRENDATARIO.
-
-QUINTA — DESTINACIÓN Y USO. EL ARRENDATARIO se obliga a destinar el inmueble única y exclusivamente para vivienda, sin poder darle un uso distinto, ni subarrendarlo total o parcialmente sin autorización previa y escrita de EL ARRENDADOR.
-
-SEXTA — ESTADO DEL INMUEBLE. EL ARRENDATARIO declara recibir el inmueble en el estado que consta en el inventario fotográfico de entrega anexo a este contrato, y se obliga a restituirlo en las mismas condiciones, salvo el deterioro natural por el uso legítimo del mismo.
-
-SÉPTIMA — SERVICIOS PÚBLICOS. Los servicios públicos domiciliarios del inmueble serán asumidos por EL ARRENDATARIO, salvo que las condiciones particulares de este contrato indiquen algo distinto.
-
-OCTAVA — CAUSALES DE TERMINACIÓN. Además de las causales previstas en la Ley 820 de 2003, dan lugar a la terminación del contrato el incumplimiento reiterado en el pago del canon, el uso del inmueble para un fin distinto al pactado, y el subarriendo no autorizado.`;
-
-const PLANTILLA_LOCAL_COMERCIAL = `CONTRATO DE ARRENDAMIENTO DE LOCAL COMERCIAL
-
-Entre los suscritos, {{arrendador_nombre}}, identificado(a) con cédula de ciudadanía No. {{arrendador_cedula}}, quien en adelante se denominará EL ARRENDADOR, y {{inquilino_nombre}}, identificado(a) con cédula de ciudadanía No. {{inquilino_cedula}}, quien en adelante se denominará EL ARRENDATARIO, hemos convenido celebrar el presente contrato de arrendamiento de local comercial, regido por las disposiciones del Código de Comercio colombiano en lo relativo al arrendamiento de establecimientos y locales de comercio, y por las siguientes cláusulas:
-
-PRIMERA — OBJETO. EL ARRENDADOR entrega a título de arrendamiento a EL ARRENDATARIO el inmueble de uso comercial ubicado en {{unidad_direccion_completa}}.
-
-SEGUNDA — CANON DE ARRENDAMIENTO. El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado dentro de los primeros {{dia_pago}} días de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.
-
-TERCERA — TÉRMINO. El presente contrato tendrá una duración de un (1) año, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}.
-
-CUARTA — DEPÓSITO. EL ARRENDATARIO entrega en este acto a EL ARRENDADOR, a título de depósito en garantía, la suma de {{deposito_en_pesos}}, la cual será restituida al finalizar el contrato, previa verificación del estado del inmueble y de que no existan sumas pendientes por concepto de cánones, servicios públicos o daños imputables a EL ARRENDATARIO.
-
-QUINTA — DESTINACIÓN Y USO. EL ARRENDATARIO se obliga a destinar el inmueble exclusivamente a la actividad comercial descrita en las condiciones particulares de este contrato, sin poder cambiarla ni subarrendar el local total o parcialmente sin autorización previa y escrita de EL ARRENDADOR.
-
-SEXTA — ESTADO DEL INMUEBLE. EL ARRENDATARIO declara recibir el inmueble en el estado que consta en el inventario fotográfico de entrega anexo a este contrato, y se obliga a restituirlo en las mismas condiciones, salvo el deterioro natural por el uso legítimo del mismo.
-
-SÉPTIMA — LICENCIAS Y PERMISOS. La obtención de las licencias, permisos y registros necesarios para el funcionamiento de la actividad comercial de EL ARRENDATARIO corren por cuenta exclusiva de este, sin que ello sea responsabilidad de EL ARRENDADOR.
-
-OCTAVA — CAUSALES DE TERMINACIÓN. Dan lugar a la terminación del contrato el incumplimiento reiterado en el pago del canon, el uso del inmueble para una actividad distinta a la pactada, y el subarriendo no autorizado.`;
-
-const PLANTILLA_PARQUEADERO = `CONTRATO DE ARRENDAMIENTO DE PARQUEADERO
-
-Entre los suscritos, {{arrendador_nombre}}, identificado(a) con cédula de ciudadanía No. {{arrendador_cedula}}, quien en adelante se denominará EL ARRENDADOR, y {{inquilino_nombre}}, identificado(a) con cédula de ciudadanía No. {{inquilino_cedula}}, quien en adelante se denominará EL ARRENDATARIO, hemos convenido celebrar el presente contrato de arrendamiento de espacio de parqueadero, regido por las disposiciones generales del Código Civil colombiano en materia de arrendamiento, y por las siguientes cláusulas:
-
-PRIMERA — OBJETO. EL ARRENDADOR entrega a título de arrendamiento a EL ARRENDATARIO el espacio de parqueadero identificado como {{unidad_direccion_completa}}, para uso exclusivo de estacionamiento de un (1) vehículo.
-
-SEGUNDA — CANON DE ARRENDAMIENTO. El canon mensual de arrendamiento es de {{canon_en_pesos}}, pagadero por mes anticipado dentro de los primeros {{dia_pago}} días de cada mes, mediante {{forma_pago}}, a través de: {{datos_recaudo}}.
-
-TERCERA — TÉRMINO. El presente contrato tendrá una duración de un (1) año, contado a partir del {{fecha_inicio}} hasta el {{fecha_fin}}.
-
-CUARTA — DEPÓSITO. EL ARRENDATARIO entrega en este acto a EL ARRENDADOR, a título de depósito en garantía, la suma de {{deposito_en_pesos}}, la cual será restituida al finalizar el contrato, previa verificación del estado del espacio y de que no existan sumas pendientes por concepto de cánones o daños imputables a EL ARRENDATARIO.
-
-QUINTA — DESTINACIÓN Y USO. EL ARRENDATARIO se obliga a destinar el espacio exclusivamente al estacionamiento de vehículos automotores, sin poder usarlo como bodega, depósito de mercancía, ni subarrendarlo sin autorización previa y escrita de EL ARRENDADOR.
-
-SEXTA — ESTADO DEL ESPACIO. EL ARRENDATARIO declara recibir el espacio en el estado que consta en el inventario fotográfico de entrega anexo a este contrato, y se obliga a restituirlo en las mismas condiciones, salvo el deterioro natural por el uso legítimo del mismo.
-
-SÉPTIMA — RESPONSABILIDAD. EL ARRENDADOR no será responsable por daños, hurto o pérdida de bienes dejados dentro del vehículo estacionado, salvo negligencia grave que le sea directamente imputable.
-
-OCTAVA — CAUSALES DE TERMINACIÓN. Dan lugar a la terminación del contrato el incumplimiento reiterado en el pago del canon, el uso del espacio para un fin distinto al pactado, y el subarriendo no autorizado.`;
-
-const CIERRE_PLANTILLA = `
-
-CONDICIONES PARTICULARES DEL CONTRATO
-
-{{condiciones_particulares_o_texto_por_defecto}}
-
-Para constancia se firma el presente contrato en la ciudad de {{ciudad}}, el día {{fecha_generacion}}.
-
-_______________________________
-EL ARRENDADOR — {{arrendador_nombre}}
-
-_______________________________
-EL ARRENDATARIO — {{inquilino_nombre}}`;
-
 @Injectable()
 export class ContratoService {
   private readonly logger = new Logger(ContratoService.name);
@@ -163,88 +91,6 @@ export class ContratoService {
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
   ) {}
-
-  private formatearCentavosAPesos(centavos: number): string {
-    return `$${(centavos / 100).toLocaleString('es-CO')}`;
-  }
-
-  private obtenerPlantillaBase(tipoPlantilla: TipoPlantillaContrato): string {
-    switch (tipoPlantilla) {
-      case TipoPlantillaContrato.VIVIENDA_URBANA_LEY_820:
-        return PLANTILLA_VIVIENDA_URBANA_LEY_820;
-      case TipoPlantillaContrato.LOCAL_COMERCIAL:
-        return PLANTILLA_LOCAL_COMERCIAL;
-      case TipoPlantillaContrato.PARQUEADERO:
-        return PLANTILLA_PARQUEADERO;
-    }
-  }
-
-  private construirTextoContrato(contrato: ContratoParaPdf): string {
-    const arrendadorNombre = contrato.arrendador.nombre;
-    const arrendadorCedula =
-      contrato.arrendador.cedula?.trim() || '[cédula pendiente de registrar]';
-    const inquilinoNombre = contrato.inquilino.nombre;
-    const inquilinoCedula = contrato.inquilino.cedula;
-    const unidadDireccionCompleta = `${contrato.unidad.inmueble.direccion}, ${contrato.unidad.nombre}`;
-    const canonEnPesos = this.formatearCentavosAPesos(contrato.canon_centavos);
-    const depositoEnPesos = this.formatearCentavosAPesos(
-      contrato.deposito_centavos,
-    );
-    const diaPago = contrato.dia_pago;
-    const formaPago = contrato.forma_pago;
-    const datosRecaudo = contrato.datos_recaudo;
-    const fechaInicio = contrato.fecha_inicio.toISOString().slice(0, 10);
-    const fechaFin = contrato.fecha_fin.toISOString().slice(0, 10);
-    const condicionesParticulares =
-      contrato.condicionesParticularesTexto?.trim() ||
-      'No aplican condiciones particulares adicionales a las aquí pactadas.';
-    const ciudad = contrato.unidad.inmueble.ciudad;
-    const fechaGeneracion = new Date().toLocaleString('es-CO');
-
-    const datosFiadorOPoliza = contrato.datos_fiador_o_poliza?.trim();
-
-    let texto = this.obtenerPlantillaBase(contrato.tipo_plantilla);
-
-    if (datosFiadorOPoliza) {
-      texto += `\nNOVENA — GARANTÍA ADICIONAL. El presente contrato cuenta con la siguiente garantía adicional: {{datos_fiador_o_poliza}}.\n`;
-    }
-
-    texto += CIERRE_PLANTILLA;
-
-    return texto
-      .split('{{arrendador_nombre}}')
-      .join(arrendadorNombre)
-      .split('{{arrendador_cedula}}')
-      .join(arrendadorCedula)
-      .split('{{inquilino_nombre}}')
-      .join(inquilinoNombre)
-      .split('{{inquilino_cedula}}')
-      .join(inquilinoCedula)
-      .split('{{unidad_direccion_completa}}')
-      .join(unidadDireccionCompleta)
-      .split('{{canon_en_pesos}}')
-      .join(canonEnPesos)
-      .split('{{dia_pago}}')
-      .join(String(diaPago))
-      .split('{{forma_pago}}')
-      .join(formaPago)
-      .split('{{datos_recaudo}}')
-      .join(datosRecaudo)
-      .split('{{deposito_en_pesos}}')
-      .join(depositoEnPesos)
-      .split('{{fecha_inicio}}')
-      .join(fechaInicio)
-      .split('{{fecha_fin}}')
-      .join(fechaFin)
-      .split('{{datos_fiador_o_poliza}}')
-      .join(datosFiadorOPoliza ?? '')
-      .split('{{condiciones_particulares_o_texto_por_defecto}}')
-      .join(condicionesParticulares)
-      .split('{{ciudad}}')
-      .join(ciudad)
-      .split('{{fecha_generacion}}')
-      .join(fechaGeneracion);
-  }
 
   private generarPdfContrato(contrato: ContratoParaPdf): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -256,7 +102,7 @@ export class ContratoService {
       documento.on('error', reject);
 
       documento.fontSize(11);
-      documento.text(this.construirTextoContrato(contrato));
+      documento.text(construirTextoContrato(contrato));
       documento.end();
     });
   }
@@ -535,6 +381,30 @@ export class ContratoService {
   }
 
   async crear(dto: CrearContratoDto, arrendadorId: string) {
+    const depositoCentavos = dto.deposito_centavos || null;
+    if (
+      dto.tipo_plantilla === TipoPlantillaContrato.VIVIENDA_URBANA_LEY_820 &&
+      depositoCentavos !== null
+    ) {
+      throw new BadRequestException({
+        codigo: 'DEPOSITO_NO_PERMITIDO_VIVIENDA',
+        mensaje:
+          'La Ley 820 de 2003, art. 16, no permite depósitos en dinero en arriendos de vivienda urbana. Se pueden pactar garantías como fiador, codeudor o póliza.',
+      });
+    }
+
+    const arrendador = await this.prisma.arrendador.findUnique({
+      where: { id: arrendadorId },
+      select: { cedula: true },
+    });
+    if (!arrendador?.cedula?.trim()) {
+      throw new ConflictException({
+        codigo: 'CEDULA_ARRENDADOR_REQUERIDA',
+        mensaje:
+          'Debes registrar tu cédula en tu perfil (PATCH /arrendadores/perfil) antes de crear un contrato.',
+      });
+    }
+
     const unidad = await this.prisma.unidad.findFirst({
       where: {
         id: dto.unidad_id,
@@ -567,7 +437,7 @@ export class ContratoService {
                 canon_centavos: dto.canon_centavos,
                 dia_pago: dto.dia_pago,
                 forma_pago: dto.forma_pago,
-                deposito_centavos: dto.deposito_centavos,
+                deposito_centavos: depositoCentavos,
                 datos_recaudo: dto.datos_recaudo,
                 datos_fiador_o_poliza: dto.datos_fiador_o_poliza,
                 condicionesParticularesTexto: dto.condicionesParticularesTexto,

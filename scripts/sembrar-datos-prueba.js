@@ -32,6 +32,10 @@ function sumarMeses(fecha, meses) {
   return resultado;
 }
 
+function primerDiaDelMes(fecha) {
+  return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), 1));
+}
+
 function sumarDias(fecha, dias) {
   const resultado = new Date(fecha);
   resultado.setDate(resultado.getDate() + dias);
@@ -252,7 +256,6 @@ async function sembrar() {
       canon_centavos: 150000000,
       dia_pago: 5,
       forma_pago: 'Transferencia bancaria',
-      deposito_centavos: 150000000,
       datos_recaudo: 'Bancolombia ahorros 000-111222-33',
       fecha_inicio: sumarMeses(hoy, -6),
       fecha_fin: sumarMeses(hoy, 6),
@@ -310,7 +313,6 @@ async function sembrar() {
       canon_centavos: 140000000,
       dia_pago: 5,
       forma_pago: 'Transferencia bancaria',
-      deposito_centavos: 140000000,
       datos_recaudo: 'Bancolombia ahorros 000-111222-33',
       fecha_inicio: sumarMeses(hoy, -26),
       fecha_fin: sumarMeses(hoy, -2),
@@ -360,6 +362,7 @@ async function sembrar() {
       contrato_id: contratoB.id,
       monto_centavos: 25000000,
       fecha_reportada: hoy,
+      periodo: primerDiaDelMes(hoy),
       estado: 'PENDIENTE',
     },
   });
@@ -370,6 +373,7 @@ async function sembrar() {
       contrato_id: contratoA.id,
       monto_centavos: 150000000,
       fecha_reportada: sumarDias(hoy, -5),
+      periodo: primerDiaDelMes(sumarDias(hoy, -5)),
       estado: 'APROBADO',
     },
   });

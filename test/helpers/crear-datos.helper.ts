@@ -30,7 +30,7 @@ function generarCedulaUnica(): string {
 export interface RespuestaCrearContrato {
   id: string;
   canon_centavos: number;
-  deposito_centavos: number;
+  deposito_centavos: number | null;
   dia_pago: number;
   estado: string;
   fecha_inicio: string;
@@ -63,7 +63,6 @@ export function contratoValido(
     canon_centavos: 1000000,
     dia_pago: 5,
     forma_pago: 'Transferencia bancaria',
-    deposito_centavos: 500000,
     datos_recaudo: 'Bancolombia ahorros 123456789',
     fecha_inicio: '2026-01-10',
     fecha_fin: '2026-12-31',
@@ -78,10 +77,17 @@ export function fechaHoyLocal(): string {
   return `${hoy.getFullYear()}-${mes}-${dia}`;
 }
 
+export const CEDULA_ARRENDADOR_PRUEBA = '900123456';
+
+/**
+ * Registra un arrendador. Por defecto le guarda una cédula (sin ella no
+ * puede crear contratos); pasa `conCedula = false` para probar esa regla.
+ */
 export async function registrarArrendador(
   app: INestApplication<App>,
   nombre: string,
   correo: string,
+  conCedula = true,
 ): Promise<RespuestaAutenticacion> {
   const respuesta = await request(app.getHttpServer())
     .post('/auth/arrendador/registro')
@@ -92,7 +98,16 @@ export async function registrarArrendador(
       contrasena: 'clave123',
     })
     .expect(HttpStatus.CREATED);
-  return respuesta.body as RespuestaAutenticacion;
+  const autenticacion = respuesta.body as RespuestaAutenticacion;
+
+  if (conCedula) {
+    await request(app.getHttpServer())
+      .patch('/arrendadores/perfil')
+      .set('Authorization', `Bearer ${autenticacion.access_token}`)
+      .send({ cedula: CEDULA_ARRENDADOR_PRUEBA })
+      .expect(HttpStatus.OK);
+  }
+  return autenticacion;
 }
 
 export async function crearInmueble(

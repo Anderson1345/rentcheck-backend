@@ -38,9 +38,10 @@ export class CrearContratoDto {
   @IsNotEmpty()
   forma_pago!: string;
 
+  @IsOptional()
   @IsInt()
-  @IsPositive()
-  deposito_centavos!: number;
+  @Min(0)
+  deposito_centavos?: number;
 
   @IsString()
   @IsNotEmpty()

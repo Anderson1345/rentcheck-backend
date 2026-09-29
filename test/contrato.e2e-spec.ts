@@ -73,7 +73,7 @@ describe('ContratoController (e2e)', () => {
     );
 
     expect(contrato.canon_centavos).toBe(1000000);
-    expect(contrato.deposito_centavos).toBe(500000);
+    expect(contrato.deposito_centavos).toBeNull();
     expect(contrato.dia_pago).toBe(5);
     expect(contrato.estado).toBe('ACTIVO');
     expect(contrato.codigo_acceso?.codigo).toMatch(/^RC-\d{4}-[A-Z0-9]{4}$/);

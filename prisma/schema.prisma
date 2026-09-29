@@ -35,7 +35,7 @@ model Inmueble {
   arrendador             Arrendador @relation(fields: [arrendador_id], references: [id])
   direccion              String
   ciudad                 String
-  estrato                Int
+  estrato                Int?
   matricula_inmobiliaria String
   foto_portada_ruta      String?
   creado_en              DateTime    @default(now())
@@ -63,11 +63,11 @@ model Unidad {
   inmueble              Inmueble    @relation(fields: [inmueble_id], references: [id])
   nombre                String
   tipo                  TipoUnidad
-  metros_cuadrados      Decimal
-  numero_habitaciones   Int
-  numero_banos          Int
+  metros_cuadrados      Decimal?
+  numero_habitaciones   Int?
+  numero_banos          Int?
   canon_base_centavos   Int
-  ocupantes_maximos     Int
+  ocupantes_maximos     Int?
   acepta_mascotas       Boolean
   uso_permitido         UsoPermitido
   foto_principal_url    String?
@@ -132,7 +132,7 @@ model Contrato {
   canon_centavos        Int
   dia_pago              Int
   forma_pago            String
-  deposito_centavos     Int
+  deposito_centavos     Int?
   datos_recaudo         String
   datos_fiador_o_poliza String?
   condicionesParticularesTexto String? @db.Text
@@ -171,6 +171,8 @@ model ConfiguracionIpc {
   porcentaje    Decimal
   anio          Int
   actualizadoEn DateTime @default(now())
+
+  @@unique([anio])
 }
 
 

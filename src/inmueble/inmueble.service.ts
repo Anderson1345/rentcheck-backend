@@ -1,5 +1,11 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import {
+  EstadoContrato,
   Prisma,
   TipoDocumentoInmueble,
   TipoUnidad,
@@ -42,6 +48,55 @@ type DocumentoInmuebleConUrl = Omit<
   'archivo_ruta'
 > & { archivo_url: string | null };
 
+interface CamposResidenciales {
+  metros_cuadrados?: number | null;
+  numero_habitaciones?: number | null;
+  numero_banos?: number | null;
+  ocupantes_maximos?: number | null;
+}
+
+function errorEstratoRequerido(): BadRequestException {
+  return new BadRequestException({
+    codigo: 'ESTRATO_REQUERIDO',
+    mensaje:
+      'El inmueble necesita un estrato (1 a 6) para tener unidades residenciales.',
+  });
+}
+
+/**
+ * Una unidad residencial necesita área (>= 1), habitaciones, baños y
+ * ocupantes máximos (>= 1). Con `exigirTodos` falta = error; sin él solo se
+ * valida lo que llegó (los nulos de la unidad principal siguen siendo
+ * válidos hasta que el usuario los complete).
+ */
+function validarCamposResidenciales(
+  valores: CamposResidenciales,
+  exigirTodos: boolean,
+): void {
+  const problemas: string[] = [];
+  const revisar = (nombre: keyof CamposResidenciales, minimo: number): void => {
+    const valor = valores[nombre];
+    if (valor === undefined || valor === null) {
+      if (exigirTodos) problemas.push(`${nombre} es obligatorio`);
+      return;
+    }
+    if (valor < minimo) problemas.push(`${nombre} debe ser >= ${minimo}`);
+  };
+  revisar('metros_cuadrados', 1);
+  revisar('numero_habitaciones', 0);
+  revisar('numero_banos', 0);
+  revisar('ocupantes_maximos', 1);
+
+  if (problemas.length > 0) {
+    throw new BadRequestException({
+      codigo: 'CAMPOS_RESIDENCIALES_REQUERIDOS',
+      mensaje:
+        'Una unidad residencial requiere área, habitaciones, baños y ocupantes máximos válidos.',
+      detalles: problemas,
+    });
+  }
+}
+
 @Injectable()
 export class InmuebleService {
   private readonly logger = new Logger(InmuebleService.name);
@@ -55,13 +110,18 @@ export class InmuebleService {
     dto: CrearInmuebleDto,
     arrendadorId: string,
   ): Promise<InmuebleConUnidadesConUrl> {
+    const usoPrincipal = dto.uso_unidad_principal ?? UsoPermitido.RESIDENCIAL;
+    if (usoPrincipal === UsoPermitido.RESIDENCIAL && !dto.estrato) {
+      throw errorEstratoRequerido();
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const inmueble = await tx.inmueble.create({
         data: {
           arrendador_id: arrendadorId,
           direccion: dto.direccion,
           ciudad: dto.ciudad,
-          estrato: dto.estrato,
+          estrato: dto.estrato ?? null,
           matricula_inmobiliaria: dto.matricula_inmobiliaria,
         },
       });
@@ -70,14 +130,17 @@ export class InmuebleService {
         data: {
           inmueble_id: inmueble.id,
           nombre: 'Unidad principal',
-          tipo: TipoUnidad.APARTAMENTO,
-          metros_cuadrados: '0',
-          numero_habitaciones: 0,
-          numero_banos: 0,
+          tipo:
+            usoPrincipal === UsoPermitido.COMERCIAL
+              ? TipoUnidad.LOCAL
+              : TipoUnidad.APARTAMENTO,
+          metros_cuadrados: null,
+          numero_habitaciones: null,
+          numero_banos: null,
           canon_base_centavos: 0,
-          ocupantes_maximos: 1,
+          ocupantes_maximos: null,
           acepta_mascotas: false,
-          uso_permitido: UsoPermitido.RESIDENCIAL,
+          uso_permitido: usoPrincipal,
         },
       });
 
@@ -119,6 +182,18 @@ export class InmuebleService {
     dto: ActualizarInmuebleDto,
     arrendadorId: string,
   ): Promise<InmuebleConUnidadesConUrl | null> {
+    if (dto.estrato === null) {
+      const unidadesResidenciales = await this.prisma.unidad.count({
+        where: {
+          uso_permitido: UsoPermitido.RESIDENCIAL,
+          inmueble: { id, arrendador_id: arrendadorId },
+        },
+      });
+      if (unidadesResidenciales > 0) {
+        throw errorEstratoRequerido();
+      }
+    }
+
     const resultado = await this.prisma.inmueble.updateMany({
       where: { id, arrendador_id: arrendadorId },
       data: dto,
@@ -180,16 +255,22 @@ export class InmuebleService {
     if (!inmueble) {
       return null;
     }
+    if (dto.uso_permitido === UsoPermitido.RESIDENCIAL) {
+      validarCamposResidenciales(dto, true);
+      if (inmueble.estrato === null) {
+        throw errorEstratoRequerido();
+      }
+    }
     return this.prisma.unidad.create({
       data: {
         inmueble_id: inmuebleId,
         nombre: dto.nombre,
         tipo: dto.tipo,
-        metros_cuadrados: dto.metros_cuadrados.toString(),
-        numero_habitaciones: dto.numero_habitaciones,
-        numero_banos: dto.numero_banos,
+        metros_cuadrados: dto.metros_cuadrados?.toString() ?? null,
+        numero_habitaciones: dto.numero_habitaciones ?? null,
+        numero_banos: dto.numero_banos ?? null,
         canon_base_centavos: dto.canon_base_centavos,
-        ocupantes_maximos: dto.ocupantes_maximos,
+        ocupantes_maximos: dto.ocupantes_maximos ?? null,
         acepta_mascotas: dto.acepta_mascotas,
         uso_permitido: dto.uso_permitido,
       },
@@ -202,38 +283,79 @@ export class InmuebleService {
     dto: ActualizarUnidadDto,
     arrendadorId: string,
   ): Promise<Prisma.UnidadGetPayload<object> | null> {
-    const inmueble = await this.prisma.inmueble.findFirst({
-      where: { id: inmuebleId, arrendador_id: arrendadorId },
-    });
-    if (!inmueble) {
-      return null;
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const inmueble = await tx.inmueble.findFirst({
+        where: { id: inmuebleId, arrendador_id: arrendadorId },
+      });
+      if (!inmueble) {
+        return null;
+      }
+      const unidad = await tx.unidad.findFirst({
+        where: { id: unidadId, inmueble_id: inmuebleId },
+      });
+      if (!unidad) {
+        return null;
+      }
 
-    const data: Prisma.UnidadUpdateInput = {};
-    if (dto.nombre !== undefined) data.nombre = dto.nombre;
-    if (dto.tipo !== undefined) data.tipo = dto.tipo;
-    if (dto.metros_cuadrados !== undefined)
-      data.metros_cuadrados = dto.metros_cuadrados.toString();
-    if (dto.numero_habitaciones !== undefined)
-      data.numero_habitaciones = dto.numero_habitaciones;
-    if (dto.numero_banos !== undefined) data.numero_banos = dto.numero_banos;
-    if (dto.canon_base_centavos !== undefined)
-      data.canon_base_centavos = dto.canon_base_centavos;
-    if (dto.ocupantes_maximos !== undefined)
-      data.ocupantes_maximos = dto.ocupantes_maximos;
-    if (dto.acepta_mascotas !== undefined)
-      data.acepta_mascotas = dto.acepta_mascotas;
-    if (dto.uso_permitido !== undefined) data.uso_permitido = dto.uso_permitido;
+      const cambiaTipo = dto.tipo !== undefined && dto.tipo !== unidad.tipo;
+      const cambiaUso =
+        dto.uso_permitido !== undefined &&
+        dto.uso_permitido !== unidad.uso_permitido;
 
-    const resultado = await this.prisma.unidad.updateMany({
-      where: { id: unidadId, inmueble_id: inmuebleId },
-      data,
-    });
-    if (resultado.count === 0) {
-      return null;
-    }
-    return this.prisma.unidad.findFirst({
-      where: { id: unidadId, inmueble_id: inmuebleId },
+      if (cambiaTipo || cambiaUso) {
+        const contratosActivos = await tx.contrato.count({
+          where: { unidad_id: unidadId, estado: EstadoContrato.ACTIVO },
+        });
+        if (contratosActivos > 0) {
+          throw new ConflictException({
+            codigo: 'UNIDAD_CON_CONTRATO_ACTIVO',
+            mensaje:
+              'No se puede cambiar el tipo ni el uso de una unidad con un contrato activo.',
+          });
+        }
+      }
+
+      const usoFinal = dto.uso_permitido ?? unidad.uso_permitido;
+      if (usoFinal === UsoPermitido.RESIDENCIAL) {
+        if (cambiaUso) {
+          validarCamposResidenciales(
+            {
+              metros_cuadrados:
+                dto.metros_cuadrados ?? unidad.metros_cuadrados?.toNumber(),
+              numero_habitaciones:
+                dto.numero_habitaciones ?? unidad.numero_habitaciones,
+              numero_banos: dto.numero_banos ?? unidad.numero_banos,
+              ocupantes_maximos:
+                dto.ocupantes_maximos ?? unidad.ocupantes_maximos,
+            },
+            true,
+          );
+          if (inmueble.estrato === null) {
+            throw errorEstratoRequerido();
+          }
+        } else {
+          validarCamposResidenciales(dto, false);
+        }
+      }
+
+      const data: Prisma.UnidadUpdateInput = {};
+      if (dto.nombre !== undefined) data.nombre = dto.nombre;
+      if (dto.tipo !== undefined) data.tipo = dto.tipo;
+      if (dto.metros_cuadrados !== undefined)
+        data.metros_cuadrados = dto.metros_cuadrados.toString();
+      if (dto.numero_habitaciones !== undefined)
+        data.numero_habitaciones = dto.numero_habitaciones;
+      if (dto.numero_banos !== undefined) data.numero_banos = dto.numero_banos;
+      if (dto.canon_base_centavos !== undefined)
+        data.canon_base_centavos = dto.canon_base_centavos;
+      if (dto.ocupantes_maximos !== undefined)
+        data.ocupantes_maximos = dto.ocupantes_maximos;
+      if (dto.acepta_mascotas !== undefined)
+        data.acepta_mascotas = dto.acepta_mascotas;
+      if (dto.uso_permitido !== undefined)
+        data.uso_permitido = dto.uso_permitido;
+
+      return tx.unidad.update({ where: { id: unidadId }, data });
     });
   }
 

@@ -12,12 +12,13 @@ export class ActualizarInmuebleDto {
   @ApiPropertyOptional()
   ciudad?: string;
 
+  /** `null` quita el estrato (solo si ninguna unidad es residencial). */
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(6)
   @ApiPropertyOptional()
-  estrato?: number;
+  estrato?: number | null;
 
   @IsOptional()
   @IsString()

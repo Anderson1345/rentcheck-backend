@@ -23,7 +23,7 @@ export class ActualizarUnidadDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @ApiPropertyOptional()
   metros_cuadrados?: number;
 
@@ -47,7 +47,7 @@ export class ActualizarUnidadDto {
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(0)
   @ApiPropertyOptional()
   ocupantes_maximos?: number;
 
