@@ -1,8 +1,13 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.11 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.12 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.12 frente a la 2.11** (entrega B0.4-D1, regla 34 y decisiones D-9 y D-10):
+- **Verificación de correo (regla 34):** con un proveedor de correo configurado, una cuenta nueva (arrendador o inquilino) no inicia sesión hasta verificar su correo con un código de 6 dígitos (10 minutos de vigencia, 5 intentos por código, 60 segundos entre reenvíos y máximo 5 envíos por hora). **Sin proveedor configurado el sistema funciona como antes** y no exige verificación; así es hoy en producción.
+- **D-9 precisada con datos de hoy (30/09/2026):** ningún plan gratuito permite enviar a usuarios reales sin un dominio propio verificado (Resend solo envía al correo del dueño de la cuenta sin dominio; Brevo reemplaza remitentes de Gmail y los manda a spam). El dominio debe permitir agregar registros DNS. Mientras no exista, el envío queda apagado (D-10, opción C).
+- La recuperación de contraseña sigue pendiente (entrega B0.4-D2) y depende del mismo proveedor.
 
 **Cambios de la versión 2.11 frente a la 2.10** (entrega B0.4-C, precisión de 5.8, sin reglas nuevas):
 - Corregir un contrato sin vincular (términos o datos del inquilino) genera una **nueva versión del Contrato original**; las anteriores se conservan. Si se corrige la cédula, el contrato pasa a la identidad correcta y el código se regenera.
@@ -20,7 +25,7 @@
 
 **Cambios de la versión 2.8 frente a la 2.7** (entrega B0.4-A1 y una propuesta de producto):
 - **Datos del inquilino en el contrato** (5.6): el nombre y el teléfono no pueden estar vacíos y el documento se guarda normalizado. Todo lo que ve el Arrendador sale de esa copia.
-- **Nueva decisión D-10** (sección 16): verificar el correo con un código enviado a la cuenta al registrarse. Es una propuesta de Jesús, pendiente de confirmar el proveedor de correo; no cambia ninguna regla vigente.
+- **Nueva decisión D-10** (sección 16): verificar el correo con un código enviado a la cuenta al registrarse. Es una propuesta de Jesús. Implementada en B0.4-D1 con el proveedor apagado hasta tener un dominio verificado (ver regla 34 y D-9).
 
 **Cambios de la versión 2.7 frente a la 2.6** (entrega B0.3-A3-4, cierre del bloque 0.3):
 - **Aviso de no renovación** (regla 16): lo pueden dar el Arrendador y el Inquilino mientras el contrato esté Activo y antes del último día; quien lo dio puede cancelarlo mientras no venza; aplica siempre a la fecha de fin vigente (también tras una prórroga automática). Queda registrado con quién, cuándo y motivo.
@@ -94,7 +99,7 @@ Implicaciones:
 - Límite general de peticiones y uno más estricto en inicio de sesión.
 - Ningún registro con valor financiero o contractual se elimina físicamente; solo cambia de estado.
 - Alertas automáticas diarias (vencimientos, mora, mantenimiento sin atender, revisión de IPC).
-- **Todavía no existen:** recuperación de contraseña, verificación de correo, doble factor, canal de notificación fuera de la app (push o correo), auditoría de acciones sensibles, alertas para el inquilino, renovación de sesión.
+- **Todavía no existen:** recuperación de contraseña (B0.4-D2), doble factor, un proveedor de correo real en producción (la verificación de correo ya está construida pero apagada), canal de notificación fuera de la app (push o correo), auditoría de acciones sensibles, alertas para el inquilino, renovación de sesión.
 
 ---
 
@@ -130,7 +135,8 @@ Implicaciones:
 
 - Sesión persistente en el teléfono con renovación automática. Debe poder cerrarse remotamente ("cerrar sesión en todos los dispositivos").
 - Un mismo correo no puede estar registrado a la vez como Arrendador y como Inquilino.
-- Recuperación de contraseña por correo verificado, para ambos roles.
+- Recuperación de contraseña por correo verificado, para ambos roles (entrega B0.4-D2).
+- Verificación del correo con código de 6 dígitos al registrarse (regla 34), activa solo cuando hay un proveedor de correo configurado. La app consulta qué funciones están disponibles para mostrar u ocultar los botones.
 - Doble factor (código adicional o biometría del teléfono) disponible al menos para el Arrendador.
 
 ---
@@ -355,6 +361,7 @@ Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso rela
 31. Toda fecha de negocio (hoy, vencimientos, mora, fecha de pago no futura) se calcula en la zona horaria **America/Bogota**.
 32. Ningún PDF de contrato se sobrescribe: los cambios generan un nuevo documento versionado.
 33. Los datos del inquilino que escribe el Arrendador viven en el Contrato; nunca modifican el perfil global de la persona.
+34. Con un proveedor de correo configurado, una cuenta no inicia sesión hasta verificar su correo con un código de 6 dígitos (vigencia de 10 minutos, 5 intentos por código, 60 segundos entre reenvíos, máximo 5 envíos por hora por correo); el código nunca se guarda en claro ni se registra en logs. Sin proveedor configurado no se exige verificación. Las respuestas del reenvío no revelan si un correo existe.
 
 ---
 
@@ -603,5 +610,5 @@ Firma o aceptación electrónica, co-arrendatarios, publicación de vacantes y e
 | D-6 | ¿Quién administra el IPC? | El equipo de RentCheck, por script o SQL una vez al año, en una tabla con año y valor. Sin panel de administración en la versión 1. | Vigente (ya es así) |
 | D-7 | ¿Co-arrendatarios? | No en la versión 1. | Vigente |
 | D-8 | ¿Publicar en Google Play en esta etapa? | No: distribuir un APK por EAS para las pruebas y la sustentación; publicar cuando haya presupuesto (USD 25) y 12 testers. | Recomendación vigente |
-| D-9 | ¿Proveedores de push y correo? | Push: servicio de Expo (usa FCM por debajo). Correo: un plan gratuito (Resend o Brevo), verificando que no pida tarjeta. | Recomendación vigente |
-| D-10 | ¿Se verifica el correo con un código al registrarse? | Sí, para arrendador e inquilino: código de 6 dígitos enviado al correo escrito, con expiración de unos 10 minutos, máximo 5 intentos y espera para reenviar; la cuenta queda sin verificar hasta ingresarlo. El mismo mecanismo sirve para recuperar la contraseña. Depende de elegir un proveedor de correo gratuito y sin tarjeta (D-9). | Propuesta de Jesús (29/09/2026); pendiente de confirmar el proveedor |
+| D-9 | ¿Proveedores de push y correo? | Push: servicio de Expo (usa FCM por debajo). Correo: un plan gratuito (Resend o Brevo) sin tarjeta, **pero con un dominio propio cuyo DNS se pueda editar** (verificado el 30/09/2026: sin dominio solo se puede enviar al dueño de la cuenta). | Recomendación vigente; dominio pendiente |
+| D-10 | ¿Se verifica el correo con un código al registrarse? | Sí, para arrendador e inquilino: código de 6 dígitos enviado al correo escrito, con expiración de unos 10 minutos, máximo 5 intentos y espera para reenviar; la cuenta queda sin verificar hasta ingresarlo. El mismo mecanismo sirve para recuperar la contraseña. Construida en B0.4-D1 con el proveedor apagado; se enciende al tener un dominio verificado (D-9). | Confirmada (30/09/2026); envío real pendiente del dominio |
