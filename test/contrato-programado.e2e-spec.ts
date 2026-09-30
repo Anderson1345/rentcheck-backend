@@ -519,7 +519,7 @@ describe('Contrato programado, traslape y cron de estados (e2e)', () => {
       await scheduler.ejecutarRecordatorioPago();
       await scheduler.ejecutarAjusteIpcPendiente();
       await scheduler.ejecutarVencimiento();
-      await scheduler.ejecutarTransicionVencimiento();
+      await scheduler.ejecutarVencimientosYProrrogas();
 
       const enBd = await prisma.contrato.findUniqueOrThrow({
         where: { id: creado.id },

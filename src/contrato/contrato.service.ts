@@ -21,13 +21,11 @@ import {
   calcularEstadoCuenta,
   construirRespuestaEstadoCuenta,
 } from '../common/estado-cuenta.util';
-import {
-  mesesDeTermino,
-  sumarDiasUTC,
-  sumarMesesUTC,
-} from '../common/fechas-contrato.util';
+import { sumarDiasUTC, sumarMesesUTC } from '../common/fechas-contrato.util';
+import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { buscarTraslape } from '../common/traslape.util';
+import { aplicarProrroga, mesesDelTerminoInicial } from './aplicar-prorroga';
 import {
   fechaFinParaEstadoCuenta,
   resumenTerminacion,
@@ -172,6 +170,7 @@ export class ContratoService {
         unidad: true,
         inquilino: { select: SELECT_INQUILINO_RESUMEN },
         incrementos_ipc: true,
+        aviso_no_renovacion: true,
         codigo_acceso: {
           select: { codigo: true },
         },
@@ -183,6 +182,11 @@ export class ContratoService {
     }
     return {
       ...(await this.exponerUrlFirmada(contrato)),
+      aviso_no_renovacion: resumenAvisoNoRenovacion(
+        contrato.aviso_no_renovacion,
+        contrato,
+        RolSolicitante.ARRENDADOR,
+      ),
       terminacion_anticipada: resumenTerminacion(
         contrato,
         RolSolicitante.ARRENDADOR,
@@ -403,41 +407,29 @@ export class ContratoService {
         });
       }
 
-      const finOriginal =
-        contrato.prorrogas[0]?.fecha_fin_anterior ?? contrato.fecha_fin;
       const meses =
-        dto.meses ?? mesesDeTermino(contrato.fecha_inicio, finOriginal);
-      const fechaFinNueva = sumarMesesUTC(contrato.fecha_fin, meses);
+        dto.meses ??
+        mesesDelTerminoInicial(
+          contrato.fecha_inicio,
+          contrato.fecha_fin,
+          contrato.prorrogas[0]?.fecha_fin_anterior ?? null,
+        );
 
-      const resultado = await tx.contrato.updateMany({
-        where: {
-          id,
-          estado: EstadoContrato.ACTIVO,
-          fecha_fin: contrato.fecha_fin,
-        },
-        data: { fecha_fin: fechaFinNueva },
+      // Escritura condicional, fila Prorroga y recálculo de estado_pago (B-50)
+      // en la misma transacción, antes de leer el contrato para la respuesta.
+      const prorroga = await aplicarProrroga(tx, id, {
+        fechaFinActual: contrato.fecha_fin,
+        meses,
+        tipo: TipoProrroga.MANUAL,
+        fechaAplicacion: hoy,
+        hoy,
       });
-      if (resultado.count === 0) {
+      if (!prorroga) {
         throw new ConflictException({
           codigo: 'PRORROGA_YA_APLICADA',
           mensaje: 'Otra petición ya prorrogó este contrato.',
         });
       }
-
-      const prorroga = await tx.prorroga.create({
-        data: {
-          contrato_id: id,
-          fecha_aplicacion: hoy,
-          fecha_fin_anterior: contrato.fecha_fin,
-          fecha_fin_nueva: fechaFinNueva,
-          meses,
-          tipo: TipoProrroga.MANUAL,
-        },
-      });
-
-      // B-50: el estado de pago se recalcula con la nueva fecha de fin, en
-      // la misma transacción y antes de leer el contrato para la respuesta.
-      await recalcularEstadoPagoContrato(tx, id, hoy);
 
       return {
         contrato: await tx.contrato.findUniqueOrThrow({

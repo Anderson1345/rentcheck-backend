@@ -19,11 +19,14 @@ import {
   fechaFinParaEstadoCuenta,
   resumenTerminacion,
 } from '../common/terminacion.util';
+import { AvisoNoRenovacionService } from '../contrato/aviso-no-renovacion.service';
 import { TerminacionAnticipadaService } from '../contrato/terminacion-anticipada.service';
+import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 
 const INCLUDE_CONTRATO_PANEL = {
   incrementos_ipc: { orderBy: { fecha_aplicacion: 'asc' } },
   fotos_inventario: true,
+  aviso_no_renovacion: true,
   pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
 } as const satisfies Prisma.ContratoInclude;
 
@@ -37,6 +40,7 @@ export class InquilinoPanelService {
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
     private readonly terminacion: TerminacionAnticipadaService,
+    private readonly aviso: AvisoNoRenovacionService,
   ) {}
 
   async obtenerMiPanel(inquilinoId: string) {
@@ -136,6 +140,11 @@ export class InquilinoPanelService {
         contrato,
         RolSolicitante.INQUILINO,
       ),
+      aviso_no_renovacion: resumenAvisoNoRenovacion(
+        contrato.aviso_no_renovacion,
+        contrato,
+        RolSolicitante.INQUILINO,
+      ),
       fotos_entrega: await Promise.all(
         fotosEntrega.map((f) => this.exponerUrlFirmada(f)),
       ),
@@ -182,6 +191,27 @@ export class InquilinoPanelService {
       RolSolicitante.INQUILINO,
       motivo,
       fechaEfectiva,
+    );
+  }
+
+  async darAvisoNoRenovacion(inquilinoId: string, motivo?: string) {
+    const contratoId =
+      await this.terminacion.resolverContratoDelInquilino(inquilinoId);
+    return this.aviso.dar(
+      contratoId,
+      { inquilino_id: inquilinoId },
+      RolSolicitante.INQUILINO,
+      motivo,
+    );
+  }
+
+  async cancelarAvisoNoRenovacion(inquilinoId: string) {
+    const contratoId =
+      await this.terminacion.resolverContratoDelInquilino(inquilinoId);
+    return this.aviso.cancelar(
+      contratoId,
+      { inquilino_id: inquilinoId },
+      RolSolicitante.INQUILINO,
     );
   }
 

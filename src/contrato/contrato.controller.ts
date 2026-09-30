@@ -25,6 +25,8 @@ import {
 } from '../auth/auth.module';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ContratoService } from './contrato.service';
+import { AvisoNoRenovacionService } from './aviso-no-renovacion.service';
+import { AvisoNoRenovacionDto } from './dto/aviso-no-renovacion.dto';
 import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
 import { DocumentoContratoService } from './documento-contrato.service';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
@@ -41,6 +43,7 @@ export class ContratoController {
     private readonly contratoService: ContratoService,
     private readonly documentoContratoService: DocumentoContratoService,
     private readonly terminacionService: TerminacionAnticipadaService,
+    private readonly avisoService: AvisoNoRenovacionService,
   ) {}
 
   @Get()
@@ -185,6 +188,60 @@ export class ContratoController {
     @ArrendadorActual() arrendadorId: string,
   ) {
     return this.documentoContratoService.regenerar(id, arrendadorId);
+  }
+
+  @Post(':id/aviso-no-renovacion')
+  @ApiOperation({
+    summary: 'Dar aviso de no renovación',
+    description:
+      'Con aviso vigente, al llegar la fecha de fin el contrato vence; sin aviso se prorroga automáticamente (D-1). Solo con el contrato ACTIVO y antes de su último día.',
+  })
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `aviso_no_renovacion`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description: 'CONTRATO_NO_ACTIVO, AVISO_FUERA_DE_PLAZO o AVISO_YA_DADO.',
+  })
+  darAvisoNoRenovacion(
+    @Param('id', ParseIdPipe) id: string,
+    @Body() dto: AvisoNoRenovacionDto,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.avisoService.dar(
+      id,
+      { unidad: { inmueble: { arrendador_id: arrendadorId } } },
+      RolSolicitante.ARRENDADOR,
+      dto.motivo,
+    );
+  }
+
+  @Post(':id/cancelar-aviso-no-renovacion')
+  @ApiOperation({
+    summary: 'Cancelar el aviso de no renovación propio',
+    description:
+      'Solo quien dio el aviso, con el contrato ACTIVO y antes de su último día.',
+  })
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `aviso_no_renovacion`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description: 'CONTRATO_NO_ACTIVO, AVISO_FUERA_DE_PLAZO o AVISO_NO_DADO.',
+  })
+  cancelarAvisoNoRenovacion(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.avisoService.cancelar(
+      id,
+      { unidad: { inmueble: { arrendador_id: arrendadorId } } },
+      RolSolicitante.ARRENDADOR,
+    );
   }
 
   @Post(':id/cancelar-programado')

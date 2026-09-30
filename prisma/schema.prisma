@@ -153,6 +153,7 @@ model Contrato {
   terminacion_fecha_efectiva         DateTime?     @db.Date
   terminacion_confirmada_por         RolSolicitante?
   cancelado_en                       DateTime?
+  aviso_no_renovacion                AvisoNoRenovacion?
   incrementos_ipc       IncrementoIPC[]
   prorrogas             Prorroga[]
   documentos            DocumentoContrato[]
@@ -223,6 +224,18 @@ model DocumentoContrato {
   @@unique([contrato_id, version])
   @@unique([incremento_id])
   @@unique([prorroga_id])
+}
+
+/// Aviso de no renovación (D-1): a lo sumo uno por contrato; está vigente
+/// mientras `cancelado_en` sea nulo. Un aviso cancelado se reactiva en la misma fila.
+model AvisoNoRenovacion {
+  id           String          @id @default(uuid()) @db.Uuid
+  contrato_id  String          @unique @db.Uuid
+  contrato     Contrato        @relation(fields: [contrato_id], references: [id], onDelete: Restrict)
+  dado_por     RolSolicitante
+  dado_en      DateTime        @default(now())
+  motivo       String?
+  cancelado_en DateTime?
 }
 
 model ConfiguracionIpc {
@@ -311,6 +324,9 @@ enum TipoAlerta {
   TERMINACION_ANTICIPADA_SOLICITADA
   TERMINACION_ANTICIPADA_CANCELADA
   TERMINACION_ANTICIPADA_CONFIRMADA
+  AVISO_NO_RENOVACION_DADO
+  AVISO_NO_RENOVACION_CANCELADO
+  CONTRATO_PRORROGADO_AUTOMATICAMENTE
 }
 
 model Alerta {

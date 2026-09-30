@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ContratoController } from './contrato.controller';
 import { ContratoService } from './contrato.service';
 import { DocumentoContratoService } from './documento-contrato.service';
+import { AvisoNoRenovacionService } from './aviso-no-renovacion.service';
 import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
 
 @Module({
@@ -14,6 +15,7 @@ import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
     ContratoService,
     DocumentoContratoService,
     TerminacionAnticipadaService,
+    AvisoNoRenovacionService,
     PrismaService,
   ],
 })

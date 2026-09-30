@@ -13,6 +13,7 @@ import {
   InquilinoGuard,
   JwtAuthGuard,
 } from '../auth/auth.module';
+import { AvisoNoRenovacionDto } from '../contrato/dto/aviso-no-renovacion.dto';
 import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
 import { InquilinoPanelService } from './inquilino-panel.service';
 
@@ -89,6 +90,46 @@ export class InquilinoPanelController {
       dto.motivo,
       dto.fecha_efectiva,
     );
+  }
+
+  @Post('mi-contrato/aviso-no-renovacion')
+  @ApiOperation({
+    summary: 'Dar aviso de no renovación',
+    description:
+      'Con aviso vigente, al llegar la fecha de fin el contrato vence; sin aviso se prorroga automáticamente (D-1). Solo con el contrato ACTIVO y antes de su último día.',
+  })
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `aviso_no_renovacion`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El inquilino autenticado no tiene ningún contrato.',
+  })
+  @ApiConflictResponse({
+    description: 'CONTRATO_NO_ACTIVO, AVISO_FUERA_DE_PLAZO o AVISO_YA_DADO.',
+  })
+  darAvisoNoRenovacion(
+    @Body() dto: AvisoNoRenovacionDto,
+    @InquilinoActual() inquilinoId: string,
+  ) {
+    return this.inquilinoPanelService.darAvisoNoRenovacion(
+      inquilinoId,
+      dto.motivo,
+    );
+  }
+
+  @Post('mi-contrato/cancelar-aviso-no-renovacion')
+  @ApiOperation({ summary: 'Cancelar el aviso de no renovación propio' })
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `aviso_no_renovacion`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El inquilino autenticado no tiene ningún contrato.',
+  })
+  @ApiConflictResponse({
+    description: 'CONTRATO_NO_ACTIVO, AVISO_FUERA_DE_PLAZO o AVISO_NO_DADO.',
+  })
+  cancelarAvisoNoRenovacion(@InquilinoActual() inquilinoId: string) {
+    return this.inquilinoPanelService.cancelarAvisoNoRenovacion(inquilinoId);
   }
 
   @Post('mi-contrato/confirmar-terminacion-anticipada')

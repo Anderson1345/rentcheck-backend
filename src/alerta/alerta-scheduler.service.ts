@@ -6,12 +6,19 @@ import {
   EstadoSolicitudMantenimiento,
   Prisma,
   TipoAlerta,
+  TipoProrroga,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularEstadoCuenta } from '../common/estado-cuenta.util';
+import { sumarDiasUTC } from '../common/fechas-contrato.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { fechaFinParaEstadoCuenta } from '../common/terminacion.util';
+import {
+  aplicarProrroga,
+  mesesDelTerminoInicial,
+} from '../contrato/aplicar-prorroga';
+import { DocumentoContratoService } from '../contrato/documento-contrato.service';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
   fecha_aplicacion: true,
@@ -25,56 +32,198 @@ const SELECT_PAGOS_PARA_ESTADO_CUENTA = {
   monto_centavos: true,
 } as const;
 
+/** Máximo de prórrogas automáticas por contrato y por corrida (recuperación). */
+const MAX_PRORROGAS_POR_CORRIDA = 12;
+
 function restarDiasUTC(fecha: Date, dias: number): Date {
-  return new Date(
-    Date.UTC(
-      fecha.getUTCFullYear(),
-      fecha.getUTCMonth(),
-      fecha.getUTCDate() - dias,
-    ),
-  );
+  return sumarDiasUTC(fecha, -dias);
 }
 
 @Injectable()
 export class AlertaSchedulerService {
   private readonly logger = new Logger(AlertaSchedulerService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly documentos: DocumentoContratoService,
+  ) {}
 
   /**
-   * Único cron de estados del contrato. El orden importa: primero terminan
-   * las terminaciones anticipadas cuya fecha llegó, luego vencen los contratos
-   * cuya fecha de fin pasó y por último se activan los programados, de modo
-   * que un contrato pueda terminar y el siguiente activarse en la misma corrida.
+   * Único cron de estados del contrato, a las 00:05 de Bogotá. El orden
+   * importa: primero terminan las terminaciones anticipadas cuya fecha llegó,
+   * luego vencen o se prorrogan los contratos cuya fecha de fin pasó y por
+   * último se activan los programados, de modo que un contrato pueda terminar
+   * y el siguiente activarse en la misma corrida.
    */
-  @Cron('55 23 * * *')
+  @Cron('5 0 * * *', { timeZone: 'America/Bogota' })
   async ejecutarTransicionesDeEstado(hoy: Date = hoyEnBogota()): Promise<{
     terminaciones: { aplicadas: number };
-    vencimientos: { actualizados: number };
+    vencimientos: { vencidos: number; prorrogados: number; errores: number };
     activaciones: { activados: number; vencidos: number; pendientes: number };
   }> {
     const terminaciones = await this.ejecutarTerminacionesProgramadas(hoy);
-    const vencimientos = await this.ejecutarTransicionVencimiento();
+    const vencimientos = await this.ejecutarVencimientosYProrrogas(hoy);
     const activaciones = await this.ejecutarActivacionContratosProgramados(hoy);
     return { terminaciones, vencimientos, activaciones };
   }
 
-  async ejecutarTransicionVencimiento(): Promise<{ actualizados: number }> {
-    const resultado = await this.prisma.contrato.updateMany({
-      where: {
-        estado: EstadoContrato.ACTIVO,
-        fecha_fin: { lt: new Date() },
+  /**
+   * Contratos ACTIVO cuya fecha de fin ya pasó (D-1): con aviso de no
+   * renovación vigente pasan a VENCIDO; sin aviso se prorrogan
+   * automáticamente por el término inicial. Si la unidad ya tiene un contrato
+   * PROGRAMADO posterior, el contrato vence (prorrogarlo lo traslaparía). Una
+   * falla en un contrato se registra y no detiene a los demás.
+   */
+  async ejecutarVencimientosYProrrogas(
+    hoy: Date = hoyEnBogota(),
+  ): Promise<{ vencidos: number; prorrogados: number; errores: number }> {
+    const candidatos = await this.prisma.contrato.findMany({
+      where: { estado: EstadoContrato.ACTIVO, fecha_fin: { lt: hoy } },
+      select: {
+        id: true,
+        unidad_id: true,
+        fecha_fin: true,
+        aviso_no_renovacion: { select: { cancelado_en: true } },
       },
-      data: {
-        estado: EstadoContrato.VENCIDO,
-      },
+      orderBy: { fecha_fin: 'asc' },
     });
 
-    this.logger.log(
-      `Cron de transición de vencimiento: ${resultado.count} contrato(s) actualizado(s) a VENCIDO.`,
-    );
+    let vencidos = 0;
+    let prorrogados = 0;
+    let errores = 0;
+    for (const candidato of candidatos) {
+      try {
+        const conAviso =
+          candidato.aviso_no_renovacion !== null &&
+          candidato.aviso_no_renovacion.cancelado_en === null;
+        const haySucesor =
+          (await this.prisma.contrato.findFirst({
+            where: {
+              unidad_id: candidato.unidad_id,
+              estado: EstadoContrato.PROGRAMADO,
+              fecha_inicio: { gt: candidato.fecha_fin },
+            },
+            select: { id: true },
+          })) !== null;
 
-    return { actualizados: resultado.count };
+        if (conAviso || haySucesor) {
+          const resultado = await this.prisma.contrato.updateMany({
+            where: {
+              id: candidato.id,
+              estado: EstadoContrato.ACTIVO,
+              fecha_fin: { lt: hoy },
+              ...(conAviso
+                ? { aviso_no_renovacion: { is: { cancelado_en: null } } }
+                : {}),
+            },
+            data: { estado: EstadoContrato.VENCIDO },
+          });
+          vencidos += resultado.count;
+        } else if (await this.prorrogarAutomaticamente(candidato.id, hoy)) {
+          prorrogados += 1;
+        }
+      } catch (error) {
+        errores += 1;
+        this.logger.error(
+          `No fue posible procesar el vencimiento del contrato ${candidato.id}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    this.logger.log(
+      `Cron de vencimientos: ${vencidos} contrato(s) vencido(s), ${prorrogados} prorrogado(s) automáticamente, ${errores} error(es).`,
+    );
+    return { vencidos, prorrogados, errores };
+  }
+
+  /**
+   * Prórroga automática (D-1) de un contrato ACTIVO sin aviso vigente, en una
+   * sola transacción: por el término inicial, con `fecha_aplicacion` el día
+   * siguiente a la fecha de fin anterior. Si el cron perdió días repite hasta
+   * que `fecha_fin >= hoy` (máximo 12 por corrida). El otrosí de cada una se
+   * genera fuera de la transacción. Devuelve false si no había nada que hacer
+   * o si otra corrida ya lo prorrogó.
+   */
+  async prorrogarAutomaticamente(id: string, hoy: Date): Promise<boolean> {
+    const aplicadas = await this.prisma.$transaction(async (tx) => {
+      const contrato = await tx.contrato.findUnique({
+        where: { id },
+        select: {
+          estado: true,
+          arrendador_id: true,
+          fecha_inicio: true,
+          fecha_fin: true,
+          unidad: { select: { nombre: true } },
+          prorrogas: {
+            select: { fecha_fin_anterior: true },
+            orderBy: [{ fecha_aplicacion: 'asc' }, { creado_en: 'asc' }],
+            take: 1,
+          },
+          aviso_no_renovacion: { select: { cancelado_en: true } },
+        },
+      });
+      if (
+        !contrato ||
+        contrato.estado !== EstadoContrato.ACTIVO ||
+        contrato.fecha_fin.getTime() >= hoy.getTime() ||
+        (contrato.aviso_no_renovacion !== null &&
+          contrato.aviso_no_renovacion.cancelado_en === null)
+      ) {
+        return 0;
+      }
+
+      const meses = mesesDelTerminoInicial(
+        contrato.fecha_inicio,
+        contrato.fecha_fin,
+        contrato.prorrogas[0]?.fecha_fin_anterior ?? null,
+      );
+      let fechaFin = contrato.fecha_fin;
+      let aplicadas = 0;
+      while (
+        fechaFin.getTime() < hoy.getTime() &&
+        aplicadas < MAX_PRORROGAS_POR_CORRIDA
+      ) {
+        const prorroga = await aplicarProrroga(tx, id, {
+          fechaFinActual: fechaFin,
+          meses,
+          tipo: TipoProrroga.AUTOMATICA,
+          fechaAplicacion: sumarDiasUTC(fechaFin, 1),
+          hoy,
+        });
+        if (!prorroga) {
+          if (aplicadas === 0) {
+            return 0; // Otra corrida ya lo prorrogó.
+          }
+          throw new Error(
+            `El contrato ${id} cambió durante su prórroga automática; se revierte.`,
+          );
+        }
+        fechaFin = prorroga.fecha_fin_nueva;
+        aplicadas += 1;
+      }
+      if (fechaFin.getTime() < hoy.getTime()) {
+        this.logger.warn(
+          `El contrato ${id} llegó al máximo de ${MAX_PRORROGAS_POR_CORRIDA} prórrogas automáticas en una corrida y su fecha de fin sigue vencida; continúa en la próxima.`,
+        );
+      }
+
+      await tx.alerta.create({
+        data: {
+          arrendador_id: contrato.arrendador_id,
+          tipo: TipoAlerta.CONTRATO_PRORROGADO_AUTOMATICAMENTE,
+          contrato_id: id,
+          mensaje: `El contrato de la unidad ${contrato.unidad.nombre} se prorrogó automáticamente hasta el ${fechaFin.toISOString().slice(0, 10)} (no hubo aviso de no renovación).`,
+        },
+      });
+      return aplicadas;
+    });
+
+    if (aplicadas === 0) {
+      return false;
+    }
+    await this.documentos.generarSinPropagarErrores(id);
+    return true;
   }
 
   /**
@@ -202,12 +351,8 @@ export class AlertaSchedulerService {
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async ejecutarVencimiento(): Promise<{ creadas: number }> {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-
-    const limite = new Date(hoy);
-    limite.setDate(limite.getDate() + 30);
-    limite.setHours(23, 59, 59, 999);
+    const hoy = hoyEnBogota();
+    const limite = sumarDiasUTC(hoy, 30);
 
     const contratos = await this.prisma.contrato.findMany({
       where: {
@@ -238,7 +383,9 @@ export class AlertaSchedulerService {
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-      const fechaVencimiento = contrato.fecha_fin.toLocaleDateString('es-CO');
+      const fechaVencimiento = contrato.fecha_fin.toLocaleDateString('es-CO', {
+        timeZone: 'UTC',
+      });
 
       await this.prisma.alerta.create({
         data: {
