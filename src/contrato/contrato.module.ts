@@ -18,5 +18,6 @@ import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
     AvisoNoRenovacionService,
     PrismaService,
   ],
+  exports: [DocumentoContratoService],
 })
 export class ContratoModule {}

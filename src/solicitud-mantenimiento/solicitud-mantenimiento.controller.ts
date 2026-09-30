@@ -143,6 +143,8 @@ export class SolicitudMantenimientoController {
   @Get('mias')
   @ApiOperation({
     summary: 'Listar las solicitudes de mantenimiento del inquilino',
+    description: 'OBSOLETO: usa GET /inquilino/solicitudes. Se retira en B0.5.',
+    deprecated: true,
   })
   @ApiOkResponse({
     description:

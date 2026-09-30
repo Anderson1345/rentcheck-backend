@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
+import { contratoVinculadoDelInquilino } from '../common/contrato-vinculado-inquilino';
 import { calcularHuellaSolicitud } from '../common/huella-idempotencia.util';
 import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import {
@@ -167,10 +168,25 @@ export class SolicitudMantenimientoService {
     };
   }
 
-  async listarMias(inquilinoId: string) {
+  /**
+   * Solicitudes del inquilino; con `contratoId`, solo las de la unidad de ese
+   * contrato (que debe ser suyo, estar vinculado y no cancelado).
+   */
+  async listarMias(inquilinoId: string, contratoId?: string) {
+    const unidadDelFiltro = contratoId
+      ? (
+          await contratoVinculadoDelInquilino(
+            this.prisma,
+            inquilinoId,
+            contratoId,
+            { unidad_id: true },
+          )
+        ).unidad_id
+      : undefined;
     const solicitudes = await this.prisma.solicitudMantenimiento.findMany({
       where: {
         inquilino_id: inquilinoId,
+        ...(unidadDelFiltro ? { unidad_id: unidadDelFiltro } : {}),
         // Solo las de unidades con un contrato suyo ya vinculado.
         unidad: {
           contratos: {
@@ -182,6 +198,25 @@ export class SolicitudMantenimientoService {
     });
 
     return Promise.all(solicitudes.map((s) => this.exponerUrlFirmada(s)));
+  }
+
+  /** Una solicitud propia, solo si su unidad tiene un contrato suyo vinculado. */
+  async encontrarUnaDelInquilino(id: string, inquilinoId: string) {
+    const solicitud = await this.prisma.solicitudMantenimiento.findFirst({
+      where: {
+        id,
+        inquilino_id: inquilinoId,
+        unidad: {
+          contratos: {
+            some: { inquilino_id: inquilinoId, vinculado_en: { not: null } },
+          },
+        },
+      },
+    });
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud de mantenimiento no encontrada.');
+    }
+    return this.exponerUrlFirmada(solicitud);
   }
 
   private readonly INCLUDE_SOLICITUD = {

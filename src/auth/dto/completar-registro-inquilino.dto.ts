@@ -11,7 +11,7 @@ import { normalizarCodigoAcceso } from '../../common/utils/codigo-acceso';
 import { normalizarCorreo } from '../../common/utils/normalizar-correo';
 
 export class CompletarRegistroInquilinoDto {
-  @ApiProperty({ example: 'ABC123' })
+  @ApiProperty({ example: 'RC-AB3D-9KPX' })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? normalizarCodigoAcceso(value) : value,
   )

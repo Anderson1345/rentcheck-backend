@@ -13,6 +13,7 @@ import {
   calcularEstadoCuenta,
   PeriodoEstadoCuenta,
 } from '../common/estado-cuenta.util';
+import { contratoVinculadoDelInquilino } from '../common/contrato-vinculado-inquilino';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import {
   conInquilinoDeLaCopia,
@@ -331,10 +332,22 @@ export class PagoService {
     );
   }
 
-  async listarMios(inquilinoId: string) {
+  /** Con `contratoId`, solo los pagos de ese contrato (debe ser suyo, vinculado y no cancelado). */
+  async listarMios(inquilinoId: string, contratoId?: string) {
+    if (contratoId) {
+      await contratoVinculadoDelInquilino(
+        this.prisma,
+        inquilinoId,
+        contratoId,
+        {
+          id: true,
+        },
+      );
+    }
     const pagos = await this.prisma.pago.findMany({
       where: {
         contrato: { inquilino_id: inquilinoId, vinculado_en: { not: null } },
+        ...(contratoId ? { contrato_id: contratoId } : {}),
       },
       include: this.INCLUDE_PAGO,
       orderBy: { fecha_reportada: 'desc' },

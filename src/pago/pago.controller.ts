@@ -41,6 +41,7 @@ import {
   TAMANO_MAXIMO_COMPROBANTE,
   TIPOS_ARCHIVO_COMPROBANTE,
 } from '../common/limites-archivo.constants';
+import { FiltroContratoQueryDto } from '../common/dto/filtro-contrato-query.dto';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ClaveIdempotencia } from '../idempotencia/clave-idempotencia.decorator';
 import { CrearPagoDto } from './dto/crear-pago.dto';
@@ -74,12 +75,17 @@ export class PagoController {
   @UseGuards(InquilinoGuard)
   @ApiOperation({
     summary: 'Listar los pagos reportados por el inquilino autenticado',
+    description:
+      'Con `?contratoId=` solo los pagos de ese contrato (404 si no es suyo, no está vinculado o está cancelado).',
   })
   @ApiOkResponse({
     description: 'Lista de pagos del inquilino con sus datos de contrato.',
   })
-  listarMios(@InquilinoActual() inquilinoId: string) {
-    return this.pagoService.listarMios(inquilinoId);
+  listarMios(
+    @InquilinoActual() inquilinoId: string,
+    @Query() query: FiltroContratoQueryDto,
+  ) {
+    return this.pagoService.listarMios(inquilinoId, query.contratoId);
   }
 
   @Get(':id')

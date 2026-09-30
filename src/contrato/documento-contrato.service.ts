@@ -515,7 +515,16 @@ export class DocumentoContratoService {
 
   async listar(contratoId: string, arrendadorId: string) {
     await this.encontrarContratoDelArrendador(contratoId, arrendadorId);
+    return this.listarDeContrato(contratoId);
+  }
 
+  /**
+   * Documentos de un contrato ya autorizado por quien llama (el arrendador con
+   * `listar`, el inquilino con `contratoVinculadoDelInquilino`). Si falla la
+   * firma de un documento, ese sale con `url_firmada` nula y el resto se
+   * entrega.
+   */
+  async listarDeContrato(contratoId: string) {
     const documentos = await this.prisma.documentoContrato.findMany({
       where: { contrato_id: contratoId },
       orderBy: { version: 'asc' },

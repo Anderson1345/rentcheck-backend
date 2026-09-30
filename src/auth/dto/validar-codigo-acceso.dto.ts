@@ -4,7 +4,7 @@ import { IsNotEmpty, IsString } from 'class-validator';
 import { normalizarCodigoAcceso } from '../../common/utils/codigo-acceso';
 
 export class ValidarCodigoAccesoDto {
-  @ApiProperty({ example: 'ABC123' })
+  @ApiProperty({ example: 'RC-AB3D-9KPX' })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? normalizarCodigoAcceso(value) : value,
   )

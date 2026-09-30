@@ -14,7 +14,6 @@ import {
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
-import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import { resumenTerminacion } from '../common/terminacion.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -61,19 +60,6 @@ function errorYaConfirmada(mensaje: string): ConflictException {
 @Injectable()
 export class TerminacionAnticipadaService {
   constructor(private readonly prisma: PrismaService) {}
-
-  /** Contrato del inquilino autenticado: el activo o, si no hay, el último. */
-  async resolverContratoDelInquilino(inquilinoId: string): Promise<string> {
-    const id = await resolverIdContratoDelInquilino(this.prisma, {
-      inquilino_id: inquilinoId,
-    });
-    if (!id) {
-      throw new NotFoundException(
-        'El inquilino autenticado no tiene ningún contrato.',
-      );
-    }
-    return id;
-  }
 
   private async respuesta(
     tx: Prisma.TransactionClient,
