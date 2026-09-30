@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import {
   EstadoContrato,
   Momento,
@@ -107,6 +108,8 @@ const RANGO_ESTADO_LISTA: Partial<Record<EstadoContrato, number>> = {
 
 @Injectable()
 export class InquilinoPanelService {
+  private readonly logger = new Logger(InquilinoPanelService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
@@ -258,11 +261,12 @@ export class InquilinoPanelService {
       fecha_inicio: contrato.fecha_inicio,
       fecha_fin: contrato.fecha_fin,
       // OBSOLETO: usar `documentos` (CONTRATO_ORIGINAL v1 + otrosíes).
-      pdf_contrato_url: contrato.pdf_contrato_ruta
-        ? await this.almacenamiento.generarUrlFirmada(
-            contrato.pdf_contrato_ruta,
-          )
-        : null,
+      pdf_contrato_url: await firmarTolerante(
+        this.almacenamiento,
+        contrato.pdf_contrato_ruta,
+        this.logger,
+        `el PDF heredado del contrato ${contrato.id}`,
+      ),
       documentos: await this.documentos.listarDeContrato(contrato.id),
       incrementos_ipc: contrato.incrementos_ipc,
       terminacion_anticipada: resumenTerminacion(
@@ -491,16 +495,18 @@ export class InquilinoPanelService {
     );
   }
 
-  private async exponerUrlFirmada<T extends { foto_ruta: string | null }>(
-    foto: T,
-  ): Promise<Omit<T, 'foto_ruta'> & { foto_url: string | null }> {
+  private async exponerUrlFirmada<
+    T extends { id: string; foto_ruta: string | null },
+  >(foto: T): Promise<Omit<T, 'foto_ruta'> & { foto_url: string | null }> {
     const { foto_ruta, ...resto } = foto;
-    if (!foto_ruta) {
-      return { ...resto, foto_url: null };
-    }
     return {
       ...resto,
-      foto_url: await this.almacenamiento.generarUrlFirmada(foto_ruta),
+      foto_url: await firmarTolerante(
+        this.almacenamiento,
+        foto_ruta,
+        this.logger,
+        `la foto de inventario ${foto.id}`,
+      ),
     };
   }
 }

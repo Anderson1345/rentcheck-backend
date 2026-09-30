@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import {
   EstadoContrato,
   EstadoSolicitudMantenimiento,
@@ -378,7 +379,9 @@ export class SolicitudMantenimientoService {
     return this.exponerUrlFirmada(conCopia);
   }
 
-  private async exponerUrlFirmada<T extends { adjunto_ruta: string | null }>(
+  private async exponerUrlFirmada<
+    T extends { id: string; adjunto_ruta: string | null },
+  >(
     solicitud: T,
   ): Promise<Omit<T, 'adjunto_ruta'> & { adjunto_url: string | null }> {
     const { adjunto_ruta, ...sinRuta } = solicitud;
@@ -388,12 +391,14 @@ export class SolicitudMantenimientoService {
       this.almacenamiento,
       this.logger,
     );
-    if (!adjunto_ruta) {
-      return { ...resto, adjunto_url: null };
-    }
     return {
       ...resto,
-      adjunto_url: await this.almacenamiento.generarUrlFirmada(adjunto_ruta),
+      adjunto_url: await firmarTolerante(
+        this.almacenamiento,
+        adjunto_ruta,
+        this.logger,
+        `el adjunto de la solicitud ${solicitud.id}`,
+      ),
     };
   }
 

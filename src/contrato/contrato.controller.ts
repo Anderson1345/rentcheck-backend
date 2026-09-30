@@ -228,7 +228,7 @@ export class ContratoController {
   @ApiOperation({
     summary: 'Listar las versiones de documentos del contrato',
     description:
-      'Contrato original y un otrosí por cada incremento y prórroga, ordenados por versión, con hash SHA-256 (nulo solo en documentos heredados) y URL firmada temporal.',
+      'Contrato original y un otrosí por cada incremento y prórroga, ordenados por versión, con hash SHA-256 (nulo solo en documentos heredados) y URL firmada temporal (null si el archivo no está disponible).',
   })
   @ApiOkResponse({
     description:

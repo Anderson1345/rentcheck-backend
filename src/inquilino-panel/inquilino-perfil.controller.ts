@@ -44,7 +44,7 @@ export class InquilinoPerfilController {
   @ApiOperation({ summary: 'Obtener el perfil del inquilino autenticado' })
   @ApiOkResponse({
     description:
-      'id, nombre, cedula, telefono, correo y foto_cedula_url (firmada, o null).',
+      'id, nombre, cedula, telefono, correo y foto_cedula_url (firmada, o null si no hay foto o el archivo no está disponible).',
   })
   verPerfil(@InquilinoActual() inquilinoId: string) {
     return this.perfilService.verPerfil(inquilinoId);
@@ -59,7 +59,7 @@ export class InquilinoPerfilController {
   @ApiBody({ type: ActualizarPerfilInquilinoDto })
   @ApiOkResponse({
     description:
-      'Perfil actualizado: id, nombre, cedula, telefono, correo y foto_cedula_url (firmada, o null).',
+      'Perfil actualizado: id, nombre, cedula, telefono, correo y foto_cedula_url (firmada, o null si no hay foto o el archivo no está disponible).',
   })
   @ApiBadRequestResponse({
     description: 'VALIDACION, SIN_CAMPOS o CAMPO_NO_EDITABLE.',

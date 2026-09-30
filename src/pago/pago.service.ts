@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import { EstadoContrato, EstadoPago, Prisma } from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
@@ -436,7 +437,7 @@ export class PagoService {
   }
 
   private async exponerUrlFirmada<
-    T extends { comprobante_ruta: string | null },
+    T extends { id: string; comprobante_ruta: string | null },
   >(
     pago: T,
   ): Promise<Omit<T, 'comprobante_ruta'> & { comprobante_url: string | null }> {
@@ -453,13 +454,14 @@ export class PagoService {
           ),
         }
       : sinRuta;
-    if (!comprobante_ruta) {
-      return { ...resto, comprobante_url: null };
-    }
     return {
       ...resto,
-      comprobante_url:
-        await this.almacenamiento.generarUrlFirmada(comprobante_ruta),
+      comprobante_url: await firmarTolerante(
+        this.almacenamiento,
+        comprobante_ruta,
+        this.logger,
+        `el comprobante del pago ${pago.id}`,
+      ),
     };
   }
 

@@ -81,7 +81,7 @@ export class InquilinoPanelController {
   @ApiOperation({
     summary: 'Condiciones de un contrato del inquilino',
     description:
-      'Condiciones económicas, incrementos IPC, terminación, aviso de no renovación, fotos de entrega y devolución y `documentos` (original y otrosíes con URL firmada). `pdf_contrato_url` se conserva pero es obsoleto: usa `documentos`.',
+      'Condiciones económicas, incrementos IPC, terminación, aviso de no renovación, fotos de entrega y devolución y `documentos` (original y otrosíes con URL firmada). `pdf_contrato_url` se conserva pero es obsoleto: usa `documentos`. Toda URL firmada (`pdf_contrato_url`, fotos, documentos) es null si el archivo no está disponible.',
   })
   @ApiOkResponse({ description: 'Detalle del contrato con sus documentos.' })
   @ApiNotFoundResponse({

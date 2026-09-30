@@ -1,4 +1,5 @@
 import { Logger, UnsupportedMediaTypeException } from '@nestjs/common';
+import { firmarTolerante } from './firma-tolerante';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'crypto';
 import { memoryStorage } from 'multer';
@@ -55,12 +56,12 @@ export async function firmarFotoOpcional(
     );
     return null;
   }
-  try {
-    return await almacenamiento.generarUrlFirmada(ruta);
-  } catch {
-    logger.warn(`No se pudo firmar la URL de la foto '${ruta}'.`);
-    return null;
-  }
+  return firmarTolerante(
+    almacenamiento,
+    ruta,
+    logger,
+    'una foto de perfil o de unidad',
+  );
 }
 
 /** Prefijo que generan las subidas de la foto principal de una unidad. */

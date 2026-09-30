@@ -397,7 +397,8 @@ export class InmuebleController {
     },
   })
   @ApiOkResponse({
-    description: 'Unidad con la foto principal firmada.',
+    description:
+      'Unidad con la foto principal firmada (null si el archivo no está disponible).',
   })
   @ApiBadRequestResponse({ description: 'La foto es obligatoria.' })
   @ApiNotFoundResponse({
@@ -473,7 +474,8 @@ export class InmuebleController {
   })
   @ApiProduces('application/zip')
   @ApiOkResponse({
-    description: 'Archivo ZIP con los documentos del inmueble.',
+    description:
+      'Archivo ZIP con los documentos del inmueble, enviado por flujo. Un archivo que no se pueda descargar se omite y se lista en LEEME_ARCHIVOS_NO_DISPONIBLES.txt dentro del ZIP.',
     content: {
       'application/zip': {
         schema: { type: 'string', format: 'binary' },
@@ -506,10 +508,18 @@ export class InmuebleController {
       res.destroy(error);
     });
 
+    // Si el cliente corta antes de terminar, se cierra el flujo: el servicio
+    // aborta el ZIP y no descarga más archivos.
+    res.once('close', () => {
+      if (!res.writableFinished) {
+        resultado.stream.destroy();
+      }
+    });
     res.set({
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${resultado.nombreArchivo}"`,
     });
+    res.flushHeaders();
     resultado.stream.pipe(res);
   }
 }

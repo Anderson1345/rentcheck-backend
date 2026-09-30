@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import { Momento } from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
@@ -82,16 +83,18 @@ export class FotoInventarioService {
     return Promise.all(fotos.map((f) => this.exponerUrlFirmada(f)));
   }
 
-  private async exponerUrlFirmada<T extends { foto_ruta: string | null }>(
-    foto: T,
-  ): Promise<Omit<T, 'foto_ruta'> & { foto_url: string | null }> {
+  private async exponerUrlFirmada<
+    T extends { id: string; foto_ruta: string | null },
+  >(foto: T): Promise<Omit<T, 'foto_ruta'> & { foto_url: string | null }> {
     const { foto_ruta, ...resto } = foto;
-    if (!foto_ruta) {
-      return { ...resto, foto_url: null };
-    }
     return {
       ...resto,
-      foto_url: await this.almacenamiento.generarUrlFirmada(foto_ruta),
+      foto_url: await firmarTolerante(
+        this.almacenamiento,
+        foto_ruta,
+        this.logger,
+        `la foto de inventario ${foto.id}`,
+      ),
     };
   }
 

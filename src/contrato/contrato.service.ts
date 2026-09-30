@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import {
   EstadoContrato,
   Prisma,
@@ -93,7 +94,7 @@ export class ContratoService {
   ) {}
 
   private async exponerUrlFirmada<
-    T extends { pdf_contrato_ruta: string | null },
+    T extends { id: string; pdf_contrato_ruta: string | null },
   >(
     contrato: T,
   ): Promise<
@@ -106,13 +107,14 @@ export class ContratoService {
       this.almacenamiento,
       this.logger,
     );
-    if (!pdf_contrato_ruta) {
-      return { ...resto, pdf_contrato_url: null };
-    }
     return {
       ...resto,
-      pdf_contrato_url:
-        await this.almacenamiento.generarUrlFirmada(pdf_contrato_ruta),
+      pdf_contrato_url: await firmarTolerante(
+        this.almacenamiento,
+        pdf_contrato_ruta,
+        this.logger,
+        `el PDF heredado del contrato ${contrato.id}`,
+      ),
     };
   }
 

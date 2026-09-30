@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import {
   EstadoContrato,
   EstadoPago,
@@ -592,6 +593,7 @@ export class InmuebleService {
 
   private async exponerUrlFirmadaInmueble<
     T extends {
+      id: string;
       foto_portada_ruta: string | null;
       unidades?: Array<{
         id: string;
@@ -613,26 +615,31 @@ export class InmuebleService {
           ),
         }
       : resto;
-    if (!foto_portada_ruta) {
-      return { ...conUnidades, foto_portada_url: null };
-    }
     return {
       ...conUnidades,
-      foto_portada_url:
-        await this.almacenamiento.generarUrlFirmada(foto_portada_ruta),
+      foto_portada_url: await firmarTolerante(
+        this.almacenamiento,
+        foto_portada_ruta,
+        this.logger,
+        `la portada del inmueble ${inmueble.id}`,
+      ),
     };
   }
 
-  private async exponerUrlFirmada<T extends { archivo_ruta: string | null }>(
+  private async exponerUrlFirmada<
+    T extends { id: string; archivo_ruta: string | null },
+  >(
     documento: T,
   ): Promise<Omit<T, 'archivo_ruta'> & { archivo_url: string | null }> {
     const { archivo_ruta, ...resto } = documento;
-    if (!archivo_ruta) {
-      return { ...resto, archivo_url: null };
-    }
     return {
       ...resto,
-      archivo_url: await this.almacenamiento.generarUrlFirmada(archivo_ruta),
+      archivo_url: await firmarTolerante(
+        this.almacenamiento,
+        archivo_ruta,
+        this.logger,
+        `el documento ${documento.id} del inmueble`,
+      ),
     };
   }
 
@@ -654,6 +661,15 @@ export class InmuebleService {
     }
   }
 
+  /**
+   * ZIP de documentos del inmueble, por flujo (B-44). La pertenencia se valida
+   * ANTES de devolver nada (null = 404). Después se devuelve el flujo ya
+   * conectado y el ZIP se arma en segundo plano, un archivo a la vez: nunca
+   * hay más de un archivo en memoria. `nombreArchivo` no cambia.
+   *
+   * Si el cliente corta la conexión, cerrar `stream` aborta el ZIP y no se
+   * descarga ningún archivo más.
+   */
   async construirZipDocumentos(
     id: string,
     arrendadorId: string,
@@ -664,85 +680,34 @@ export class InmuebleService {
     }
 
     const archivo = new ZipArchive({ zlib: { level: 9 } });
-    const archivosFallidos: string[] = [];
-
-    const agregarArchivo = async (
-      ruta: string | null | undefined,
-      carpeta: string,
-      nombre: string | null = null,
-    ) => {
-      if (!ruta) {
-        return;
-      }
-      // Rutas legacy de disco (aún no migradas, p. ej. pdf_contrato_ruta).
-      if (ruta.startsWith('uploads/')) {
-        const rutaAbsoluta = join(process.cwd(), ruta);
-        if (!existsSync(rutaAbsoluta)) {
-          archivosFallidos.push(ruta);
-          return;
-        }
-        archivo.file(rutaAbsoluta, {
-          name: `${carpeta}/${nombre ?? basename(ruta)}`,
-        });
-        return;
-      }
-      try {
-        const buffer = await this.almacenamiento.descargarArchivo(ruta);
-        archivo.append(buffer, {
-          name: `${carpeta}/${nombre ?? basename(ruta)}`,
-        });
-      } catch {
-        archivosFallidos.push(ruta);
-      }
-    };
-
-    for (const documento of inmueble.documentos) {
-      await agregarArchivo(documento.archivo_ruta, 'documentos-inmueble');
-    }
-    for (const unidad of inmueble.unidades) {
-      for (const contrato of unidad.contratos) {
-        const contratoCorto = contrato.id.slice(0, 8);
-        const carpetaContrato = `contratos/${contratoCorto}`;
-        // Todas las versiones: el original y cada otrosí.
-        for (const documento of contrato.documentos) {
-          await agregarArchivo(
-            documento.ruta,
-            carpetaContrato,
-            `v${documento.version}-${documento.tipo}.pdf`,
-          );
-        }
-        // Contrato sin historial de documentos: se conserva la ruta heredada.
-        if (contrato.documentos.length === 0) {
-          await agregarArchivo(contrato.pdf_contrato_ruta, carpetaContrato);
-        }
-        // El nombre lleva período e id del pago para que dos comprobantes
-        // con el mismo nombre de archivo no se pisen.
-        for (const pago of contrato.pagos) {
-          await agregarArchivo(
-            pago.comprobante_ruta,
-            'comprobantes',
-            `${pago.periodo.toISOString().slice(0, 10)}-${pago.id.slice(0, 8)}-${basename(pago.comprobante_ruta ?? '')}`,
-          );
-        }
-      }
-    }
-
-    if (archivosFallidos.length > 0) {
-      this.logger.warn(
-        `Archivos referenciados no descargables desde Supabase para el inmueble ${id}: ${archivosFallidos.join(', ')}`,
-      );
-    }
-
     const stream = new PassThrough();
+    const estado = { cancelado: false, despertar: () => {} };
+    const cancelar = () => {
+      estado.cancelado = true;
+      estado.despertar();
+    };
     archivo.on('error', (error) => {
       this.logger.error(
         `Error al generar el ZIP de documentos del inmueble ${id}`,
         error instanceof Error ? error.stack : String(error),
       );
+      cancelar();
       stream.destroy(error);
     });
+    stream.once('close', () => {
+      if (stream.readableEnded) {
+        return;
+      }
+      // El consumidor cerró antes de que el ZIP terminara: se aborta.
+      this.logger.warn(
+        `ZIP de documentos del inmueble ${id} cancelado antes de terminar (el cliente cerró la conexión).`,
+      );
+      cancelar();
+      archivo.abort();
+    });
     archivo.pipe(stream);
-    await archivo.finalize();
+
+    void this.llenarZipDocumentos(id, inmueble, archivo, estado);
 
     return {
       stream,
@@ -758,6 +723,150 @@ export class InmuebleService {
       where: { id, arrendador_id: arrendadorId },
       include: INCLUDE_INMUEBLE_PARA_DESCARGA,
     });
+  }
+
+  /** Archivos del ZIP en orden: ruta en el bucket → nombre dentro del ZIP. */
+  private planificarArchivosZip(
+    inmueble: InmuebleConDocumentosParaDescarga,
+  ): Array<{ ruta: string; nombreZip: string }> {
+    const plan: Array<{ ruta: string; nombreZip: string }> = [];
+    const agregar = (
+      ruta: string | null | undefined,
+      carpeta: string,
+      nombre: string | null = null,
+    ) => {
+      if (ruta) {
+        plan.push({
+          ruta,
+          nombreZip: `${carpeta}/${nombre ?? basename(ruta)}`,
+        });
+      }
+    };
+
+    for (const documento of inmueble.documentos) {
+      agregar(documento.archivo_ruta, 'documentos-inmueble');
+    }
+    for (const unidad of inmueble.unidades) {
+      for (const contrato of unidad.contratos) {
+        const carpetaContrato = `contratos/${contrato.id.slice(0, 8)}`;
+        // Todas las versiones: el original y cada otrosí.
+        for (const documento of contrato.documentos) {
+          agregar(
+            documento.ruta,
+            carpetaContrato,
+            `v${documento.version}-${documento.tipo}.pdf`,
+          );
+        }
+        // Contrato sin historial de documentos: se conserva la ruta heredada.
+        if (contrato.documentos.length === 0) {
+          agregar(contrato.pdf_contrato_ruta, carpetaContrato);
+        }
+        // El nombre lleva período e id del pago para que dos comprobantes
+        // con el mismo nombre de archivo no se pisen.
+        for (const pago of contrato.pagos) {
+          agregar(
+            pago.comprobante_ruta,
+            'comprobantes',
+            `${pago.periodo.toISOString().slice(0, 10)}-${pago.id.slice(0, 8)}-${basename(pago.comprobante_ruta ?? '')}`,
+          );
+        }
+      }
+    }
+    return plan;
+  }
+
+  /**
+   * Llena el ZIP de a un archivo: descarga, agrega y espera a que el archivo
+   * quede escrito (así la memoria y el ritmo los marca el cliente). Un archivo
+   * que falla se omite y se lista en LEEME_ARCHIVOS_NO_DISPONIBLES.txt.
+   */
+  private async llenarZipDocumentos(
+    id: string,
+    inmueble: InmuebleConDocumentosParaDescarga,
+    archivo: ZipArchive,
+    estado: { cancelado: boolean; despertar: () => void },
+  ): Promise<void> {
+    const noDisponibles: string[] = [];
+    // Espera a que archiver termine de escribir la entrada `nombre`, o a la cancelación.
+    const esperarEntrada = (nombre: string) =>
+      new Promise<void>((resolver) => {
+        const alTerminar = (entrada: { name: string }) => {
+          if (entrada.name === nombre) {
+            liberar();
+          }
+        };
+        const liberar = () => {
+          archivo.off('entry', alTerminar);
+          estado.despertar = () => {};
+          resolver();
+        };
+        archivo.on('entry', alTerminar);
+        estado.despertar = liberar;
+      });
+
+    try {
+      for (const { ruta, nombreZip } of this.planificarArchivosZip(inmueble)) {
+        if (estado.cancelado) {
+          return;
+        }
+        if (ruta.startsWith('uploads/')) {
+          // Rutas legacy de disco (aún no migradas, p. ej. pdf_contrato_ruta).
+          const rutaAbsoluta = join(process.cwd(), ruta);
+          if (!existsSync(rutaAbsoluta)) {
+            noDisponibles.push(nombreZip);
+            continue;
+          }
+          const escrita = esperarEntrada(nombreZip);
+          archivo.file(rutaAbsoluta, { name: nombreZip });
+          await escrita;
+          continue;
+        }
+        let contenido: Buffer;
+        try {
+          contenido = await this.almacenamiento.descargarArchivo(ruta);
+        } catch {
+          noDisponibles.push(nombreZip);
+          continue;
+        }
+        if (estado.cancelado) {
+          return;
+        }
+        const escrita = esperarEntrada(nombreZip);
+        archivo.append(contenido, { name: nombreZip });
+        await escrita;
+      }
+
+      if (estado.cancelado) {
+        return;
+      }
+      if (noDisponibles.length > 0) {
+        this.logger.warn(
+          `Archivos no descargables para el ZIP del inmueble ${id}: ${noDisponibles.join(', ')}`,
+        );
+        archivo.append(
+          Buffer.from(
+            [
+              'Los siguientes archivos no estaban disponibles al generar este ZIP y no se incluyeron:',
+              '',
+              ...noDisponibles,
+              '',
+              'Vuelve a descargar más tarde o revisa el archivo en la aplicación.',
+              '',
+            ].join('\n'),
+            'utf8',
+          ),
+          { name: 'LEEME_ARCHIVOS_NO_DISPONIBLES.txt' },
+        );
+      }
+      await archivo.finalize();
+    } catch (error) {
+      // Un fallo del propio ZIP corta la conexión (ya se enviaron cabeceras):
+      // el manejador de 'error' de construirZipDocumentos lo registra y destruye el flujo.
+      archivo.emit(
+        'error',
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 
   private simplificarDireccion(direccion: string): string {

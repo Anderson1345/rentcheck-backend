@@ -32,7 +32,7 @@ export class InquilinoSolicitudesController {
   })
   @ApiOkResponse({
     description:
-      'Solicitudes ordenadas de la más reciente a la más antigua, con `adjunto_url` firmada.',
+      'Solicitudes ordenadas de la más reciente a la más antigua, con `adjunto_url` firmada (null si el archivo no está disponible).',
   })
   @ApiNotFoundResponse({ description: 'El contrato del filtro no es válido.' })
   listar(
@@ -47,7 +47,10 @@ export class InquilinoSolicitudesController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de una solicitud de mantenimiento propia' })
-  @ApiOkResponse({ description: 'La solicitud con `adjunto_url` firmada.' })
+  @ApiOkResponse({
+    description:
+      'La solicitud con `adjunto_url` firmada (null si el archivo no está disponible).',
+  })
   @ApiNotFoundResponse({
     description:
       'La solicitud no existe, es de otro inquilino o su unidad no tiene un contrato suyo vinculado.',

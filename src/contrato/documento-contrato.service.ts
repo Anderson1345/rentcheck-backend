@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { firmarTolerante } from '../common/firma-tolerante';
 import { Prisma, TipoDocumentoContrato } from '@prisma/client';
 import { createHash } from 'crypto';
 import PDFDocument from 'pdfkit';
@@ -529,12 +530,12 @@ export class DocumentoContratoService {
   }
 
   private async firmarRuta(ruta: string): Promise<string | null> {
-    try {
-      return await this.almacenamiento.generarUrlFirmada(ruta);
-    } catch {
-      this.logger.warn(`No se pudo firmar la URL del documento '${ruta}'.`);
-      return null;
-    }
+    return firmarTolerante(
+      this.almacenamiento,
+      ruta,
+      this.logger,
+      'un documento del contrato',
+    );
   }
 
   async listar(contratoId: string, arrendadorId: string) {
