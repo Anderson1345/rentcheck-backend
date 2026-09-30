@@ -7,6 +7,8 @@ import { AvisoNoRenovacionService } from '../contrato/aviso-no-renovacion.servic
 import { ContratoModule } from '../contrato/contrato.module';
 import { TerminacionAnticipadaService } from '../contrato/terminacion-anticipada.service';
 import { InquilinoPanelController } from './inquilino-panel.controller';
+import { InquilinoPerfilController } from './inquilino-perfil.controller';
+import { InquilinoPerfilService } from './inquilino-perfil.service';
 import { InquilinoPanelService } from './inquilino-panel.service';
 
 @Module({
@@ -16,9 +18,10 @@ import { InquilinoPanelService } from './inquilino-panel.service';
     VinculacionModule,
     ContratoModule,
   ],
-  controllers: [InquilinoPanelController],
+  controllers: [InquilinoPanelController, InquilinoPerfilController],
   providers: [
     InquilinoPanelService,
+    InquilinoPerfilService,
     TerminacionAnticipadaService,
     AvisoNoRenovacionService,
     PrismaService,

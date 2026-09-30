@@ -47,6 +47,7 @@ import {
   TIPOS_ARCHIVO_DOCUMENTO,
   TIPOS_ARCHIVO_FOTO_INVENTARIO,
 } from '../common/limites-archivo.constants';
+import { interceptorFotoPerfil } from '../common/foto-perfil';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
 import { ActualizarUnidadDto } from './dto/actualizar-unidad.dto';
@@ -371,6 +372,61 @@ export class InmuebleController {
       );
     }
     return inmueble;
+  }
+
+  @Post(':inmuebleId/unidades/:unidadId/foto-principal')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(interceptorFotoPerfil())
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Subir o reemplazar la foto principal de una unidad',
+    description:
+      'La ruta la genera el servidor. Al reemplazar se borra la foto anterior propia. Responde con la unidad y `foto_principal_url` firmada (nunca la ruta interna).',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['foto'],
+      properties: {
+        foto: {
+          type: 'string',
+          format: 'binary',
+          description: 'Foto principal de la unidad (JPEG o PNG).',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Unidad con la foto principal firmada.',
+  })
+  @ApiBadRequestResponse({ description: 'La foto es obligatoria.' })
+  @ApiNotFoundResponse({
+    description:
+      'Inmueble o unidad no encontrada o no pertenece al arrendador.',
+  })
+  @ApiUnsupportedMediaTypeResponse({
+    description: 'El tipo de archivo de la foto no está permitido.',
+  })
+  async subirFotoPrincipalUnidad(
+    @Param('inmuebleId', ParseIdPipe) inmuebleId: string,
+    @Param('unidadId', ParseIdPipe) unidadId: string,
+    @UploadedFile() foto: Express.Multer.File,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    if (!foto) {
+      throw new BadRequestException('La foto es obligatoria.');
+    }
+
+    const unidad = await this.inmuebleService.subirFotoPrincipalUnidad(
+      inmuebleId,
+      unidadId,
+      arrendadorId,
+      foto,
+    );
+    if (!unidad) {
+      throw new NotFoundException('Inmueble o unidad no encontrada.');
+    }
+    return unidad;
   }
 
   @Get(':inmuebleId/documentos')

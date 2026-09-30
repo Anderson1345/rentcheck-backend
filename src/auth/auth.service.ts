@@ -1,12 +1,15 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { EstadoContrato, Prisma } from '@prisma/client';
 import { normalizarCorreo } from '../common/utils/normalizar-correo';
 import * as bcrypt from 'bcrypt';
+import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
+import { firmarFotoOpcional } from '../common/foto-perfil';
 import { PrismaService } from '../prisma/prisma.service';
 import { errorCodigoNoValido } from '../contrato/codigo-no-valido.exception';
 import { IntentosCodigoService } from '../contrato/intentos-codigo.service';
@@ -27,8 +30,11 @@ const MENSAJE_REGISTRO_NO_COMPLETADO =
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly almacenamiento: AlmacenamientoService,
     private readonly jwtService: JwtService,
     private readonly vinculacion: VinculacionContratoService,
     private readonly intentos: IntentosCodigoService,
@@ -275,7 +281,7 @@ export class AuthService {
     return this.crearRespuestaAutenticacionInquilino(inquilino);
   }
 
-  private crearRespuestaAutenticacion(arrendador: {
+  private async crearRespuestaAutenticacion(arrendador: {
     id: string;
     nombre: string;
     correo: string;
@@ -290,7 +296,12 @@ export class AuthService {
         nombre: arrendador.nombre,
         correo: arrendador.correo,
         telefono: arrendador.telefono,
-        foto_cedula_nit_url: arrendador.foto_cedula_nit_url,
+        // Nunca la ruta interna: URL firmada (null si no hay foto o falla la firma).
+        foto_cedula_nit_url: await firmarFotoOpcional(
+          this.almacenamiento,
+          arrendador.foto_cedula_nit_url,
+          this.logger,
+        ),
         creado_en: arrendador.creado_en,
       },
     };

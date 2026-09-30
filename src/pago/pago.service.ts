@@ -13,6 +13,7 @@ import {
   calcularEstadoCuenta,
   PeriodoEstadoCuenta,
 } from '../common/estado-cuenta.util';
+import { conFotoDeUnidadAnidada } from '../common/foto-perfil';
 import { contratoVinculadoDelInquilino } from '../common/contrato-vinculado-inquilino';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import {
@@ -439,7 +440,19 @@ export class PagoService {
   >(
     pago: T,
   ): Promise<Omit<T, 'comprobante_ruta'> & { comprobante_url: string | null }> {
-    const { comprobante_ruta, ...resto } = pago;
+    const { comprobante_ruta, ...sinRuta } = pago;
+    // La unidad del contrato trae `foto_principal_url`: siempre firmada, nunca la ruta.
+    const contrato = (sinRuta as { contrato?: object }).contrato;
+    const resto = contrato
+      ? {
+          ...sinRuta,
+          contrato: await conFotoDeUnidadAnidada(
+            contrato,
+            this.almacenamiento,
+            this.logger,
+          ),
+        }
+      : sinRuta;
     if (!comprobante_ruta) {
       return { ...resto, comprobante_url: null };
     }

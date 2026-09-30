@@ -21,6 +21,7 @@ import {
   construirRespuestaEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { sumarDiasUTC, sumarMesesUTC } from '../common/fechas-contrato.util';
+import { conFotoDeUnidadAnidada } from '../common/foto-perfil';
 import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import {
@@ -93,7 +94,13 @@ export class ContratoService {
   ): Promise<
     Omit<T, 'pdf_contrato_ruta'> & { pdf_contrato_url: string | null }
   > {
-    const { pdf_contrato_ruta, ...resto } = contrato;
+    const { pdf_contrato_ruta, ...sinRuta } = contrato;
+    // La unidad anidada trae `foto_principal_url`: siempre firmada, nunca la ruta.
+    const resto = await conFotoDeUnidadAnidada(
+      sinRuta,
+      this.almacenamiento,
+      this.logger,
+    );
     if (!pdf_contrato_ruta) {
       return { ...resto, pdf_contrato_url: null };
     }

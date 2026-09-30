@@ -17,6 +17,7 @@ import { existsSync } from 'fs';
 import { basename, extname, join } from 'path';
 import { PassThrough } from 'stream';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
+import { conFotoPrincipalFirmada, reemplazarFoto } from '../common/foto-perfil';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
@@ -280,7 +281,7 @@ export class InmuebleService {
         throw errorEstratoRequerido();
       }
     }
-    return this.prisma.unidad.create({
+    const creada = await this.prisma.unidad.create({
       data: {
         inmueble_id: inmuebleId,
         nombre: dto.nombre,
@@ -294,6 +295,7 @@ export class InmuebleService {
         uso_permitido: dto.uso_permitido,
       },
     });
+    return this.unidadConFotoFirmada(creada);
   }
 
   async actualizarUnidad(
@@ -302,7 +304,7 @@ export class InmuebleService {
     dto: ActualizarUnidadDto,
     arrendadorId: string,
   ): Promise<Prisma.UnidadGetPayload<object> | null> {
-    return this.prisma.$transaction(async (tx) => {
+    const actualizada = await this.prisma.$transaction(async (tx) => {
       const inmueble = await tx.inmueble.findFirst({
         where: { id: inmuebleId, arrendador_id: arrendadorId },
       });
@@ -381,6 +383,7 @@ export class InmuebleService {
 
       return tx.unidad.update({ where: { id: unidadId }, data });
     });
+    return actualizada ? this.unidadConFotoFirmada(actualizada) : null;
   }
 
   async eliminarUnidad(
@@ -411,7 +414,64 @@ export class InmuebleService {
       );
     }
 
-    return this.prisma.unidad.delete({ where: { id: unidadId } });
+    return this.unidadConFotoFirmada(
+      await this.prisma.unidad.delete({ where: { id: unidadId } }),
+    );
+  }
+
+  private unidadConFotoFirmada<T extends { foto_principal_url: string | null }>(
+    unidad: T,
+  ): Promise<T> {
+    return conFotoPrincipalFirmada(unidad, this.almacenamiento, this.logger);
+  }
+
+  /**
+   * Sube o reemplaza la foto principal de una unidad (patrón de la portada).
+   * Devuelve la unidad con `foto_principal_url` firmada, o null si la unidad no
+   * es del arrendador (no se sube nada).
+   */
+  async subirFotoPrincipalUnidad(
+    inmuebleId: string,
+    unidadId: string,
+    arrendadorId: string,
+    foto: Express.Multer.File,
+  ) {
+    const dueno = {
+      id: unidadId,
+      inmueble_id: inmuebleId,
+      inmueble: { arrendador_id: arrendadorId },
+    };
+    const unidad = await this.prisma.unidad.findFirst({
+      where: dueno,
+      select: { foto_principal_url: true },
+    });
+    if (!unidad) {
+      return null;
+    }
+
+    const guardada = await reemplazarFoto({
+      almacenamiento: this.almacenamiento,
+      logger: this.logger,
+      foto,
+      prefijo: `inmuebles/${inmuebleId}/unidades/${unidadId}/`,
+      nombre: 'foto-principal',
+      rutaAnterior: unidad.foto_principal_url,
+      guardar: async (rutaNueva) =>
+        (
+          await this.prisma.unidad.updateMany({
+            where: dueno,
+            data: { foto_principal_url: rutaNueva },
+          })
+        ).count > 0
+          ? true
+          : null,
+    });
+    if (!guardada) {
+      return null;
+    }
+    return this.unidadConFotoFirmada(
+      await this.prisma.unidad.findUniqueOrThrow({ where: { id: unidadId } }),
+    );
   }
 
   async crearDocumento(
@@ -521,18 +581,29 @@ export class InmuebleService {
   }
 
   private async exponerUrlFirmadaInmueble<
-    T extends { foto_portada_ruta: string | null },
+    T extends {
+      foto_portada_ruta: string | null;
+      unidades?: Array<{ foto_principal_url: string | null }>;
+    },
   >(
     inmueble: T,
   ): Promise<
     Omit<T, 'foto_portada_ruta'> & { foto_portada_url: string | null }
   > {
     const { foto_portada_ruta, ...resto } = inmueble;
+    const conUnidades = resto.unidades
+      ? {
+          ...resto,
+          unidades: await Promise.all(
+            resto.unidades.map((u) => this.unidadConFotoFirmada(u)),
+          ),
+        }
+      : resto;
     if (!foto_portada_ruta) {
-      return { ...resto, foto_portada_url: null };
+      return { ...conUnidades, foto_portada_url: null };
     }
     return {
-      ...resto,
+      ...conUnidades,
       foto_portada_url:
         await this.almacenamiento.generarUrlFirmada(foto_portada_ruta),
     };

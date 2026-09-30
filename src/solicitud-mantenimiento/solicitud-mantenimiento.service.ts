@@ -12,6 +12,7 @@ import {
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { contratoVinculadoDelInquilino } from '../common/contrato-vinculado-inquilino';
+import { conFotoDeUnidadAnidada } from '../common/foto-perfil';
 import { calcularHuellaSolicitud } from '../common/huella-idempotencia.util';
 import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import {
@@ -380,7 +381,13 @@ export class SolicitudMantenimientoService {
   private async exponerUrlFirmada<T extends { adjunto_ruta: string | null }>(
     solicitud: T,
   ): Promise<Omit<T, 'adjunto_ruta'> & { adjunto_url: string | null }> {
-    const { adjunto_ruta, ...resto } = solicitud;
+    const { adjunto_ruta, ...sinRuta } = solicitud;
+    // La unidad anidada trae `foto_principal_url`: siempre firmada, nunca la ruta.
+    const resto = await conFotoDeUnidadAnidada(
+      sinRuta,
+      this.almacenamiento,
+      this.logger,
+    );
     if (!adjunto_ruta) {
       return { ...resto, adjunto_url: null };
     }
