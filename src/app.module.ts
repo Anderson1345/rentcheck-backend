@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AlertaModule } from './alerta/alerta.module';
+import { InternoModule } from './interno/interno.module';
 import { ArrendadorModule } from './arrendador/arrendador.module';
 import { InmuebleModule } from './inmueble/inmueble.module';
 import { InquilinoModule } from './inquilino/inquilino.module';
@@ -25,6 +26,7 @@ import { AlmacenamientoModule } from './almacenamiento/almacenamiento.module';
     AuthModule,
     ArrendadorModule,
     AlertaModule,
+    InternoModule,
     InmuebleModule,
     InquilinoModule,
     ContratoModule,

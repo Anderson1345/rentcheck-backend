@@ -19,3 +19,14 @@ export function hoyEnBogota(ahora: Date = new Date()): Date {
 
   return new Date(Date.UTC(anio, mes - 1, dia));
 }
+
+const OFFSET_BOGOTA_MS = 5 * 60 * 60 * 1000;
+
+/**
+ * Instante (UTC) en que empieza un día calendario de Bogotá: su medianoche
+ * local. Recibe el día como lo devuelve `hoyEnBogota` (medianoche UTC). Bogotá
+ * es UTC-5 todo el año (Colombia no tiene horario de verano).
+ */
+export function inicioDelDiaBogota(dia: Date): Date {
+  return new Date(dia.getTime() + OFFSET_BOGOTA_MS);
+}

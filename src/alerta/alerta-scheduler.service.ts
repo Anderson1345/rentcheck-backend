@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import {
   EstadoContrato,
   EstadoPagoContrato,
@@ -10,8 +10,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularEstadoCuenta } from '../common/estado-cuenta.util';
-import { sumarDiasUTC } from '../common/fechas-contrato.util';
-import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { sumarDiasUTC, sumarMesesUTC } from '../common/fechas-contrato.util';
+import { hoyEnBogota, inicioDelDiaBogota } from '../common/hoy-bogota.util';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { fechaFinParaEstadoCuenta } from '../common/terminacion.util';
 import {
@@ -19,6 +19,7 @@ import {
   mesesDelTerminoInicial,
 } from '../contrato/aplicar-prorroga';
 import { DocumentoContratoService } from '../contrato/documento-contrato.service';
+import { LimpiezaTecnicaService } from './limpieza-tecnica.service';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
   fecha_aplicacion: true,
@@ -32,6 +33,14 @@ const SELECT_PAGOS_PARA_ESTADO_CUENTA = {
   monto_centavos: true,
 } as const;
 
+export interface ResultadoTarea {
+  tarea: string;
+  estado: 'ok' | 'error';
+  duracion_ms: number;
+  /** Conteos de la tarea; en un error, solo el nombre de la excepción (nunca datos). */
+  detalle?: unknown;
+}
+
 /** Máximo de prórrogas automáticas por contrato y por corrida (recuperación). */
 const MAX_PRORROGAS_POR_CORRIDA = 12;
 
@@ -43,19 +52,153 @@ function restarDiasUTC(fecha: Date, dias: number): Date {
 export class AlertaSchedulerService {
   private readonly logger = new Logger(AlertaSchedulerService.name);
 
+  /**
+   * Hay una corrida en curso. La exclusión es por proceso: asume UNA sola
+   * instancia del backend (Render, un servicio). Con varias instancias haría
+   * falta un bloqueo en la base de datos.
+   */
+  private corridaEnCurso = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly documentos: DocumentoContratoService,
+    private readonly limpieza: LimpiezaTecnicaService,
   ) {}
 
+  tareasEnCurso(): boolean {
+    return this.corridaEnCurso;
+  }
+
   /**
-   * Único cron de estados del contrato, a las 00:05 de Bogotá. El orden
-   * importa: primero terminan las terminaciones anticipadas cuya fecha llegó,
-   * luego vencen o se prorrogan los contratos cuya fecha de fin pasó y por
-   * último se activan los programados, de modo que un contrato pueda terminar
-   * y el siguiente activarse en la misma corrida.
+   * ÚNICO @Cron de la aplicación: respaldo de las tareas diarias a las 00:05
+   * de Bogotá. El disparo principal es el cron externo, que llama a
+   * `POST /interno/tareas-diarias`; las dos vías comparten este punto de
+   * entrada y pueden correr el mismo día sin duplicar nada.
    */
   @Cron('5 0 * * *', { timeZone: 'America/Bogota' })
+  async cronTareasDiarias(): Promise<void> {
+    const resultado = await this.ejecutarTareasDiarias();
+    if (!Array.isArray(resultado)) {
+      this.logger.warn(
+        'Tareas diarias: el cron de respaldo no corrió porque ya había una corrida en curso.',
+      );
+    }
+  }
+
+  /**
+   * Punto de entrada único de las tareas diarias, con el "hoy" de Bogotá. Orden
+   * fijo: terminaciones anticipadas → vencimientos y prórrogas → activación de
+   * programados (un contrato puede terminar y el siguiente activarse en la
+   * misma corrida), luego las alertas y al final la limpieza. Cada tarea va en
+   * su propio try/catch: una que falle no detiene a las demás. Si ya hay una
+   * corrida en curso devuelve `{ estado: 'en_curso' }` sin arrancar otra.
+   */
+  async ejecutarTareasDiarias(
+    ahora: Date = new Date(),
+  ): Promise<ResultadoTarea[] | { estado: 'en_curso' }> {
+    // El indicador se fija de forma síncrona: dos llamadas en el mismo tick
+    // no pueden arrancar dos corridas.
+    if (this.corridaEnCurso) {
+      return { estado: 'en_curso' };
+    }
+    this.corridaEnCurso = true;
+    try {
+      const hoy = hoyEnBogota(ahora);
+      const tareas: Array<[string, () => Promise<unknown>]> = [
+        [
+          'terminaciones_programadas',
+          () => this.ejecutarTerminacionesProgramadas(hoy),
+        ],
+        [
+          'vencimientos_y_prorrogas',
+          () => this.ejecutarVencimientosYProrrogas(hoy),
+        ],
+        [
+          'activacion_contratos_programados',
+          () => this.ejecutarActivacionContratosProgramados(hoy),
+        ],
+        ['aviso_contrato_por_vencer', () => this.ejecutarVencimiento(ahora)],
+        ['recordatorio_pago', () => this.ejecutarRecordatorioPago(hoy)],
+        ['inquilino_en_mora', () => this.ejecutarInquilinoEnMora(ahora)],
+        [
+          'mantenimiento_sin_atender',
+          () => this.ejecutarMantenimientoSinAtender(ahora),
+        ],
+        ['ajuste_ipc_pendiente', () => this.ejecutarAjusteIpcPendiente(ahora)],
+        ['limpieza', () => this.limpieza.limpiar(ahora)],
+      ];
+
+      const resultados: ResultadoTarea[] = [];
+      for (const [tarea, accion] of tareas) {
+        const inicio = Date.now();
+        try {
+          const detalle = await accion();
+          // Algunas tareas siguen cuando un elemento falla y lo cuentan.
+          const conErrores =
+            typeof detalle === 'object' &&
+            detalle !== null &&
+            'errores' in detalle &&
+            typeof detalle.errores === 'number' &&
+            detalle.errores > 0;
+          resultados.push({
+            tarea,
+            estado: conErrores ? 'error' : 'ok',
+            duracion_ms: Date.now() - inicio,
+            detalle,
+          });
+        } catch (error) {
+          this.logger.error(
+            `Tareas diarias: falló la tarea ${tarea}`,
+            error instanceof Error ? error.stack : String(error),
+          );
+          resultados.push({
+            tarea,
+            estado: 'error',
+            duracion_ms: Date.now() - inicio,
+            detalle: { error: error instanceof Error ? error.name : 'Error' },
+          });
+        }
+      }
+
+      const errores = resultados.filter((r) => r.estado === 'error');
+      this.logger.log(
+        `Tareas diarias (${hoy.toISOString().slice(0, 10)}): ${resultados.length - errores.length} ok, ${errores.length} con error${errores.length ? ` [${errores.map((r) => r.tarea).join(', ')}]` : ''}. ` +
+          resultados
+            .map((r) => `${r.tarea}=${r.estado}/${r.duracion_ms}ms`)
+            .join(' '),
+      );
+      return resultados;
+    } finally {
+      this.corridaEnCurso = false;
+    }
+  }
+
+  /**
+   * ¿Ya hay una alerta de ese evento? Sí si existe una sin leer o si ya se
+   * creó una durante el día calendario actual de Bogotá, aunque esté leída
+   * (regla 20: dos corridas el mismo día no duplican nada).
+   */
+  private async yaHayAlerta(
+    evento: Prisma.AlertaWhereInput,
+    inicioDia: Date,
+  ): Promise<boolean> {
+    const existente = await this.prisma.alerta.findFirst({
+      where: {
+        ...evento,
+        OR: [{ leida: false }, { creado_en: { gte: inicioDia } }],
+      },
+      select: { id: true },
+    });
+    return existente !== null;
+  }
+
+  /**
+   * Transiciones de estado del contrato. El orden importa: primero terminan
+   * las terminaciones anticipadas cuya fecha llegó, luego vencen o se
+   * prorrogan los contratos cuya fecha de fin pasó y por último se activan los
+   * programados. `ejecutarTareasDiarias` corre las tres por separado (cada una
+   * con su try/catch); este método las encadena para quien las necesite juntas.
+   */
   async ejecutarTransicionesDeEstado(hoy: Date = hoyEnBogota()): Promise<{
     terminaciones: { aplicadas: number };
     vencimientos: { vencidos: number; prorrogados: number; errores: number };
@@ -349,9 +492,11 @@ export class AlertaSchedulerService {
     return { activados, vencidos, pendientes };
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async ejecutarVencimiento(): Promise<{ creadas: number }> {
-    const hoy = hoyEnBogota();
+  async ejecutarVencimiento(
+    ahora: Date = new Date(),
+  ): Promise<{ creadas: number }> {
+    const hoy = hoyEnBogota(ahora);
+    const inicioDia = inicioDelDiaBogota(hoy);
     const limite = sumarDiasUTC(hoy, 30);
 
     const contratos = await this.prisma.contrato.findMany({
@@ -371,14 +516,15 @@ export class AlertaSchedulerService {
 
     let creadas = 0;
     for (const contrato of contratos) {
-      const yaExiste = await this.prisma.alerta.findFirst({
-        where: {
-          tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
-          contrato_id: contrato.id,
-          leida: false,
-        },
-      });
-      if (yaExiste) {
+      if (
+        await this.yaHayAlerta(
+          {
+            tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
+            contrato_id: contrato.id,
+          },
+          inicioDia,
+        )
+      ) {
         continue;
       }
 
@@ -393,6 +539,7 @@ export class AlertaSchedulerService {
           tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
           contrato_id: contrato.id,
           mensaje: `El contrato de la unidad ${contrato.unidad.nombre} vence el ${fechaVencimiento}.`,
+          creado_en: ahora,
         },
       });
       creadas += 1;
@@ -405,13 +552,10 @@ export class AlertaSchedulerService {
     return { creadas };
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async ejecutarRecordatorioPago(): Promise<{
+  async ejecutarRecordatorioPago(hoy: Date = hoyEnBogota()): Promise<{
     revisados: number;
     creadas: number;
   }> {
-    const hoy = hoyEnBogota();
-
     const contratos = await this.prisma.contrato.findMany({
       where: {
         estado: EstadoContrato.ACTIVO,
@@ -471,7 +615,12 @@ export class AlertaSchedulerService {
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-      const fechaPago = periodoProximo.fecha_limite.toLocaleDateString('es-CO');
+      const fechaPago = periodoProximo.fecha_limite.toLocaleDateString(
+        'es-CO',
+        {
+          timeZone: 'UTC',
+        },
+      );
 
       await this.prisma.alerta.create({
         data: {
@@ -491,16 +640,14 @@ export class AlertaSchedulerService {
     return { revisados: contratos.length, creadas };
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async ejecutarMantenimientoSinAtender(): Promise<{
+  async ejecutarMantenimientoSinAtender(ahora: Date = new Date()): Promise<{
     revisadas: number;
     creadas: number;
   }> {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-
-    const limite = new Date(hoy);
-    limite.setDate(limite.getDate() - 5);
+    const hoy = hoyEnBogota(ahora);
+    const inicioDia = inicioDelDiaBogota(hoy);
+    // Solicitudes creadas antes de la medianoche de Bogotá de hace 5 días.
+    const limite = inicioDelDiaBogota(sumarDiasUTC(hoy, -5));
 
     const solicitudes = await this.prisma.solicitudMantenimiento.findMany({
       where: {
@@ -519,20 +666,22 @@ export class AlertaSchedulerService {
 
     let creadas = 0;
     for (const solicitud of solicitudes) {
-      const yaExiste = await this.prisma.alerta.findFirst({
-        where: {
-          tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
-          solicitud_mantenimiento_id: solicitud.id,
-          leida: false,
-        },
-      });
-      if (yaExiste) {
+      if (
+        await this.yaHayAlerta(
+          {
+            tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
+            solicitud_mantenimiento_id: solicitud.id,
+          },
+          inicioDia,
+        )
+      ) {
         continue;
       }
 
       const arrendadorId = solicitud.unidad.inmueble.arrendador_id;
       const diasSinAtender = Math.floor(
-        (hoy.getTime() - solicitud.creado_en.getTime()) / (1000 * 60 * 60 * 24),
+        (inicioDia.getTime() - solicitud.creado_en.getTime()) /
+          (1000 * 60 * 60 * 24),
       );
 
       await this.prisma.alerta.create({
@@ -541,6 +690,7 @@ export class AlertaSchedulerService {
           tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
           solicitud_mantenimiento_id: solicitud.id,
           mensaje: `La solicitud de mantenimiento de la unidad ${solicitud.unidad.nombre} lleva ${diasSinAtender} día(s) sin atenderse.`,
+          creado_en: ahora,
         },
       });
       creadas += 1;
@@ -553,17 +703,13 @@ export class AlertaSchedulerService {
     return { revisadas: solicitudes.length, creadas };
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async ejecutarAjusteIpcPendiente(): Promise<{
+  async ejecutarAjusteIpcPendiente(ahora: Date = new Date()): Promise<{
     revisados: number;
     creadas: number;
   }> {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-
-    const limite = new Date(hoy);
-    limite.setDate(limite.getDate() + 30);
-    limite.setHours(23, 59, 59, 999);
+    const hoy = hoyEnBogota(ahora);
+    const inicioDia = inicioDelDiaBogota(hoy);
+    const limite = sumarDiasUTC(hoy, 30);
 
     const contratos = await this.prisma.contrato.findMany({
       where: {
@@ -588,26 +734,31 @@ export class AlertaSchedulerService {
           ).fecha_aplicacion
         : contrato.fecha_inicio;
 
-      const proximoAjuste = new Date(referencia);
-      proximoAjuste.setFullYear(proximoAjuste.getFullYear() + 1);
+      const proximoAjuste = sumarMesesUTC(referencia, 12);
 
-      if (proximoAjuste < hoy || proximoAjuste > limite) {
+      if (
+        proximoAjuste.getTime() < hoy.getTime() ||
+        proximoAjuste.getTime() > limite.getTime()
+      ) {
         continue;
       }
 
-      const yaExiste = await this.prisma.alerta.findFirst({
-        where: {
-          tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
-          contrato_id: contrato.id,
-          leida: false,
-        },
-      });
-      if (yaExiste) {
+      if (
+        await this.yaHayAlerta(
+          {
+            tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
+            contrato_id: contrato.id,
+          },
+          inicioDia,
+        )
+      ) {
         continue;
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-      const fechaAjuste = proximoAjuste.toLocaleDateString('es-CO');
+      const fechaAjuste = proximoAjuste.toLocaleDateString('es-CO', {
+        timeZone: 'UTC',
+      });
 
       await this.prisma.alerta.create({
         data: {
@@ -615,6 +766,7 @@ export class AlertaSchedulerService {
           tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
           contrato_id: contrato.id,
           mensaje: `El ajuste de IPC de la unidad ${contrato.unidad.nombre} debe realizarse el ${fechaAjuste}.`,
+          creado_en: ahora,
         },
       });
       creadas += 1;
@@ -627,13 +779,13 @@ export class AlertaSchedulerService {
     return { revisados: contratos.length, creadas };
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async ejecutarInquilinoEnMora(): Promise<{
+  async ejecutarInquilinoEnMora(ahora: Date = new Date()): Promise<{
     revisados: number;
     enMora: number;
     creadas: number;
   }> {
-    const hoy = hoyEnBogota();
+    const hoy = hoyEnBogota(ahora);
+    const inicioDia = inicioDelDiaBogota(hoy);
 
     const contratos = await this.prisma.contrato.findMany({
       where: {
@@ -670,20 +822,23 @@ export class AlertaSchedulerService {
         continue;
       }
 
-      const yaExiste = await this.prisma.alerta.findFirst({
-        where: {
-          tipo: TipoAlerta.INQUILINO_EN_MORA,
-          contrato_id: contrato.id,
-          leida: false,
-        },
-      });
-      if (yaExiste) {
+      if (
+        await this.yaHayAlerta(
+          {
+            tipo: TipoAlerta.INQUILINO_EN_MORA,
+            contrato_id: contrato.id,
+          },
+          inicioDia,
+        )
+      ) {
         continue;
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
       const fechaVencimientoStr =
-        periodoEnMoraMasAntiguo.fecha_limite.toLocaleDateString('es-CO');
+        periodoEnMoraMasAntiguo.fecha_limite.toLocaleDateString('es-CO', {
+          timeZone: 'UTC',
+        });
 
       await this.prisma.alerta.create({
         data: {
@@ -691,6 +846,7 @@ export class AlertaSchedulerService {
           tipo: TipoAlerta.INQUILINO_EN_MORA,
           contrato_id: contrato.id,
           mensaje: `El pago de la unidad ${contrato.unidad.nombre} correspondiente a ${fechaVencimientoStr} está vencido.`,
+          creado_en: ahora,
         },
       });
       creadas += 1;

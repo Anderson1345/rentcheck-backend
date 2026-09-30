@@ -1,4 +1,4 @@
-import { hoyEnBogota } from './hoy-bogota.util';
+import { hoyEnBogota, inicioDelDiaBogota } from './hoy-bogota.util';
 
 describe('hoyEnBogota', () => {
   afterEach(() => {
@@ -23,5 +23,20 @@ describe('hoyEnBogota', () => {
     const resultado = hoyEnBogota();
 
     expect(resultado.getTime()).toBe(Date.UTC(2026, 8, 20));
+  });
+});
+
+describe('inicioDelDiaBogota', () => {
+  it('es la medianoche de Bogotá (05:00 UTC) del día calendario dado', () => {
+    expect(
+      inicioDelDiaBogota(new Date('2026-09-30T00:00:00Z')).toISOString(),
+    ).toBe('2026-09-30T05:00:00.000Z');
+  });
+
+  it('el día de Bogotá de las 22:00 del 30/09 (03:00 UTC del 01/10) empieza el 30/09', () => {
+    const hoy = hoyEnBogota(new Date('2026-10-01T03:00:00Z'));
+    expect(inicioDelDiaBogota(hoy).toISOString()).toBe(
+      '2026-09-30T05:00:00.000Z',
+    );
   });
 });
