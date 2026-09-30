@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -634,7 +635,7 @@ describe('Contrato programado, traslape y cron de estados (e2e)', () => {
         .field('contratoId', contrato.id)
         .field('monto_centavos', '1000000')
         .field('fecha_reportada', iso(hoy))
-        .attach('comprobante', Buffer.from('comprobante'), {
+        .attach('comprobante', archivoDePrueba('png', 'comprobante'), {
           filename: 'c.png',
           contentType: 'image/png',
         });

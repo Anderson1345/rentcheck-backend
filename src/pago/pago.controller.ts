@@ -13,6 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { interceptorContenidoArchivo } from '../common/validar-contenido-archivo';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
@@ -162,6 +163,7 @@ export class PagoController {
       },
       limits: { fileSize: TAMANO_MAXIMO_COMPROBANTE },
     }),
+    interceptorContenidoArchivo(TIPOS_ARCHIVO_COMPROBANTE),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Registrar un pago como inquilino' })

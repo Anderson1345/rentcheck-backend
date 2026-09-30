@@ -11,6 +11,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { interceptorContenidoArchivo } from '../common/validar-contenido-archivo';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
@@ -69,6 +70,7 @@ export class SolicitudMantenimientoController {
       },
       limits: { fileSize: TAMANO_MAXIMO_ADJUNTO },
     }),
+    interceptorContenidoArchivo(TIPOS_ARCHIVO_ADJUNTO),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

@@ -13,6 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { interceptorContenidoArchivo } from '../common/validar-contenido-archivo';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
@@ -68,6 +69,7 @@ export class FotoInventarioController {
       },
       limits: { fileSize: TAMANO_MAXIMO_FOTO_INVENTARIO },
     }),
+    interceptorContenidoArchivo(TIPOS_ARCHIVO_FOTO_INVENTARIO),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Subir una foto de inventario de un contrato' })

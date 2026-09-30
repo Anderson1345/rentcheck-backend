@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -91,10 +92,14 @@ describe('SolicitudMantenimiento (e2e)', () => {
       .field('descripcion', 'El lavadero tiene una fuga de agua.')
       .field('urgencia', 'ALTO');
     if (conAdjunto) {
-      peticion.attach('adjunto', Buffer.from('foto de evidencia jpeg'), {
-        filename: 'evidencia.jpg',
-        contentType: 'image/jpeg',
-      });
+      peticion.attach(
+        'adjunto',
+        archivoDePrueba('jpeg', 'foto de evidencia jpeg'),
+        {
+          filename: 'evidencia.jpg',
+          contentType: 'image/jpeg',
+        },
+      );
     }
     const respuesta = await peticion.expect(HttpStatus.CREATED);
     return respuesta.body as SolicitudCreada;

@@ -18,6 +18,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { interceptorContenidoArchivo } from '../common/validar-contenido-archivo';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
@@ -246,6 +247,7 @@ export class InmuebleController {
       },
       limits: { fileSize: TAMANO_MAXIMO_DOCUMENTO },
     }),
+    interceptorContenidoArchivo(TIPOS_ARCHIVO_DOCUMENTO),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Subir un documento de un inmueble' })
@@ -322,6 +324,7 @@ export class InmuebleController {
       },
       limits: { fileSize: TAMANO_MAXIMO_FOTO_INVENTARIO },
     }),
+    interceptorContenidoArchivo(TIPOS_ARCHIVO_FOTO_INVENTARIO),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -376,7 +379,7 @@ export class InmuebleController {
 
   @Post(':inmuebleId/unidades/:unidadId/foto-principal')
   @HttpCode(HttpStatus.OK)
-  @UseInterceptors(interceptorFotoPerfil())
+  @UseInterceptors(...interceptorFotoPerfil())
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Subir o reemplazar la foto principal de una unidad',

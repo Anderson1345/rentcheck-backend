@@ -56,7 +56,7 @@ export class ArrendadorController {
 
   @Post('perfil/foto-cedula')
   @HttpCode(HttpStatus.OK)
-  @UseInterceptors(interceptorFotoPerfil())
+  @UseInterceptors(...interceptorFotoPerfil())
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Subir o reemplazar la foto de la cédula/NIT del arrendador',

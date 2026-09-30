@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -76,7 +77,10 @@ describe('InmuebleDocumentos (e2e)', () => {
       .set('Authorization', `Bearer ${access_token}`)
       .expect(HttpStatus.OK);
 
-    const contenidoDocumento = Buffer.from('documento de prueba pdf');
+    const contenidoDocumento = archivoDePrueba(
+      'pdf',
+      'documento de prueba pdf',
+    );
     const respuesta = await request(app.getHttpServer())
       .post(`/inmuebles/${inmueble.id}/documentos`)
       .set('Authorization', `Bearer ${access_token}`)

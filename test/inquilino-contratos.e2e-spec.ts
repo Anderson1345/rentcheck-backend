@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -175,7 +176,7 @@ describe('Portal del inquilino por contrato (e2e)', () => {
       .field('monto_centavos', '1000000')
       .field('fecha_reportada', iso(hoy))
       .field('periodo', periodo.slice(0, 10))
-      .attach('comprobante', Buffer.from('comprobante'), {
+      .attach('comprobante', archivoDePrueba('png', 'comprobante'), {
         filename: 'c.png',
         contentType: 'image/png',
       })

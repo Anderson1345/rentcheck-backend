@@ -18,7 +18,12 @@ import { existsSync } from 'fs';
 import { basename, extname, join } from 'path';
 import { PassThrough } from 'stream';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
-import { conFotoPrincipalFirmada, reemplazarFoto } from '../common/foto-perfil';
+import {
+  borrarFotoPropia,
+  conFotoPrincipalFirmada,
+  prefijoFotoUnidad,
+  reemplazarFoto,
+} from '../common/foto-perfil';
 import { bloquearUnidad } from '../contrato/reglas-contrato';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
@@ -261,9 +266,19 @@ export class InmuebleService {
       });
     }
 
-    return this.exponerUrlFirmadaInmueble(
-      await this.prisma.inmueble.delete({ where: { id } }),
+    const eliminado = await this.prisma.inmueble.delete({ where: { id } });
+    // La respuesta se arma antes de borrar el archivo (misma forma de siempre).
+    const respuesta = await this.exponerUrlFirmadaInmueble(eliminado);
+    // Con la base ya confirmada: solo la portada propia (las unidades ya no
+    // existen: para eliminar el inmueble hay que eliminarlas antes).
+    await borrarFotoPropia(
+      this.almacenamiento,
+      eliminado.foto_portada_ruta,
+      `inmuebles/${id}/portada`,
+      this.logger,
+      `la portada del inmueble ${id}`,
     );
+    return respuesta;
   }
 
   async crearUnidad(
@@ -421,9 +436,18 @@ export class InmuebleService {
       );
     }
 
-    return this.unidadConFotoFirmada(
-      await this.prisma.unidad.delete({ where: { id: unidadId } }),
+    const eliminada = await this.prisma.unidad.delete({
+      where: { id: unidadId },
+    });
+    const respuesta = await this.unidadConFotoFirmada(eliminada);
+    await borrarFotoPropia(
+      this.almacenamiento,
+      eliminada.foto_principal_url,
+      prefijoFotoUnidad(inmuebleId, unidadId),
+      this.logger,
+      `la foto de la unidad ${unidadId}`,
     );
+    return respuesta;
   }
 
   private unidadConFotoFirmada<

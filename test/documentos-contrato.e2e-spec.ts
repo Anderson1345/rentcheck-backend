@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { createHash } from 'crypto';
@@ -485,10 +486,14 @@ describe('Documentos del contrato (e2e)', () => {
         .field('monto_centavos', '1000000')
         .field('fecha_reportada', fechaISO(hoy))
         .field('periodo', fechaISO(periodo))
-        .attach('comprobante', Buffer.from('comprobante de prueba'), {
-          filename: 'comprobante.png',
-          contentType: 'image/png',
-        })
+        .attach(
+          'comprobante',
+          archivoDePrueba('png', 'comprobante de prueba'),
+          {
+            filename: 'comprobante.png',
+            contentType: 'image/png',
+          },
+        )
         .expect(CREADO);
       pagos.push((respuesta.body as { id: string }).id);
     }
@@ -501,10 +506,14 @@ describe('Documentos del contrato (e2e)', () => {
         .field('monto_centavos', '1000000')
         .field('fecha_reportada', fechaISO(hoy))
         .field('periodo', fechaISO(sumarMesesUTC(periodos[0], -1)))
-        .attach('comprobante', Buffer.from('comprobante de prueba'), {
-          filename: 'comprobante.png',
-          contentType: 'image/png',
-        })
+        .attach(
+          'comprobante',
+          archivoDePrueba('png', 'comprobante de prueba'),
+          {
+            filename: 'comprobante.png',
+            contentType: 'image/png',
+          },
+        )
         .expect(CREADO)
     ).body as { id: string };
 

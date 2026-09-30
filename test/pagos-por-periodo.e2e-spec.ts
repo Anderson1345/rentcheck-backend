@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -108,7 +109,7 @@ describe('Pagos por período (e2e)', () => {
     }
     return peticion.attach(
       'comprobante',
-      Buffer.from('comprobante de prueba'),
+      archivoDePrueba('png', 'comprobante de prueba'),
       {
         filename: 'comprobante.png',
         contentType: 'image/png',

@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -72,7 +73,7 @@ describe('InmuebleFotoPortada (e2e)', () => {
     );
     const inmueble = await crearInmueble(app, access_token);
 
-    const primeraFoto = Buffer.from('foto de portada jpeg primera');
+    const primeraFoto = archivoDePrueba('jpeg', 'foto de portada jpeg primera');
     const primera = await subirFoto(
       access_token,
       inmueble.id,
@@ -86,7 +87,10 @@ describe('InmuebleFotoPortada (e2e)', () => {
       (primera.body as unknown as Record<string, unknown>).foto_portada_ruta,
     ).toBeUndefined();
 
-    const segundaFoto = Buffer.from('foto de portada jpeg reemplazada');
+    const segundaFoto = archivoDePrueba(
+      'jpeg',
+      'foto de portada jpeg reemplazada',
+    );
     const segunda = await subirFoto(
       access_token,
       inmueble.id,
@@ -136,13 +140,13 @@ describe('InmuebleFotoPortada (e2e)', () => {
     await subirFoto(
       arrendadorA.access_token,
       inmuebleA.id,
-      Buffer.from('foto de prueba jpeg'),
+      archivoDePrueba('jpeg', 'foto de prueba jpeg'),
     ).expect(HttpStatus.OK);
 
     await subirFoto(
       arrendadorB.access_token,
       inmuebleA.id,
-      Buffer.from('foto ajena jpeg'),
+      archivoDePrueba('jpeg', 'foto ajena jpeg'),
     ).expect(HttpStatus.NOT_FOUND);
   });
 

@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { EstadoContrato, EstadoSolicitudMantenimiento } from '@prisma/client';
@@ -95,7 +96,7 @@ describe('Consistencia de escrituras (e2e)', () => {
         .post(`/inmuebles/${inmueble.id}/documentos`)
         .set('Authorization', `Bearer ${access_token}`)
         .field('tipo', 'CERTIFICADO_TRADICION_LIBERTAD')
-        .attach('archivo', Buffer.from('documento de prueba pdf'), {
+        .attach('archivo', archivoDePrueba('pdf', 'documento de prueba pdf'), {
           filename: 'certificado.pdf',
           contentType: 'application/pdf',
         })

@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication, Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -247,7 +248,7 @@ describe('Firma de URLs tolerante a fallos (B-37, e2e)', () => {
       await request(app.getHttpServer())
         .post(`/inmuebles/${id}/foto-portada`)
         .set('Authorization', `Bearer ${arr}`)
-        .attach('foto', Buffer.from('portada jpeg'), {
+        .attach('foto', archivoDePrueba('jpeg', 'portada jpeg'), {
           filename: 'p.jpg',
           contentType: 'image/jpeg',
         })
@@ -258,7 +259,7 @@ describe('Firma de URLs tolerante a fallos (B-37, e2e)', () => {
         .post(`/inmuebles/${inmuebleId}/documentos`)
         .set('Authorization', `Bearer ${arr}`)
         .field('tipo', 'RECIBO_PREDIAL')
-        .attach('archivo', Buffer.from(`doc ${nombre}`), {
+        .attach('archivo', archivoDePrueba('pdf', `doc ${nombre}`), {
           filename: nombre,
           contentType: 'application/pdf',
         })
@@ -319,7 +320,7 @@ describe('Firma de URLs tolerante a fallos (B-37, e2e)', () => {
           .field('unidadId', unidadId)
           .field('descripcion', texto)
           .field('urgencia', 'ALTO')
-          .attach('adjunto', Buffer.from(`evidencia ${texto}`), {
+          .attach('adjunto', archivoDePrueba('jpeg', `evidencia ${texto}`), {
             filename: 'e.jpg',
             contentType: 'image/jpeg',
           })
@@ -374,7 +375,7 @@ describe('Firma de URLs tolerante a fallos (B-37, e2e)', () => {
         .set('Authorization', `Bearer ${arr}`)
         .field('momento', 'ENTREGA')
         .field('zona', zona)
-        .attach('foto', Buffer.from(`foto ${zona}`), {
+        .attach('foto', archivoDePrueba('jpeg', `foto ${zona}`), {
           filename: 'f.jpg',
           contentType: 'image/jpeg',
         })

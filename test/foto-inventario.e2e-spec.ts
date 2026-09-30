@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -92,7 +93,7 @@ describe('FotoInventario (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .field('momento', momento)
       .field('zona', zona)
-      .attach('foto', Buffer.from('foto de prueba jpeg'), {
+      .attach('foto', archivoDePrueba('jpeg', 'foto de prueba jpeg'), {
         filename: 'cocina.jpg',
         contentType: 'image/jpeg',
       })
@@ -122,7 +123,7 @@ describe('FotoInventario (e2e)', () => {
       .set('Authorization', `Bearer ${access_token}`)
       .field('momento', 'ENTREGA')
       .field('zona', 'Cocina')
-      .attach('foto', Buffer.from('documento de prueba pdf'), {
+      .attach('foto', archivoDePrueba('pdf', 'documento de prueba pdf'), {
         filename: 'foto.pdf',
         contentType: 'application/pdf',
       })
@@ -155,7 +156,7 @@ describe('FotoInventario (e2e)', () => {
       .set('Authorization', `Bearer ${arrendadorB.access_token}`)
       .field('momento', 'ENTREGA')
       .field('zona', 'Bano')
-      .attach('foto', Buffer.from('foto de prueba jpeg'), {
+      .attach('foto', archivoDePrueba('jpeg', 'foto de prueba jpeg'), {
         filename: 'bano.jpg',
         contentType: 'image/jpeg',
       })
@@ -206,7 +207,7 @@ describe('FotoInventario (e2e)', () => {
       .set('Authorization', `Bearer ${inquilinoToken}`)
       .field('momento', 'ENTREGA')
       .field('zona', 'Bano')
-      .attach('foto', Buffer.from('foto de prueba jpeg'), {
+      .attach('foto', archivoDePrueba('jpeg', 'foto de prueba jpeg'), {
         filename: 'bano.jpg',
         contentType: 'image/jpeg',
       })

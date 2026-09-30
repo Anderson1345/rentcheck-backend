@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { TipoPlantillaContrato } from '@prisma/client';
 import request from 'supertest';
@@ -197,7 +198,7 @@ export async function reportarPago(
     .field('contratoId', contratoId)
     .field('monto_centavos', '1000000')
     .field('fecha_reportada', fechaHoyLocal())
-    .attach('comprobante', Buffer.from('comprobante de prueba'), {
+    .attach('comprobante', archivoDePrueba('png', 'comprobante de prueba'), {
       filename: 'comprobante.png',
       contentType: 'image/png',
     })

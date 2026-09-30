@@ -8,14 +8,16 @@ import {
   TAMANO_MAXIMO_FOTO_INVENTARIO,
   TIPOS_ARCHIVO_FOTO_INVENTARIO,
 } from './limites-archivo.constants';
+import { interceptorContenidoArchivo } from './validar-contenido-archivo';
 
 type Firmador = Pick<AlmacenamientoService, 'generarUrlFirmada'>;
 
 /**
- * Interceptor de las subidas de foto (cédula y foto principal de unidad): el
- * mismo campo `foto`, tipos y tamaño máximo que la portada del inmueble.
+ * Interceptores de las subidas de foto (cédula y foto principal de unidad): el
+ * mismo campo `foto`, tipos y tamaño máximo que la portada del inmueble, más la
+ * validación del contenido real (se usa con `...interceptorFotoPerfil()`).
  */
-export const interceptorFotoPerfil = () =>
+export const interceptorFotoPerfil = () => [
   FileInterceptor('foto', {
     storage: memoryStorage(),
     fileFilter: (_req, file, callback) => {
@@ -31,7 +33,9 @@ export const interceptorFotoPerfil = () =>
       callback(null, true);
     },
     limits: { fileSize: TAMANO_MAXIMO_FOTO_INVENTARIO },
-  });
+  }),
+  interceptorContenidoArchivo(TIPOS_ARCHIVO_FOTO_INVENTARIO),
+];
 
 /**
  * URL firmada de una foto de perfil o de unidad, SOLO si su ruta pertenece a la
@@ -142,6 +146,29 @@ export async function reemplazarFoto<R>(
     await borrarSilencioso(almacenamiento, logger, rutaAnterior);
   }
   return resultado;
+}
+
+/**
+ * Borra del bucket la foto de una entidad que se acaba de eliminar de la base,
+ * SOLO si su ruta empieza por `prefijo` (nunca una ruta heredada, `data:` o de
+ * otra entidad). Va DESPUÉS de confirmar la base y es best-effort: si falla deja
+ * un aviso con el contexto (sin ruta ni URL) y nunca propaga el error.
+ */
+export async function borrarFotoPropia(
+  almacenamiento: Pick<AlmacenamientoService, 'eliminarArchivo'>,
+  ruta: string | null,
+  prefijo: string,
+  logger: Logger,
+  contexto: string,
+): Promise<void> {
+  if (!ruta || !ruta.startsWith(prefijo)) {
+    return;
+  }
+  try {
+    await almacenamiento.eliminarArchivo(ruta);
+  } catch {
+    logger.warn(`No se pudo eliminar ${contexto} del bucket.`);
+  }
 }
 
 async function borrarSilencioso(

@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
@@ -209,7 +210,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
     '%s: sube con ruta generada por el servidor, responde con URL firmada y reemplaza borrando solo el archivo propio anterior',
     async (e) => {
       const c = await contexto();
-      const primera = Buffer.from('foto uno png');
+      const primera = archivoDePrueba('png', 'foto uno png');
 
       const r1 = await subir(e, c, primera, 'a.png', 'image/png').expect(OK);
       const cuerpo1 = r1.body as Record<string, unknown>;
@@ -222,7 +223,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
         (await almacenamiento.descargarArchivo(ruta1)).equals(primera),
       ).toBe(true);
 
-      const segunda = Buffer.from('foto dos jpeg');
+      const segunda = archivoDePrueba('jpeg', 'foto dos jpeg');
       const r2 = await subir(e, c, segunda).expect(OK);
       expect((r2.body as Record<string, unknown>)[CAMPO[e]]).toMatch(
         URL_FIRMADA,
@@ -246,7 +247,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
         .set('Authorization', `Bearer ${token(e, c)}`)
         .field(CAMPO[e], 'contratos/otro/contrato.pdf')
         .field('ruta', 'contratos/otro/contrato.pdf')
-        .attach('foto', Buffer.from('foto'), {
+        .attach('foto', archivoDePrueba('jpeg', 'foto'), {
           filename: 'a.jpg',
           contentType: 'image/jpeg',
         })
@@ -271,7 +272,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       await fijarValorEnBd(e, c, legado);
       const eliminar = jest.spyOn(almacenamiento, 'eliminarArchivo');
 
-      await subir(e, c, Buffer.from('foto nueva')).expect(OK);
+      await subir(e, c, archivoDePrueba('jpeg', 'foto nueva')).expect(OK);
 
       expect(eliminar).not.toHaveBeenCalledWith(legado);
       expect(await existe(legado)).toBe(true);
@@ -302,7 +303,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       await subir(
         'unidad',
         c,
-        Buffer.from('foto'),
+        archivoDePrueba('jpeg', 'foto'),
         'a.jpg',
         'image/jpeg',
         c.arr,
@@ -319,7 +320,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
     for (const e of ENTIDADES) {
       const sinToken = await request(app.getHttpServer())
         .post(ruta(e, c))
-        .attach('foto', Buffer.from('f'), {
+        .attach('foto', archivoDePrueba('jpeg', 'f'), {
           filename: 'a.jpg',
           contentType: 'image/jpeg',
         });
@@ -329,7 +330,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
     const inqEnArr = await subir(
       'arrendador',
       c,
-      Buffer.from('f'),
+      archivoDePrueba('jpeg', 'f'),
       'a.jpg',
       'image/jpeg',
       c.inq,
@@ -337,7 +338,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
     const inqEnUnidad = await subir(
       'unidad',
       c,
-      Buffer.from('f'),
+      archivoDePrueba('jpeg', 'f'),
       'a.jpg',
       'image/jpeg',
       c.inq,
@@ -345,7 +346,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
     const arrEnInq = await subir(
       'inquilino',
       c,
-      Buffer.from('f'),
+      archivoDePrueba('jpeg', 'f'),
       'a.jpg',
       'image/jpeg',
       c.arr,
@@ -395,7 +396,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
     '%s: si la BD falla tras subir, borra el archivo subido y conserva el anterior',
     async (e, tabla) => {
       const c = await contexto();
-      await subir(e, c, Buffer.from('foto buena')).expect(OK);
+      await subir(e, c, archivoDePrueba('jpeg', 'foto buena')).expect(OK);
       const rutaBuena = (await valorEnBd(e, c)) ?? '';
       const eliminar = jest.spyOn(almacenamiento, 'eliminarArchivo');
       const subirArchivo = jest.spyOn(almacenamiento, 'subirArchivo');
@@ -407,7 +408,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
         `CREATE TRIGGER fallo_prueba_fotos BEFORE UPDATE ON "${tabla}" FOR EACH ROW EXECUTE FUNCTION fallo_prueba_fotos()`,
       );
       try {
-        await subir(e, c, Buffer.from('foto que no queda')).expect(
+        await subir(e, c, archivoDePrueba('jpeg', 'foto que no queda')).expect(
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
       } finally {
@@ -448,7 +449,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       (antes.body as { foto_cedula_url: unknown }).foto_cedula_url,
     ).toBeNull();
 
-    await subir('inquilino', c, Buffer.from('cedula')).expect(OK);
+    await subir('inquilino', c, archivoDePrueba('jpeg', 'cedula')).expect(OK);
     const despues = await request(app.getHttpServer())
       .get('/inquilino/perfil')
       .set('Authorization', `Bearer ${c.inq}`)
@@ -471,9 +472,9 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
   // ------------------------------------------------------------------
   it('todas las respuestas que traen estos campos devuelven URL firmada (o null si falla la firma)', async () => {
     const c = await contexto();
-    await subir('unidad', c, Buffer.from('u')).expect(OK);
-    await subir('arrendador', c, Buffer.from('a')).expect(OK);
-    await subir('inquilino', c, Buffer.from('i')).expect(OK);
+    await subir('unidad', c, archivoDePrueba('jpeg', 'u')).expect(OK);
+    await subir('arrendador', c, archivoDePrueba('jpeg', 'a')).expect(OK);
+    await subir('inquilino', c, archivoDePrueba('jpeg', 'i')).expect(OK);
 
     // Otras respuestas donde aparece la unidad: solicitud y pago.
     await request(app.getHttpServer())
@@ -490,7 +491,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       .field('monto_centavos', '1000000')
       .field('fecha_reportada', new Date().toISOString().slice(0, 10))
       .field('periodo', `${new Date().toISOString().slice(0, 7)}-01`)
-      .attach('comprobante', Buffer.from('c'), {
+      .attach('comprobante', archivoDePrueba('png', 'c'), {
         filename: 'c.png',
         contentType: 'image/png',
       })
@@ -638,7 +639,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       }
 
       // Foto propia: subida por el endpoint (reemplaza el valor ajeno sin borrarlo).
-      await subir(e, c, Buffer.from('foto propia')).expect(OK);
+      await subir(e, c, archivoDePrueba('jpeg', 'foto propia')).expect(OK);
       const propia = (await valorEnBd(e, c)) ?? '';
       expect(propia.startsWith(prefijo(e, c))).toBe(true);
       expect(await leerFotoPorGet(e, c)).toMatch(URL_FIRMADA);
@@ -701,7 +702,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       expect(firmar).not.toHaveBeenCalledWith(valor);
     }
 
-    await subir('unidad', c, Buffer.from('foto propia')).expect(OK);
+    await subir('unidad', c, archivoDePrueba('jpeg', 'foto propia')).expect(OK);
     const propia = (await valorEnBd('unidad', c)) ?? '';
     for (const [url, extraer] of consultas()) {
       const r = await request(app.getHttpServer())

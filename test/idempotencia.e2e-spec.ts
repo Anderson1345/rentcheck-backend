@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -117,7 +118,7 @@ describe('Idempotency-Key (e2e)', () => {
       .field('contratoId', contratoId)
       .field('monto_centavos', String(opciones.monto ?? 1_000_000))
       .field('fecha_reportada', opciones.fechaReportada ?? fechaHoyLocal())
-      .attach('comprobante', Buffer.from('comprobante de prueba'), {
+      .attach('comprobante', archivoDePrueba('png', 'comprobante de prueba'), {
         filename: 'comprobante.png',
         contentType: 'image/png',
       });

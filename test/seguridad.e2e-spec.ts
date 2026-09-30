@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { EstadoContrato } from '@prisma/client';
@@ -83,7 +84,7 @@ describe('Seguridad (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .field('momento', momento)
       .field('zona', zona)
-      .attach('foto', Buffer.from('foto de prueba jpeg'), {
+      .attach('foto', archivoDePrueba('jpeg', 'foto de prueba jpeg'), {
         filename: `${zona}.jpg`,
         contentType: 'image/jpeg',
       })

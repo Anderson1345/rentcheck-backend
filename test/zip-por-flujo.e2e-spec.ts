@@ -1,3 +1,4 @@
+import { archivoDePrueba } from './helpers/archivos.helper';
 import { HttpStatus, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -92,7 +93,7 @@ describe('ZIP de documentos del inmueble por flujo (B-44, e2e)', () => {
         .post(`/inmuebles/${inmueble.id}/documentos`)
         .set('Authorization', `Bearer ${access_token}`)
         .field('tipo', 'RECIBO_PREDIAL')
-        .attach('archivo', Buffer.from(`contenido de ${nombre}`), {
+        .attach('archivo', archivoDePrueba('pdf', `contenido de ${nombre}`), {
           filename: nombre,
           contentType: 'application/pdf',
         })
