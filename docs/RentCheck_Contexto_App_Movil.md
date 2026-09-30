@@ -1,8 +1,13 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.6 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.7 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.7 frente a la 2.6** (entrega B0.3-A3-4, cierre del bloque 0.3):
+- **Aviso de no renovación** (regla 16): lo pueden dar el Arrendador y el Inquilino mientras el contrato esté Activo y antes del último día; quien lo dio puede cancelarlo mientras no venza; aplica siempre a la fecha de fin vigente (también tras una prórroga automática). Queda registrado con quién, cuándo y motivo.
+- **Prórroga automática** (regla 16): sin aviso, se aplica al día siguiente de la fecha de fin, por el término inicial, con su otrosí. **Excepción:** si la Unidad ya tiene un contrato Programado posterior, el contrato que llega a su fecha de fin sin aviso pasa a Finalizado (no se prorroga, porque se traslaparía con el siguiente). Si el sistema estuvo sin correr varios días, aplica las prórrogas necesarias hasta que la fecha de fin no esté vencida (máximo 12 por corrida).
+- Los contratos que ya estaban Finalizados antes de esta versión no se prorrogan (la regla rige solo hacia adelante).
 
 **Cambios de la versión 2.6 frente a la 2.5** (entrega B0.3-A3-3):
 - **Ciclo de vida del contrato** (7.1): nuevos estados **Programado** (fecha de inicio futura; no cuenta como Activo ni bloquea la unidad) y **Cancelado** (un contrato Programado anulado por el arrendador; se conserva, no se borra).
