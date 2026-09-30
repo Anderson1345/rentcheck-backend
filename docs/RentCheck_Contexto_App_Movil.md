@@ -1,8 +1,14 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.8 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.9 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.9 frente a la 2.8** (entrega B0.4-A2, sin reglas nuevas: precisiones de 3.2, 3.3 y 5.6):
+- Un contrato **sin vincular** no existe para el Inquilino (no aparece en ninguna pantalla ni permite reportar pagos o crear solicitudes). Vincular ocurre al crear la cuenta con el código o con "Agregar contrato con código".
+- Un código que no se puede usar (inexistente, de otra persona, ya usado o de un contrato Cancelado) recibe siempre la misma respuesta, para no revelar cuál fue la causa. Solo puede vincular la cuenta a nombre de la cual está el contrato.
+- Al vincularse el contrato, el Arrendador recibe una alerta. El correo del Inquilino solo se muestra al Arrendador cuando el contrato está vinculado.
+- Al activar esta función, los contratos de personas que ya tenían cuenta quedaron vinculados automáticamente.
 
 **Cambios de la versión 2.8 frente a la 2.7** (entrega B0.4-A1 y una propuesta de producto):
 - **Datos del inquilino en el contrato** (5.6): el nombre y el teléfono no pueden estar vacíos y el documento se guarda normalizado. Todo lo que ve el Arrendador sale de esa copia.
