@@ -1,8 +1,14 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.10 — 30 de septiembre de 2026.** Reemplaza a la versión 3.9.
+> **Versión 3.11 — 30 de septiembre de 2026.** Reemplaza a la versión 3.10.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.11:**
+
+- **0.5-D fusionada y en producción.**
+- **0.5-B cerrada (rama `feat/b05b-firma-tolerante-zip`, commit `963cd9c`, 19 archivos, sin migración):** **B-37 ✅** `firmarTolerante` (`src/common/firma-tolerante.ts`) es el único punto de firma: aplicado en comprobantes de pago, PDF heredado del contrato, portada y fotos de unidad, documentos del inmueble, adjuntos de solicitud, fotos de inventario, panel del inquilino y documentos del contrato (verificado con grep: no queda ninguna llamada directa a `generarUrlFirmada` fuera del helper y del servicio de almacenamiento). Un archivo caído sale `null` con un `warn` sin URL ni ruta. **B-44 ✅** `construirZipDocumentos` valida la pertenencia (404) antes de enviar bytes y devuelve el flujo ya conectado; llena el ZIP en segundo plano de a un archivo; los que fallan se omiten y quedan en `LEEME_ARCHIVOS_NO_DISPONIBLES.txt`; si el cliente corta, se aborta y no se piden más archivos. e2e 36 suites / 350, unitarias 21 / 114; pruebas existentes sin cambios.
+- **Límites:** (1) cada archivo se descarga completo a memoria (uno a la vez), no en streaming byte a byte; basta para el tamaño actual. (2) `AlmacenamientoService.generarUrlFirmada` registra la ruta interna del bucket al fallar (no la URL firmada); se deja. (3) La prueba estructural `zip-por-flujo.spec.ts` busca las palabras `chunks` y `Buffer.concat` en todo `inmueble.service.ts`: es frágil y tiene una aserción sobre un nombre ya inexistente (`archivosFallidos`); limpiar cuando se toque ese archivo. (4) Si falla el ZIP ya iniciado se corta la conexión (no hay 500 posible). (5) Supabase puede seguir sirviendo por caché un objeto recién borrado.
 
 **Qué cambió en la versión 3.10:**
 
@@ -321,14 +327,14 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-34 | Importante | No existe forma de regenerar el PDF de un contrato si su generación falló al crearlo | 0.3-B | ✅ Corregido |
 | B-35 | Importante | No existe `PATCH` de contrato: un dato mal escrito es imposible de corregir sin terminar el contrato | 0.4 (después de 0.4-A: necesita "sin vincular") | ✅ 0.4-C (30/09/2026) |
 | B-36 | Importante | Transiciones de estado sin escritura condicional (doble aprobación de pago, doble confirmación de terminación, doble cambio de estado de mantenimiento); además, ediciones concurrentes sin control de versión | 0.1-B (transiciones) / 0.5 (control de versión) | 🔶 Transiciones corregidas en B0.1-B; control de versión pendiente en 0.5 |
-| B-37 | Importante | Un fallo al firmar la URL de un solo archivo tumba con 500 el listado completo (`Promise.all` sin tolerancia a fallos) | 0.5 | ⬜ |
+| B-37 | Importante | Un fallo al firmar la URL de un solo archivo tumba con 500 el listado completo (`Promise.all` sin tolerancia a fallos) | 0.5 | ✅ 0.5-B |
 | B-38 | Importante | Con contrato terminado, el inquilino no puede reportar lo que quedó debiendo de períodos anteriores al cierre | 0.2-B | ✅ Corregido |
 | B-39 | Menor | `fecha_reportada` de un pago no se valida contra la fecha de inicio del contrato | 0.2-B | ✅ Corregido |
 | B-40 | Importante | `mi-contrato` nunca devolvía las fotos de devolución (solo las de entrega) | 0.1 | ✅ Corregido |
 | B-41 | Importante | Un contrato con fecha de inicio futura nace `ACTIVO` de inmediato y bloquea la unidad antes de tiempo | 0.3-A3-3 | ✅ Corregido |
 | B-42 | Importante | Comprobantes reemplazados y rechazados se acumulan en el bucket sin política de retención | 0.5 | ⬜ |
 | B-43 | Menor | La unidad principal se crea automáticamente con valores que el propio validador del DTO rechazaría | 0.3-A1 | ✅ Corregido |
-| B-44 | Importante | El ZIP de documentos descarga todo a memoria en una sola petición: riesgo de tiempo agotado con historiales grandes | 0.5 | ⬜ |
+| B-44 | Importante | El ZIP de documentos descarga todo a memoria en una sola petición: riesgo de tiempo agotado con historiales grandes | 0.5 | ✅ 0.5-B |
 | B-45 | Importante | No se puede anular una aprobación de pago hecha por error | 0.6 | ⬜ |
 | B-46 | Importante | No existe baja de cuenta del inquilino (Ley 1581 de 2012 y requisito de Google Play para publicar) | Antes de usuarios reales | ⬜ |
 | B-47 | Importante | `ContratoService.crear()` no valida que `tipo_plantilla` corresponda al tipo o uso de la unidad (por ejemplo, plantilla de vivienda sobre un parqueadero o un local). Detectado en el diagnóstico de 0.3-A (29/09/2026) | 0.3-A3-1 | ✅ Corregido |
