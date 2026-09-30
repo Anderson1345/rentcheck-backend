@@ -1,8 +1,12 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.4 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.5 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.5 frente a la 2.4** (entrega B0.3-A3-2):
+- **Terminación anticipada** (regla 17): la fecha efectiva es obligatoria, de hoy en adelante y no posterior a la fecha de fin; el contrato sigue Activo y exigible hasta esa fecha; el estado de cuenta no genera períodos posteriores a ella; ninguna parte confirma su propia solicitud.
+- **Cumplimiento legal** (sección 13): se verificó que el mutuo acuerdo es el artículo 21 de la Ley 820 (sin preaviso, causal ni indemnización) y se fija la advertencia obligatoria en la app. La sección deja de depender de un abogado (ver la nota de esa sección).
 
 **Cambios de la versión 2.4 frente a la 2.3** (entrega B0.3-A3-1):
 - **Plantilla legal y unidad** (5.6): la plantilla del contrato debe corresponder a la unidad. Parqueadero → plantilla Parqueadero; en otro caso, uso Residencial → Vivienda Urbana y uso Comercial → Local Comercial. Cualquier otra combinación se rechaza al crear el contrato.
@@ -307,7 +311,7 @@ Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso rela
 14. Aplicar un incremento de IPC cambia solo el canon (el canon nuevo rige para los períodos cuya fecha límite es igual o posterior a la fecha de aplicación; un período ya pagado por adelantado con el canon anterior queda debiendo la diferencia), requiere 12 meses desde el último incremento o desde el inicio, y en vivienda no puede superar el IPC del año calendario anterior. Genera un otrosí.
 15. Prorrogar extiende la fecha de fin (por defecto, el mismo término inicial, contado desde la fecha de fin anterior) sin cambiar el canon. Genera un otrosí. Solo se hace dentro de los 90 días previos al vencimiento (con la fecha de fin incluida). Cada prórroga queda registrada (fecha, fecha de fin anterior y nueva, meses y si fue manual o automática).
 16. Al llegar la fecha de fin: si hay aviso de no renovación, el contrato pasa a **Finalizado** cuando termina ese día; si no lo hay, el contrato se **prorroga automáticamente** por el mismo término inicial, en las mismas condiciones, y se genera un otrosí de prórroga. Aplica a los tres tipos de plantilla (D-1, confirmada).
-17. La terminación anticipada la solicita cualquiera de las partes con motivo y fecha efectiva de entrega, y la **confirma la otra parte**: si la solicitó el Arrendador, confirma el Inquilino, y al contrario (D-2, confirmada). Quien solicitó puede cancelar su solicitud mientras no esté confirmada. Una vez confirmada es irreversible y libera la Unidad en la fecha efectiva.
+17. La terminación anticipada la solicita cualquiera de las partes con motivo y fecha efectiva de entrega, y la **confirma la otra parte**: si la solicitó el Arrendador, confirma el Inquilino, y al contrario (D-2, confirmada). Quien solicitó puede cancelar su solicitud mientras no esté confirmada. Una vez confirmada es irreversible y libera la Unidad en la fecha efectiva. **Fecha efectiva:** de hoy en adelante y no posterior a la fecha de fin; hasta esa fecha el contrato sigue Activo y los pagos siguen siendo exigibles; el estado de cuenta no genera períodos posteriores a ella. Si se confirma con fecha efectiva de hoy, el contrato termina al confirmar. Nadie confirma su propia solicitud.
 18. Un contrato que no está Activo bloquea las acciones operativas del Inquilino; la consulta nunca se bloquea.
 19. Un Inmueble o Unidad solo se elimina si nunca tuvo contratos. Contratos, pagos, historial de IPC, documentos del contrato, documentos del inmueble y fotos de inventario **nunca** se eliminan físicamente.
 20. Las alertas automáticas corren una vez al día (después de medianoche, hora de Colombia), pueden ejecutarse dos veces sin duplicar nada y no repiten un aviso sin leer del mismo evento, salvo los avisos mensuales de pago, que se generan una vez por período.
@@ -495,13 +499,16 @@ Pendiente (en el orden del plan técnico):
 
 ---
 
-## 13. Cumplimiento legal (Colombia) — a validar con un abogado
+## 13. Cumplimiento legal (Colombia) — revisión sin abogado
+
+> **Nota (29/09/2026):** el proyecto no cuenta con un abogado. Las reglas de esta sección se verificaron contra fuentes públicas (texto de la Ley 820 de 2003 y guías de entidades públicas) y no reemplazan asesoría legal. Mientras no haya un abogado: (1) la app debe mostrar un aviso visible de que las plantillas son **modelos** y de que cada parte debe verificar que se ajusten a su caso; (2) la primera versión se usa con usuarios conocidos (piloto); (3) si el producto se comercializa, la revisión de un abogado de las plantillas, los otrosíes y la cláusula de garantías pasa a ser obligatoria antes de vender.
 
 | Tema | Consideración |
 |---|---|
 | Depósito en vivienda (Ley 820, art. 16) | Prohibidos los depósitos en dinero y las cauciones reales. El sistema no los permite en plantillas de vivienda. |
 | Incremento del canon en vivienda (Ley 820, art. 20) | Cada 12 meses de ejecución, hasta el 100 % del IPC del año calendario anterior. |
 | Prórroga en vivienda (Ley 820, art. 6) | Si ninguna parte avisa, el contrato se prorroga en iguales condiciones y por el mismo término. Base de la decisión D-1. |
+| Terminación por mutuo acuerdo en vivienda (Ley 820, art. 21) | Las partes, en cualquier tiempo y de común acuerdo, pueden dar por terminado el contrato: no exige causal, preaviso ni indemnización legales. Es lo que modela la app (D-2). La confirmación de la contraparte queda registrada como evidencia del acuerdo. **Advertencia obligatoria en la interfaz:** "Esto es una terminación por mutuo acuerdo. No reemplaza el aviso escrito ni las causales de una terminación unilateral (Ley 820, arts. 22 a 24)." |
 | Terminación en vivienda (Ley 820, arts. 22 a 25) | Tiene causales, preavisos (en general de tres meses) y, según el caso, indemnizaciones. Por eso la terminación "anticipada" en la app se modela como **mutuo acuerdo** (D-2); una terminación unilateral queda fuera de la app en la versión 1. |
 | Local comercial (Código de Comercio, arts. 518 a 524) | Derecho de renovación del arrendatario tras dos años de ocupación, entre otros. La plantilla y las reglas se mantienen separadas de vivienda. |
 | Firma | No hay firma electrónica. Evaluar aceptación explícita dentro de la app (Ley 527 de 1999) antes de llamar "firmado" al contrato. |

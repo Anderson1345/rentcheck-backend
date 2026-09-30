@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 2.8 — 29 de septiembre de 2026.** Reemplaza a la versión 2.7.
+> **Versión 2.9 — 29 de septiembre de 2026.** Reemplaza a la versión 2.8.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 2.9:**
+- **0.3-A3-2 cerrada el 29/09/2026:** B-13 corregido (terminación por mutuo acuerdo). Nuevo **B-53** (acta de terminación en PDF y liquidación de depósito, pendientes; se retoman después de 0.3-A3-4).
+- La revisión legal ya no depende de un abogado (el proyecto no cuenta con uno): ver la nota de la sección 13 del Contexto 2.5.
 
 **Qué cambió en la versión 2.8:**
 - **0.3-A3-1 cerrada el 29/09/2026:** B-50 y B-47 corregidos. El Bloque 0.3-A3 se divide en cuatro entregas: **A3-1** (B-50 + B-47, sin migración), **A3-2** (B-13: terminación con contraparte, cancelación, `fecha_efectiva` y tope del estado de cuenta), **A3-3** (B-41: estado `PROGRAMADO`, traslape, un solo cron de estados) y **A3-4** (B-12: aviso de no renovación y prórroga automática; incluye zona horaria del cron de vencimiento y sus pruebas).
@@ -150,6 +154,15 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 - Sin migración.
 - **Límite conocido:** el recálculo del cron lee y luego escribe sin condición sobre el estado leído (igual que antes); una carrera con una aprobación de pago simultánea podría dejar `estado_pago` desactualizado hasta el siguiente recálculo. Se revisa en B0.5 con el control de versión de B-36.
 
+**Estado (29/09/2026) — Bloque 0.3-A3-2 cerrado (B-13 ✅):**
+- **`TerminacionAnticipadaService`** (`src/contrato/terminacion-anticipada.service.ts`): una sola lógica para ambos roles. Solicitar (motivo y `fecha_efectiva` entre hoy y `fecha_fin`, 400 `FECHA_EFECTIVA_INVALIDA`), confirmar (solo la contraparte; 403 `NO_PUEDE_CONFIRMAR_SU_PROPIA_SOLICITUD`) y cancelar (solo quien solicitó y antes de confirmar; 403 `NO_PUEDE_CANCELAR_SOLICITUD_AJENA`). Toda transición es `updateMany` condicional dentro de una transacción; 409 `TERMINACION_YA_SOLICITADA`, `TERMINACION_NO_SOLICITADA`, `TERMINACION_YA_CONFIRMADA`, `CONTRATO_NO_ACTIVO`.
+- Endpoints del inquilino nuevos: `/inquilino/mi-contrato/{solicitar,confirmar,cancelar}-terminacion-anticipada`; del arrendador: `cancelar-terminacion-anticipada` (y los existentes de solicitar y confirmar).
+- Con fecha efectiva de hoy el contrato termina al confirmar; con fecha futura sigue ACTIVO y `ejecutarTerminacionesProgramadas` (cron diario, idempotente) lo termina y recalcula `estado_pago`. Nota: el cron corre a medianoche UTC (19:00 en Bogotá), no a las 00:00 de Bogotá; se ajusta en B0.5 (B-20).
+- `fechaFinParaEstadoCuenta(contrato)` (`src/common/terminacion.util.ts`) topa el estado de cuenta de un contrato terminado en la fecha efectiva (o, en terminaciones históricas, en el día de Bogotá de la confirmación); lo usan los cinco llamadores de `calcularEstadoCuenta`. `resumenTerminacion` entrega `terminacion_anticipada` (estado, quién solicitó y confirmó, `puede_confirmar`, `puede_cancelar`) en `GET /contratos/:id` y en `mi-contrato`.
+- Alertas al arrendador cuando el inquilino solicita, cancela o confirma (`TERMINACION_ANTICIPADA_*`); para el inquilino como destinatario, en B0.6 (B-18).
+- Migración `20260930012026_b03a32_terminacion_mutuo_acuerdo` (`terminacion_fecha_efectiva`, `terminacion_confirmada_por`, tres valores de `TipoAlerta`, backfill de `confirmada_por = ARRENDADOR` en las terminaciones históricas).
+- **Límites conocidos:** los contratos con solicitud pendiente en producción, sin fecha efectiva, terminan de inmediato al confirmarse; no se prorratea el último mes; el código de acceso del inquilino sigue vigente tras terminar; con varios contratos el inquilino opera sobre el activo (B-17, 0.4-B).
+
 ### 3.4 Identidad del inquilino y contratos múltiples
 
 | ID | Sev. | Problema | Corrección esperada |
@@ -190,7 +203,7 @@ Objetivo: una sola cuenta por persona, sin que un arrendador pueda "pegarle" con
 
 ### 3.7 Hallazgos adicionales — auditoría de escenarios operativos (26-27/09/2026)
 
-Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 a B-52 salieron después, del diagnóstico y la revisión de 0.3-A1, del diseño de 0.3-A2 y de la revisión de 0.3-B:
+Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 a B-53 salieron después, del diagnóstico y la revisión de 0.3-A1, del diseño de 0.3-A2 y de la revisión de 0.3-B:
 
 | ID | Sev. | Resumen | Bloque | Estado |
 |---|---|---|---|---|
@@ -215,6 +228,7 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-50 | Menor | `estado_pago` del contrato no se recalcula al aplicar un incremento ni una prórroga; queda desactualizado hasta el siguiente pago o el cron diario. No afecta la mora real (los períodos vencidos no cambian de canon) | 0.3-A3-1 | ✅ Corregido |
 | B-51 | Menor | El ZIP de documentos nombraba los archivos solo con `basename`: dos comprobantes con el mismo nombre se pisaban dentro del ZIP. Detectado al diseñar 0.3-B (29/09/2026) | 0.3-B | ✅ Corregido |
 | B-52 | Menor | Un LOCAL de uso Residencial exige plantilla de Vivienda (regla de B-47); la unidad es incoherente y debería rechazarse al crearla o editarla. Detectado en la revisión de 0.3-A3-1 | 0.5 (junto con B-48) | ⬜ |
+| B-53 | Importante | Falta el acta de terminación en PDF (tipo de documento listado en el Contexto §5.7) y la liquidación de depósito (Local y Parqueadero). Detectado al cerrar 0.3-A3-2 | Después de 0.3-A3-4 | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
@@ -230,7 +244,7 @@ Cada bloque es **una entrega**: una rama, uno o dos prompts, una verificación c
 | **0.1 Seguridad inmediata** | Selects explícitos, quitar rutas escritas por el cliente, `trust proxy`, `ParseIdPipe`, límite de intentos en activación, filtro global de errores, tipar el callback de CORS, datos de recaudo por estado, fotos de entrega/devolución separadas | B-01, B-03 (quitar campos), B-04, B-22, B-31, límite de B-02, formato de error, B-32, B-40 | 1 | 0.0 |
 | **0.1-B Consistencia de escrituras** | Eliminar inmueble con documentos (409 en vez de 500), escrituras condicionales en transiciones de estado (pago, terminación, mantenimiento) | B-33, B-36 (transiciones) | 1 | 0.1 |
 | **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pagos de contrato terminado, validación de fecha reportada | B-05, B-06 (cálculo), B-07, B-19 (parcial), B-38, B-39 | 3 (A: función pura + pruebas ✅; B: integración + migración + e2e ✅; C: `Idempotency-Key` ✅) | D-3 confirmada |
-| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47, B-49, B-50, B-51 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga ✅; B: PDF y versiones ✅; A3: ciclo de vida, en cuatro partes: A3-1 ✅ B-50 y B-47; A3-2 B-13; A3-3 B-41; A3-4 B-12) | D-1 y D-2 confirmadas |
+| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47, B-49, B-50, B-51 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga ✅; B: PDF y versiones ✅; A3: ciclo de vida, en cuatro partes: A3-1 ✅ B-50 y B-47; A3-2 ✅ B-13; A3-3 B-41; A3-4 B-12) | D-1 y D-2 confirmadas |
 | **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29, B-35 (después de 0.4-A) | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
 | **0.5 Infraestructura** | Endpoint de tareas diarias + cron-job.org, zona horaria en tareas, paginación, firma de URLs en lote, ZIP solo aprobados, tolerancia a fallos al firmar, política de retención del bucket, ZIP sin memoria, control de versión en ediciones, limpieza de claves de idempotencia antiguas | B-19 (tareas), B-20, B-23, B-27, B-37, B-42, B-44, B-36 (control de versión) | 1 | 0.2 |
 | **0.6 Para la app (en paralelo con móvil)** | Alertas del inquilino, tokens de notificación y envío, sesiones con token de renovación, anular aprobación de pago | B-18, B-25, push, B-45 | 2 | 0.4 |
