@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
@@ -6,14 +7,22 @@ import {
   Matches,
   MinLength,
 } from 'class-validator';
+import { normalizarCodigoAcceso } from '../../common/utils/codigo-acceso';
+import { normalizarCorreo } from '../../common/utils/normalizar-correo';
 
 export class CompletarRegistroInquilinoDto {
   @ApiProperty({ example: 'ABC123' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarCodigoAcceso(value) : value,
+  )
   @IsString()
   @IsNotEmpty()
   codigo: string;
 
   @ApiProperty({ example: 'inquilino@ejemplo.com' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarCorreo(value) : value,
+  )
   @IsEmail()
   correo: string;
 

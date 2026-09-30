@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CrearInquilinoDto } from './dto/crear-inquilino.dto';
-import { normalizarYValidarDatosInquilino } from '../common/utils/normalizar-cedula';
 
 /**
  * Lo que el arrendador ve de una persona: los datos que ÉL escribió (la copia
@@ -145,23 +143,5 @@ export class InquilinoService {
       select: SELECT_FICHA_PROPIA,
     });
     return ficha ? { ...ficha, correo: null, vinculado: false } : null;
-  }
-
-  /** Obsoleto: `POST /contratos` crea la identidad con `inquilino_nuevo`. */
-  async crear(
-    dto: CrearInquilinoDto,
-    arrendadorId: string,
-  ): Promise<InquilinoSeguro> {
-    const datos = normalizarYValidarDatosInquilino(dto);
-    const ficha = await this.prisma.inquilino.create({
-      data: {
-        arrendador_id: arrendadorId,
-        nombre: datos.nombre,
-        cedula: datos.cedula,
-        telefono: datos.telefono,
-      },
-      select: SELECT_FICHA_PROPIA,
-    });
-    return { ...ficha, correo: null, vinculado: false };
   }
 }

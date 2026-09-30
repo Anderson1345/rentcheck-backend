@@ -124,21 +124,20 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
   it('detalle, listado, PDF, pagos y mantenimiento del arrendador muestran la copia aunque cambie el perfil global', async () => {
     const token = await arrendador();
     const unidadId = await unidadNueva(token);
-    const ficha = await request(app.getHttpServer())
-      .post('/inquilinos')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
+    // Ficha legada del arrendador (creada directo: POST /inquilinos ya no existe).
+    const ficha = await prisma.inquilino.create({
+      data: {
+        arrendador_id: (
+          JSON.parse(
+            Buffer.from(token.split('.')[1], 'base64url').toString('utf8'),
+          ) as { id: string }
+        ).id,
         nombre: 'Nombre Copia',
         cedula: cedulaUnica(),
         telefono: '3001111111',
-      })
-      .expect(CREADO);
-    const contrato = await crearContrato(
-      app,
-      token,
-      unidadId,
-      (ficha.body as { id: string }).id,
-    );
+      },
+    });
+    const contrato = await crearContrato(app, token, unidadId, ficha.id);
     const inquilinoToken = await autenticarInquilino(
       app,
       contrato.codigo_acceso?.codigo ?? '',
@@ -155,7 +154,7 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
 
     // La persona cambia su perfil global (o lo cambia otro arrendador).
     await prisma.inquilino.update({
-      where: { id: (ficha.body as { id: string }).id },
+      where: { id: ficha.id },
       data: { nombre: 'Nombre Global Cambiado', telefono: '3999999999' },
     });
 
@@ -350,7 +349,7 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
     expect(await prisma.inquilino.count({ where: { cedula } })).toBe(1);
   }, 90000);
 
-  it('(h) nombre o teléfono vacíos (solo espacios) → 400 INQUILINO_DATOS_INVALIDOS sin filas nuevas, también en POST /inquilinos', async () => {
+  it('(h) nombre o teléfono vacíos (solo espacios) → 400 INQUILINO_DATOS_INVALIDOS sin filas nuevas', async () => {
     const token = await arrendador();
     const unidadId = await unidadNueva(token);
     const casos = [
@@ -369,13 +368,6 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
       expect((contrato.body as CuerpoError).mensaje).toBe(
         'El nombre y el teléfono del inquilino no pueden estar vacíos.',
       );
-
-      const ficha = await request(app.getHttpServer())
-        .post('/inquilinos')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ ...caso, cedula });
-      expect(ficha.status).toBe(SOLICITUD_INVALIDA);
-      expect(codigo(ficha)).toBe('INQUILINO_DATOS_INVALIDOS');
 
       expect(await prisma.inquilino.count({ where: { cedula } })).toBe(0);
     }
@@ -396,12 +388,6 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
       nombre: 'Persona Válida',
       telefono: '3001234567',
     });
-    const ficha = await request(app.getHttpServer())
-      .post('/inquilinos')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ nombre: '  Ficha  ', cedula: cedulaUnica(), telefono: ' 3009 ' })
-      .expect(CREADO);
-    expect(ficha.body).toMatchObject({ nombre: 'Ficha', telefono: '3009' });
   }, 90000);
 
   it('(i) si la creación del contrato falla DESPUÉS de crear la identidad, la transacción revierte todo', async () => {
@@ -636,20 +622,4 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
       telefono: null,
     });
   }, 90000);
-
-  it('POST /inquilinos sigue funcionando (obsoleto): crea la ficha y responde 409 con cédula repetida', async () => {
-    const token = await arrendador();
-    const cedula = cedulaUnica();
-    const cuerpo = { nombre: 'Legado', cedula, telefono: '3005' };
-    await request(app.getHttpServer())
-      .post('/inquilinos')
-      .set('Authorization', `Bearer ${token}`)
-      .send(cuerpo)
-      .expect(CREADO);
-    await request(app.getHttpServer())
-      .post('/inquilinos')
-      .set('Authorization', `Bearer ${token}`)
-      .send(cuerpo)
-      .expect(CONFLICTO);
-  }, 60000);
 });

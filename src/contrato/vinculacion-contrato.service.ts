@@ -1,11 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { EstadoContrato, Prisma, TipoAlerta } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-
-/** Respuesta única para un código que no se puede usar (sin distinguir causas). */
-export function errorCodigoNoValido(): NotFoundException {
-  return new NotFoundException('Código de acceso no válido');
-}
+import { errorCodigoNoValido } from './codigo-no-valido.exception';
+import { IntentosCodigoService } from './intentos-codigo.service';
 
 /**
  * Vinculación del contrato por el inquilino (B0.4-A2): `vinculado_en` es nulo
@@ -14,7 +11,10 @@ export function errorCodigoNoValido(): NotFoundException {
  */
 @Injectable()
 export class VinculacionContratoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly intentos: IntentosCodigoService,
+  ) {}
 
   /**
    * Fija `vinculado_en` con una escritura condicionada (`vinculado_en` nulo) y,
@@ -55,19 +55,31 @@ export class VinculacionContratoService {
    * contrato CANCELADO recibe la misma respuesta. Idempotente para la misma
    * cuenta.
    */
-  async vincular(inquilinoId: string, codigo: string) {
+  vincular(inquilinoId: string, codigo: string) {
+    // Bloqueo por intentos fallidos con origen por cuenta.
+    return this.intentos.ejecutar(`cuenta:${inquilinoId}`, () =>
+      this.vincularSinBloqueo(inquilinoId, codigo),
+    );
+  }
+
+  private async vincularSinBloqueo(inquilinoId: string, codigo: string) {
     return this.prisma.$transaction(async (tx) => {
       const codigoAcceso = await tx.codigoAcceso.findUnique({
         where: { codigo },
         select: {
           inquilino_id: true,
-          contrato: { select: { id: true, estado: true } },
+          expira_en: true,
+          contrato: { select: { id: true, estado: true, vinculado_en: true } },
         },
       });
+      // Un código vencido es como uno inexistente, salvo que el contrato ya
+      // esté vinculado por esta cuenta (el repetido sigue siendo idempotente).
       if (
         !codigoAcceso ||
         codigoAcceso.inquilino_id !== inquilinoId ||
-        codigoAcceso.contrato.estado === EstadoContrato.CANCELADO
+        codigoAcceso.contrato.estado === EstadoContrato.CANCELADO ||
+        (codigoAcceso.contrato.vinculado_en === null &&
+          codigoAcceso.expira_en.getTime() <= Date.now())
       ) {
         throw errorCodigoNoValido();
       }

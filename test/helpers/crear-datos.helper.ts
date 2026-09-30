@@ -2,6 +2,7 @@ import { HttpStatus, INestApplication } from '@nestjs/common';
 import { TipoPlantillaContrato } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { PrismaService } from '../../src/prisma/prisma.service';
 
 export interface RespuestaAutenticacion {
   access_token: string;
@@ -128,20 +129,29 @@ export async function crearInmueble(
   return respuesta.body as RespuestaCrearInmueble;
 }
 
+/**
+ * Ficha de inquilino propia del arrendador del token, creada directo con
+ * Prisma (`POST /inquilinos` ya no existe: los contratos crean la identidad con
+ * `inquilino_nuevo`). Sirve para probar `inquilino_id` de fichas ya existentes.
+ */
 export async function crearInquilino(
   app: INestApplication<App>,
   token: string,
 ): Promise<RespuestaCrearInquilino> {
-  const respuesta = await request(app.getHttpServer())
-    .post('/inquilinos')
-    .set('Authorization', `Bearer ${token}`)
-    .send({
+  const payload = JSON.parse(
+    Buffer.from(token.split('.')[1], 'base64url').toString('utf8'),
+  ) as { id: string };
+  const prisma = app.get(PrismaService, { strict: false });
+  const ficha = await prisma.inquilino.create({
+    data: {
+      arrendador_id: payload.id,
       nombre: 'Inquilino Prueba',
       cedula: generarCedulaUnica(),
       telefono: '3009876543',
-    })
-    .expect(HttpStatus.CREATED);
-  return respuesta.body as RespuestaCrearInquilino;
+    },
+    select: { id: true },
+  });
+  return ficha;
 }
 
 export async function crearContrato(

@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
@@ -5,12 +6,16 @@ import {
   Matches,
   MinLength,
 } from 'class-validator';
+import { normalizarCorreo } from '../../common/utils/normalizar-correo';
 
 export class RegistroArrendadorDto {
   @IsString()
   @IsNotEmpty()
   nombre: string;
 
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? normalizarCorreo(value) : value,
+  )
   @IsEmail()
   correo: string;
 

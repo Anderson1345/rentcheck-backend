@@ -4,12 +4,10 @@ import {
   Get,
   NotFoundException,
   Param,
-  Post,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -21,7 +19,6 @@ import {
   JwtAuthGuard,
 } from '../auth/auth.module';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
-import { CrearInquilinoDto } from './dto/crear-inquilino.dto';
 import { InquilinoService } from './inquilino.service';
 
 @ApiTags('Inquilinos')
@@ -64,22 +61,5 @@ export class InquilinoController {
       throw new NotFoundException('Inquilino no encontrado.');
     }
     return inquilino;
-  }
-
-  @Post()
-  @ApiOperation({
-    summary: 'Crear la ficha básica de un inquilino',
-    deprecated: true,
-    description:
-      'OBSOLETO: usa inquilino_nuevo en POST /contratos, que busca o crea la identidad por cédula sin dejar fichas sueltas.',
-  })
-  @ApiCreatedResponse({
-    description: 'Ficha básica del inquilino creada exitosamente.',
-  })
-  crear(
-    @Body() dto: CrearInquilinoDto,
-    @ArrendadorActual() arrendadorId: string,
-  ) {
-    return this.inquilinoService.crear(dto, arrendadorId);
   }
 }

@@ -1,4 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Ip,
+  Post,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -28,8 +35,8 @@ export class InquilinoAuthController {
     description:
       'Código de acceso no válido (inexistente, ya usado o de un contrato cancelado; no se distingue).',
   })
-  validarCodigo(@Body() dto: ValidarCodigoAccesoDto) {
-    return this.authService.validarCodigoAccesoInquilino(dto);
+  validarCodigo(@Body() dto: ValidarCodigoAccesoDto, @Ip() ip: string) {
+    return this.authService.validarCodigoAccesoInquilino(dto, ip);
   }
 
   @Post('completar-registro')
@@ -48,10 +55,18 @@ export class InquilinoAuthController {
   @ApiResponse({
     status: HttpStatus.CONFLICT,
     description:
-      'REQUIERE_INICIO_SESION (la persona ya tiene cuenta) o el correo ya está en uso.',
+      'REQUIERE_INICIO_SESION (la persona ya tiene cuenta) o no fue posible completar el registro con esos datos (mensaje genérico; no revela si el correo existe).',
   })
-  completarRegistro(@Body() dto: CompletarRegistroInquilinoDto) {
-    return this.authService.completarRegistroInquilino(dto);
+  @ApiResponse({
+    status: HttpStatus.TOO_MANY_REQUESTS,
+    description:
+      'DEMASIADOS_INTENTOS: 5 códigos no válidos seguidos bloquean 15 minutos.',
+  })
+  completarRegistro(
+    @Body() dto: CompletarRegistroInquilinoDto,
+    @Ip() ip: string,
+  ) {
+    return this.authService.completarRegistroInquilino(dto, ip);
   }
 
   @Post('login')

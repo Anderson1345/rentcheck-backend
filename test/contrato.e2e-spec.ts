@@ -67,7 +67,9 @@ describe('ContratoController (e2e)', () => {
     expect(contrato.deposito_centavos).toBeNull();
     expect(contrato.dia_pago).toBe(5);
     expect(contrato.estado).toBe('ACTIVO');
-    expect(contrato.codigo_acceso?.codigo).toMatch(/^RC-\d{4}-[A-Z0-9]{4}$/);
+    expect(contrato.codigo_acceso?.codigo).toMatch(
+      /^RC-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/,
+    );
     expect(contrato.unidad.id).toBe(inmueble.unidades[0].id);
     expect(contrato.inquilino.id).toBe(inquilino.id);
     expect(contrato.fecha_inicio).toContain('2026-01-10');

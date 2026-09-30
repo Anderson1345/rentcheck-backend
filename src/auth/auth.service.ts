@@ -4,13 +4,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { EstadoContrato } from '@prisma/client';
+import { EstadoContrato, Prisma } from '@prisma/client';
+import { normalizarCorreo } from '../common/utils/normalizar-correo';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  errorCodigoNoValido,
-  VinculacionContratoService,
-} from '../contrato/vinculacion-contrato.service';
+import { errorCodigoNoValido } from '../contrato/codigo-no-valido.exception';
+import { IntentosCodigoService } from '../contrato/intentos-codigo.service';
+import { VinculacionContratoService } from '../contrato/vinculacion-contrato.service';
 import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
 import { LoginArrendadorDto } from './dto/login-arrendador.dto';
 import { LoginInquilinoDto } from './dto/login-inquilino.dto';
@@ -21,39 +21,71 @@ import { ValidarCodigoAccesoDto } from './dto/validar-codigo-acceso.dto';
 const MENSAJE_INICIA_SESION =
   'Inicia sesión y agrega este código desde la app.';
 
+/** Mismo texto (y mismo 409) para arrendador e inquilino, sin distinguir tabla. */
+const MENSAJE_REGISTRO_NO_COMPLETADO =
+  'No fue posible completar el registro con esos datos. Si ya tienes cuenta, inicia sesión.';
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly vinculacion: VinculacionContratoService,
+    private readonly intentos: IntentosCodigoService,
   ) {}
 
-  async registrarArrendador(dto: RegistroArrendadorDto) {
-    const arrendadorExistente = await this.prisma.arrendador.findUnique({
-      where: { correo: dto.correo },
-    });
+  /** ¿El correo (ya normalizado) está en Arrendador o en Inquilino? */
+  private async correoYaRegistrado(
+    cliente: Pick<Prisma.TransactionClient, 'arrendador' | 'inquilino'>,
+    correo: string,
+    excluirInquilinoId?: string,
+  ): Promise<boolean> {
+    const [arrendador, inquilino] = await Promise.all([
+      cliente.arrendador.findUnique({
+        where: { correo },
+        select: { id: true },
+      }),
+      cliente.inquilino.findUnique({ where: { correo }, select: { id: true } }),
+    ]);
+    return (
+      arrendador !== null ||
+      (inquilino !== null && inquilino.id !== excluirInquilinoId)
+    );
+  }
 
-    if (arrendadorExistente) {
-      throw new ConflictException('El correo ya está registrado.');
+  async registrarArrendador(dto: RegistroArrendadorDto) {
+    const correo = normalizarCorreo(dto.correo);
+    // Se verifican las dos tablas; el mensaje no dice en cuál está.
+    if (await this.correoYaRegistrado(this.prisma, correo)) {
+      throw new ConflictException(MENSAJE_REGISTRO_NO_COMPLETADO);
     }
 
     const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
-    const arrendador = await this.prisma.arrendador.create({
-      data: {
-        nombre: dto.nombre,
-        correo: dto.correo,
-        telefono: dto.telefono,
-        contrasena_hash,
-      },
-    });
-
-    return this.crearRespuestaAutenticacion(arrendador);
+    try {
+      const arrendador = await this.prisma.arrendador.create({
+        data: {
+          nombre: dto.nombre,
+          correo,
+          telefono: dto.telefono,
+          contrasena_hash,
+        },
+      });
+      return this.crearRespuestaAutenticacion(arrendador);
+    } catch (error) {
+      // Carrera: otro registro con el mismo correo entre la verificación y la escritura.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(MENSAJE_REGISTRO_NO_COMPLETADO);
+      }
+      throw error;
+    }
   }
 
   async iniciarSesionArrendador(dto: LoginArrendadorDto) {
     const arrendador = await this.prisma.arrendador.findUnique({
-      where: { correo: dto.correo },
+      where: { correo: normalizarCorreo(dto.correo) },
     });
 
     if (!arrendador) {
@@ -79,11 +111,13 @@ export class AuthService {
    */
   private codigoUtilizable(
     codigoAcceso: {
+      expira_en: Date;
       contrato: { estado: EstadoContrato; vinculado_en: Date | null };
     } | null,
   ): boolean {
     return (
       codigoAcceso !== null &&
+      codigoAcceso.expira_en.getTime() > Date.now() &&
       codigoAcceso.contrato.estado !== EstadoContrato.CANCELADO &&
       codigoAcceso.contrato.vinculado_en === null
     );
@@ -96,12 +130,20 @@ export class AuthService {
     return inquilino.correo !== null && inquilino.contrasena_hash !== null;
   }
 
-  async validarCodigoAccesoInquilino(
+  validarCodigoAccesoInquilino(
+    dto: ValidarCodigoAccesoDto,
+    ip: string,
+  ): Promise<RespuestaValidarCodigoDto> {
+    return this.intentos.ejecutar(ip, () => this.validarSinBloqueo(dto));
+  }
+
+  private async validarSinBloqueo(
     dto: ValidarCodigoAccesoDto,
   ): Promise<RespuestaValidarCodigoDto> {
     const codigoAcceso = await this.prisma.codigoAcceso.findUnique({
       where: { codigo: dto.codigo },
       select: {
+        expira_en: true,
         inquilino: { select: { correo: true, contrasena_hash: true } },
         contrato: {
           select: {
@@ -141,7 +183,12 @@ export class AuthService {
    * Crea la cuenta y vincula el contrato en UNA transacción: si algo falla
    * no queda cuenta ni vínculo. Un código no se puede usar dos veces.
    */
-  async completarRegistroInquilino(dto: CompletarRegistroInquilinoDto) {
+  completarRegistroInquilino(dto: CompletarRegistroInquilinoDto, ip: string) {
+    return this.intentos.ejecutar(ip, () => this.completarSinBloqueo(dto));
+  }
+
+  private async completarSinBloqueo(dto: CompletarRegistroInquilinoDto) {
+    const correo = normalizarCorreo(dto.correo);
     const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
 
     const inquilino = await this.prisma.$transaction(async (tx) => {
@@ -149,6 +196,7 @@ export class AuthService {
         where: { codigo: dto.codigo },
         select: {
           contrato_id: true,
+          expira_en: true,
           inquilino: {
             select: { id: true, correo: true, contrasena_hash: true },
           },
@@ -166,15 +214,11 @@ export class AuthService {
         });
       }
 
-      const inquilinoConCorreo = await tx.inquilino.findUnique({
-        where: { correo: dto.correo },
-        select: { id: true },
-      });
+      // Las dos tablas, con un mensaje que no revela dónde existe el correo.
       if (
-        inquilinoConCorreo &&
-        inquilinoConCorreo.id !== codigoAcceso.inquilino.id
+        await this.correoYaRegistrado(tx, correo, codigoAcceso.inquilino.id)
       ) {
-        throw new ConflictException('El correo ya está en uso.');
+        throw new ConflictException(MENSAJE_REGISTRO_NO_COMPLETADO);
       }
 
       // Escritura condicionada: dos registros simultáneos con el mismo código
@@ -185,7 +229,7 @@ export class AuthService {
           correo: null,
           contrasena_hash: null,
         },
-        data: { correo: dto.correo, contrasena_hash },
+        data: { correo, contrasena_hash },
       });
       if (cuenta.count === 0) {
         throw new ConflictException({
@@ -212,7 +256,7 @@ export class AuthService {
 
   async iniciarSesionInquilino(dto: LoginInquilinoDto) {
     const inquilino = await this.prisma.inquilino.findUnique({
-      where: { correo: dto.correo },
+      where: { correo: normalizarCorreo(dto.correo) },
     });
 
     if (!inquilino || !inquilino.contrasena_hash) {

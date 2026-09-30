@@ -263,8 +263,18 @@ model CodigoAcceso {
   unidad         Unidad    @relation(fields: [unidad_id], references: [id])
   inquilino_id   String    @db.Uuid
   inquilino      Inquilino @relation(fields: [inquilino_id], references: [id])
+  /// El código vence a los 7 días de generarse; uno vencido se comporta como uno inexistente.
+  expira_en      DateTime
   creado_en      DateTime  @default(now())
   actualizado_en DateTime  @updatedAt
+}
+
+/// Intentos fallidos con códigos de acceso por origen (IP o `cuenta:<id>`); 5 seguidos bloquean 15 minutos.
+model IntentoCodigo {
+  origen          String    @id
+  fallidos        Int       @default(0)
+  bloqueado_hasta DateTime?
+  actualizado_en  DateTime  @default(now()) @updatedAt
 }
 
 

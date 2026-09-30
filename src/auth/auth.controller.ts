@@ -18,7 +18,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'El correo ya está registrado.',
+    description:
+      'No fue posible completar el registro con esos datos (mensaje genérico; no revela si el correo existe).',
   })
   registrar(@Body() dto: RegistroArrendadorDto) {
     return this.authService.registrarArrendador(dto);

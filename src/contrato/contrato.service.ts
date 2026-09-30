@@ -13,7 +13,6 @@ import {
   TipoPlantillaContrato,
   TipoProrroga,
 } from '@prisma/client';
-import { randomInt } from 'crypto';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularCanonNuevo } from '../common/canon-incremento.util';
@@ -29,6 +28,10 @@ import {
   conInquilinoResumido,
   OMITIR_COPIA_INQUILINO,
 } from '../common/inquilino-copia';
+import {
+  fechaExpiracionCodigo,
+  generarCodigoAcceso,
+} from '../common/utils/codigo-acceso';
 import { normalizarYValidarDatosInquilino } from '../common/utils/normalizar-cedula';
 import { buscarTraslape } from '../common/traslape.util';
 import { aplicarProrroga, mesesDelTerminoInicial } from './aplicar-prorroga';
@@ -101,14 +104,9 @@ export class ContratoService {
     };
   }
 
+  /** `RC-XXXX-XXXX` con `crypto.randomInt` (ver `common/utils/codigo-acceso`). */
   private generarCodigoAcceso(): string {
-    const caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const aleatorio = Array.from(
-      { length: 4 },
-      () => caracteres[randomInt(caracteres.length)],
-    ).join('');
-
-    return `RC-${new Date().getFullYear()}-${aleatorio}`;
+    return generarCodigoAcceso();
   }
 
   private esColisionDeCodigoAcceso(error: unknown): boolean {
@@ -152,7 +150,7 @@ export class ContratoService {
           },
         },
         codigo_acceso: {
-          select: { codigo: true },
+          select: { codigo: true, expira_en: true },
         },
       },
       orderBy: { fecha_inicio: 'desc' },
@@ -179,7 +177,7 @@ export class ContratoService {
         incrementos_ipc: true,
         aviso_no_renovacion: true,
         codigo_acceso: {
-          select: { codigo: true },
+          select: { codigo: true, expira_en: true },
         },
       },
     });
@@ -516,9 +514,16 @@ export class ContratoService {
       try {
         const codigoAcceso = await this.prisma.codigoAcceso.update({
           where: { id: contrato.codigo_acceso.id },
-          data: { codigo: this.generarCodigoAcceso() },
+          // El código nuevo invalida el anterior y vive 7 días desde ahora.
+          data: {
+            codigo: this.generarCodigoAcceso(),
+            expira_en: fechaExpiracionCodigo(),
+          },
         });
-        return { codigo: codigoAcceso.codigo };
+        return {
+          codigo: codigoAcceso.codigo,
+          expira_en: codigoAcceso.expira_en,
+        };
       } catch (error) {
         if (this.esColisionDeCodigoAcceso(error) && intento < 5) {
           continue;
@@ -767,6 +772,7 @@ export class ContratoService {
             await tx.codigoAcceso.create({
               data: {
                 codigo: this.generarCodigoAcceso(),
+                expira_en: fechaExpiracionCodigo(),
                 contrato_id: contrato.id,
                 unidad_id: dto.unidad_id,
                 inquilino_id: inquilinoId,

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 export async function limpiarBd(prisma: PrismaClient): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.claveIdempotencia.deleteMany();
+    await tx.intentoCodigo.deleteMany();
     await tx.alerta.deleteMany();
     await tx.codigoAcceso.deleteMany();
     await tx.fotoInventario.deleteMany();

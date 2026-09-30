@@ -91,6 +91,7 @@ async function limpiarDatosDeNegocio() {
   await prisma.fotoInventario.deleteMany();
   await prisma.solicitudMantenimiento.deleteMany();
   await prisma.pago.deleteMany();
+  await prisma.intentoCodigo.deleteMany();
   await prisma.avisoNoRenovacion.deleteMany();
   await prisma.documentoContrato.deleteMany();
   await prisma.incrementoIPC.deleteMany();
@@ -127,7 +128,6 @@ async function actualizarConfiguracionIpc() {
 
 async function sembrar() {
   const hoy = new Date();
-  const anioActual = hoy.getFullYear();
   const contrasenaHash = await bcrypt.hash(CONTRASENA_PRUEBA, 10);
 
   // --- Arrendadores -------------------------------------------------
@@ -341,7 +341,9 @@ async function sembrar() {
   // --- Códigos de acceso ---------------------------------------------
   const codigoA = await prisma.codigoAcceso.create({
     data: {
-      codigo: `RC-${anioActual}-DEV1`,
+      codigo: 'RC-DEVA-2222',
+      // Vigente 7 días; los contratos ya vinculados no lo usan más.
+      expira_en: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       contrato_id: contratoA.id,
       unidad_id: apto101.id,
       inquilino_id: inquilinoA.id,
@@ -349,7 +351,9 @@ async function sembrar() {
   });
   const codigoB = await prisma.codigoAcceso.create({
     data: {
-      codigo: `RC-${anioActual}-DEV2`,
+      codigo: 'RC-DEVB-2222',
+      // Vigente 7 días; los contratos ya vinculados no lo usan más.
+      expira_en: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       contrato_id: contratoB.id,
       unidad_id: parqueadero12.id,
       inquilino_id: inquilinoB.id,
@@ -357,7 +361,9 @@ async function sembrar() {
   });
   const codigoC = await prisma.codigoAcceso.create({
     data: {
-      codigo: `RC-${anioActual}-DEV3`,
+      codigo: 'RC-DEVC-2222',
+      // Vigente 7 días; los contratos ya vinculados no lo usan más.
+      expira_en: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       contrato_id: contratoC.id,
       unidad_id: local5.id,
       inquilino_id: inquilinoC.id,
@@ -365,7 +371,9 @@ async function sembrar() {
   });
   const codigoD = await prisma.codigoAcceso.create({
     data: {
-      codigo: `RC-${anioActual}-DEV4`,
+      codigo: 'RC-DEVD-2222',
+      // Vigente 7 días; los contratos ya vinculados no lo usan más.
+      expira_en: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       contrato_id: contratoD.id,
       unidad_id: apto101.id,
       inquilino_id: inquilinoC.id,
