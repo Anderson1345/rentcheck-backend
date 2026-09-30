@@ -1,8 +1,12 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.7 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.8 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.8 frente a la 2.7** (entrega B0.4-A1 y una propuesta de producto):
+- **Datos del inquilino en el contrato** (5.6): el nombre y el teléfono no pueden estar vacíos y el documento se guarda normalizado. Todo lo que ve el Arrendador sale de esa copia.
+- **Nueva decisión D-10** (sección 16): verificar el correo con un código enviado a la cuenta al registrarse. Es una propuesta de Jesús, pendiente de confirmar el proveedor de correo; no cambia ninguna regla vigente.
 
 **Cambios de la versión 2.7 frente a la 2.6** (entrega B0.3-A3-4, cierre del bloque 0.3):
 - **Aviso de no renovación** (regla 16): lo pueden dar el Arrendador y el Inquilino mientras el contrato esté Activo y antes del último día; quien lo dio puede cancelarlo mientras no venza; aplica siempre a la fecha de fin vigente (también tras una prórroga automática). Queda registrado con quién, cuándo y motivo.
@@ -222,7 +226,7 @@ Lo que el Arrendador escribe sobre el inquilino (nombre, documento, teléfono) s
 | Campo | Notas |
 |---|---|
 | Unidad, Inquilino, Arrendador | Relaciones obligatorias |
-| Datos del inquilino en el contrato | Nombre, documento y teléfono tal como los escribió el Arrendador. Editables solo mientras el contrato esté **sin vincular**. |
+| Datos del inquilino en el contrato | Nombre, documento y teléfono tal como los escribió el Arrendador (nombre y teléfono sin espacios sobrantes y no vacíos; documento normalizado). Editables solo mientras el contrato esté **sin vincular**. |
 | Vinculado en | Fecha en que el inquilino usó el código. Hasta entonces el contrato no aparece en su portal. |
 | Tipo de plantilla legal | Vivienda Urbana (Ley 820) / Local Comercial / Parqueadero. Debe corresponder a la unidad: Parqueadero → plantilla Parqueadero; en otro caso, uso Residencial → Vivienda y uso Comercial → Local Comercial. |
 | Canon | **Único** valor vigente del canon; cambia solo por incremento |
@@ -586,3 +590,4 @@ Firma o aceptación electrónica, co-arrendatarios, publicación de vacantes y e
 | D-7 | ¿Co-arrendatarios? | No en la versión 1. | Vigente |
 | D-8 | ¿Publicar en Google Play en esta etapa? | No: distribuir un APK por EAS para las pruebas y la sustentación; publicar cuando haya presupuesto (USD 25) y 12 testers. | Recomendación vigente |
 | D-9 | ¿Proveedores de push y correo? | Push: servicio de Expo (usa FCM por debajo). Correo: un plan gratuito (Resend o Brevo), verificando que no pida tarjeta. | Recomendación vigente |
+| D-10 | ¿Se verifica el correo con un código al registrarse? | Sí, para arrendador e inquilino: código de 6 dígitos enviado al correo escrito, con expiración de unos 10 minutos, máximo 5 intentos y espera para reenviar; la cuenta queda sin verificar hasta ingresarlo. El mismo mecanismo sirve para recuperar la contraseña. Depende de elegir un proveedor de correo gratuito y sin tarjeta (D-9). | Propuesta de Jesús (29/09/2026); pendiente de confirmar el proveedor |
