@@ -1,8 +1,15 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.9 — 30 de septiembre de 2026.** Reemplaza a la versión 3.8.
+> **Versión 3.10 — 30 de septiembre de 2026.** Reemplaza a la versión 3.9.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.10:**
+
+- **0.5-A puesta en marcha:** fusionada y en producción; `TAREAS_SECRET` creado en Render (rotado una vez porque el primero quedó visible en una captura) y dos jobs en cron-job.org (prueba `202 iniciada` verificada). La web es provisional y la hizo Jesús: los alias `mi-*` se pueden retirar cuando se quiera.
+- **0.5-D cerrada (rama `feat/b05d-perfil-fechas-unidad`, commit `826a138`, 20 archivos, sin migración):** `PATCH /inquilino/perfil` (solo `nombre` y `telefono`; `CAMPO_NO_EDITABLE` con la lista, `SIN_CAMPOS`, `VALIDACION`; no toca contratos, versiones de PDF ni copias). **B-55 ✅:** `validarFinFuturo` en `reglas-contrato.ts`, usada en `crear()` y en `PATCH /contratos/:id` (solo si el PATCH envía fechas): 400 `FECHA_FIN_PASADA`. **B-48 ✅:** `actualizarUnidad` hace pertenencia, verificación del contrato y escritura dentro de una transacción con la unidad bloqueada; además `crear()` revalida la plantilla (`validarPlantillaParaUnidad`) con la unidad ya bloqueada (carrera más profunda que halló la IA). Pruebas e2e sin fechas fijas (`test/helpers/fechas.helper.ts`; `RELOJ_SIMULADO=2027-03-15T15:00:00Z npm run test:e2e` pasa completo). e2e 34 suites / 340, unitarias 20 / 111.
+- **Decisión:** el nombre del perfil del inquilino **no** llega a los listados del arrendador: el arrendador ve la copia que guardó el contrato (valor legal). Si algún día se quiere avisar del cambio, sería una entrega aparte.
+- **Límites:** un arrendador ajeno puede tomar el bloqueo de una unidad unos milisegundos antes del 404 (inocuo); el PATCH de contrato con fechas exige `fecha_fin` futura aunque se reenvíe la misma; quedan fechas fijas inofensivas en `no-renovacion.e2e-spec.ts:274–286`. **B-52** sigue abierto.
 
 **Qué cambió en la versión 3.9:**
 - **0.4-D2 fusionada a `main` el 30/09/2026.**
@@ -325,14 +332,14 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-45 | Importante | No se puede anular una aprobación de pago hecha por error | 0.6 | ⬜ |
 | B-46 | Importante | No existe baja de cuenta del inquilino (Ley 1581 de 2012 y requisito de Google Play para publicar) | Antes de usuarios reales | ⬜ |
 | B-47 | Importante | `ContratoService.crear()` no valida que `tipo_plantilla` corresponda al tipo o uso de la unidad (por ejemplo, plantilla de vivienda sobre un parqueadero o un local). Detectado en el diagnóstico de 0.3-A (29/09/2026) | 0.3-A3-1 | ✅ Corregido |
-| B-48 | Menor | `InmuebleService.actualizarUnidad()` cuenta los contratos ACTIVO y después escribe; un contrato creado justo entre ambos pasos permitiría cambiar el tipo o uso. Probabilidad muy baja. Detectado en la revisión de 0.3-A1 | 0.5 (junto con el control de versión de B-36) | ⬜ |
+| B-48 | Menor | `InmuebleService.actualizarUnidad()` cuenta los contratos ACTIVO y después escribe; un contrato creado justo entre ambos pasos permitiría cambiar el tipo o uso. Probabilidad muy baja. Detectado en la revisión de 0.3-A1 | 0.5 (junto con el control de versión de B-36) | ✅ 0.5-D |
 | B-49 | Crítico | `renovar()` dejaba `Contrato.canon_centavos` con el canon nuevo mientras `calcularEstadoCuenta` lo trataba como canon base: los períodos anteriores a un incremento se calculaban con el canon nuevo (falsa mora y `PARCIAL`). Detectado al diseñar 0.3-A2 (29/09/2026) | 0.3-A2 | ✅ Corregido |
 | B-50 | Menor | `estado_pago` del contrato no se recalcula al aplicar un incremento ni una prórroga; queda desactualizado hasta el siguiente pago o el cron diario. No afecta la mora real (los períodos vencidos no cambian de canon) | 0.3-A3-1 | ✅ Corregido |
 | B-51 | Menor | El ZIP de documentos nombraba los archivos solo con `basename`: dos comprobantes con el mismo nombre se pisaban dentro del ZIP. Detectado al diseñar 0.3-B (29/09/2026) | 0.3-B | ✅ Corregido |
 | B-52 | Menor | Un LOCAL de uso Residencial exige plantilla de Vivienda (regla de B-47); la unidad es incoherente y debería rechazarse al crearla o editarla. Detectado en la revisión de 0.3-A3-1 | 0.5 (junto con B-48) | ⬜ |
 | B-53 | Importante | Falta el acta de terminación en PDF (tipo de documento listado en el Contexto §5.7) y la liquidación de depósito (Local y Parqueadero). Detectado al cerrar 0.3-A3-2 | Después de 0.3-A3-4 | ⬜ |
 | B-54 | Importante | Con el adaptador de pg, `esColisionDeCodigoAcceso` nunca detectaba la colisión de código de acceso (el P2002 no trae `meta.target`): una colisión real se reportaba como "unidad ocupada" (409) sin reintentar. Detectado al escribir la prueba de reversión de 0.4-A1 | 0.4-A1 | ✅ Corregido |
-| B-55 | Menor (nuevo) | Ni `crear()` ni `PATCH /contratos/:id` exigen que `fecha_fin` sea posterior a hoy (Contexto §5.6); un contrato con fin pasado se vence o se prorroga solo en el siguiente cron | 0.5 | ⬜ |
+| B-55 | Menor (nuevo) | Ni `crear()` ni `PATCH /contratos/:id` exigen que `fecha_fin` sea posterior a hoy (Contexto §5.6); un contrato con fin pasado se vence o se prorroga solo en el siguiente cron | 0.5-D | ✅ |
 | B-56 | Importante (nuevo) | Con verificación de correo activa, un registro sin verificar puede ocupar el correo de otra persona y dejarla fuera (409 genérico) | 0.4-D2 | ✅ (30/09/2026) |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
