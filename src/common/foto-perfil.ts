@@ -33,16 +33,26 @@ export const interceptorFotoPerfil = () =>
   });
 
 /**
- * URL firmada de una foto guardada por ruta. Si no hay ruta, si el valor es un
- * `data:` heredado o si falla la firma, devuelve null (y registra la falla):
- * una foto que no se puede firmar nunca tumba la respuesta.
+ * URL firmada de una foto de perfil o de unidad, SOLO si su ruta pertenece a la
+ * entidad (empieza por `prefijo`, el mismo que generan las subidas). Cualquier
+ * otro valor (heredado como `contratos/...`, de otra entidad, `data:` o texto
+ * suelto) devuelve null sin firmarse y deja un aviso en el registro (sin la
+ * ruta guardada). Si falla la firma también devuelve null: una foto nunca
+ * tumba la respuesta.
  */
 export async function firmarFotoOpcional(
   almacenamiento: Firmador,
   ruta: string | null,
+  prefijo: string,
   logger: Logger,
 ): Promise<string | null> {
-  if (!ruta || ruta.startsWith('data:')) {
+  if (!ruta) {
+    return null;
+  }
+  if (!ruta.startsWith(prefijo)) {
+    logger.warn(
+      `Foto ignorada: la ruta guardada no pertenece a la entidad (prefijo esperado '${prefijo}').`,
+    );
     return null;
   }
   try {
@@ -53,15 +63,27 @@ export async function firmarFotoOpcional(
   }
 }
 
-/** Reemplaza `foto_principal_url` (ruta) por su URL firmada en una unidad. */
+/** Prefijo que generan las subidas de la foto principal de una unidad. */
+export const prefijoFotoUnidad = (inmuebleId: string, unidadId: string) =>
+  `inmuebles/${inmuebleId}/unidades/${unidadId}/`;
+
+/**
+ * Reemplaza `foto_principal_url` (ruta) por su URL firmada en una unidad, solo
+ * si la ruta pertenece a esa unidad (`inmuebles/<inmueble_id>/unidades/<id>/`).
+ */
 export async function conFotoPrincipalFirmada<
-  T extends { foto_principal_url: string | null },
+  T extends {
+    id: string;
+    inmueble_id: string;
+    foto_principal_url: string | null;
+  },
 >(unidad: T, almacenamiento: Firmador, logger: Logger): Promise<T> {
   return {
     ...unidad,
     foto_principal_url: await firmarFotoOpcional(
       almacenamiento,
       unidad.foto_principal_url,
+      prefijoFotoUnidad(unidad.inmueble_id, unidad.id),
       logger,
     ),
   };
@@ -135,7 +157,11 @@ async function borrarSilencioso(
 
 /**
  * Firma `foto_principal_url` de la `unidad` anidada de una respuesta (contrato,
- * solicitud, pago...). Si el objeto no trae ese campo, lo devuelve igual.
+ * solicitud, pago...), solo si la ruta pertenece a esa unidad. Con
+ * `inmueble_id` se exige el prefijo exacto; sin él, que la ruta empiece por
+ * `inmuebles/` y contenga `/unidades/<unidad.id>/`. Si el objeto anidado no
+ * trae el id de la unidad no se firma nada. Si no trae el campo, se devuelve
+ * igual.
  */
 export async function conFotoDeUnidadAnidada<T extends object>(
   objeto: T,
@@ -150,12 +176,44 @@ export async function conFotoDeUnidadAnidada<T extends object>(
   ) {
     return objeto;
   }
+  const datos = unidad as {
+    id?: unknown;
+    inmueble_id?: unknown;
+    foto_principal_url: string | null;
+  };
+  const prefijo = prefijoDeUnidadAnidada(datos);
   return {
     ...objeto,
-    unidad: await conFotoPrincipalFirmada(
-      unidad as { foto_principal_url: string | null },
-      almacenamiento,
-      logger,
-    ),
+    unidad: {
+      ...unidad,
+      foto_principal_url: prefijo
+        ? await firmarFotoOpcional(
+            almacenamiento,
+            datos.foto_principal_url,
+            prefijo,
+            logger,
+          )
+        : null,
+    },
   };
+}
+
+function prefijoDeUnidadAnidada(unidad: {
+  id?: unknown;
+  inmueble_id?: unknown;
+  foto_principal_url: string | null;
+}): string | null {
+  if (typeof unidad.id !== 'string') {
+    return null;
+  }
+  if (typeof unidad.inmueble_id === 'string') {
+    return prefijoFotoUnidad(unidad.inmueble_id, unidad.id);
+  }
+  const ruta = unidad.foto_principal_url;
+  const marca = `/unidades/${unidad.id}/`;
+  if (!ruta || !ruta.startsWith('inmuebles/')) {
+    return null;
+  }
+  const posicion = ruta.indexOf(marca);
+  return posicion < 0 ? null : ruta.slice(0, posicion + marca.length);
 }

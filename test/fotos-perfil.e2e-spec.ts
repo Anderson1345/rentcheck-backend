@@ -34,6 +34,7 @@ interface Contexto {
   inq: string;
   inquilinoId: string;
   contratoId: string;
+  correoArrendador: string;
 }
 
 const CAMPO: Record<Entidad, string> = {
@@ -103,6 +104,7 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       inq,
       inquilinoId: ficha.id,
       contratoId: contrato.id,
+      correoArrendador: `fotos-${contador}@correo.com`,
     };
   }
 
@@ -587,6 +589,131 @@ describe('Fotos de cédula y de unidad (e2e)', () => {
       (detalle.body as { unidades: Array<{ foto_principal_url: unknown }> })
         .unidades[0].foto_principal_url,
     ).toBeNull();
+  }, 120000);
+
+  // ------------------------------------------------------------------
+  // Solo se firman fotos de la propia entidad (B0.4-B2, corrección)
+  // ------------------------------------------------------------------
+  /** Valores que no pertenecen a la entidad: heredados, ajenos, data: o texto suelto. */
+  const valoresAjenos = (e: Entidad, otro: Contexto, contratoId: string) => [
+    `contratos/${contratoId}/v1-x.pdf`,
+    'data:image/png;base64,iVBORw0KGgo=',
+    'texto-suelto-sin-ruta',
+    // Una foto de OTRA entidad del mismo tipo.
+    `${prefijo(e, otro)}foto-ajena.jpg`,
+  ];
+
+  /** Lee la foto de la entidad por el GET que la expone. */
+  async function leerFotoPorGet(e: Entidad, c: Contexto): Promise<unknown> {
+    if (e === 'unidad') {
+      const detalle = await request(app.getHttpServer())
+        .get(`/inmuebles/${c.inmuebleId}`)
+        .set('Authorization', `Bearer ${c.arr}`)
+        .expect(OK);
+      return (
+        detalle.body as { unidades: Array<{ foto_principal_url: unknown }> }
+      ).unidades[0].foto_principal_url;
+    }
+    const perfil = await request(app.getHttpServer())
+      .get(e === 'arrendador' ? '/arrendadores/perfil' : '/inquilino/perfil')
+      .set('Authorization', `Bearer ${token(e, c)}`)
+      .expect(OK);
+    return (perfil.body as Record<string, unknown>)[CAMPO[e]];
+  }
+
+  it.each(ENTIDADES)(
+    '%s: un valor heredado, ajeno, data: o suelto sale null en el GET y no se firma; la foto propia subida por el endpoint sí se firma',
+    async (e) => {
+      const c = await contexto();
+      const otro = await contexto();
+      const firmar = jest.spyOn(almacenamiento, 'generarUrlFirmada');
+
+      for (const valor of valoresAjenos(e, otro, c.contratoId)) {
+        await fijarValorEnBd(e, c, valor);
+        expect([valor.slice(0, 12), await leerFotoPorGet(e, c)]).toEqual([
+          valor.slice(0, 12),
+          null,
+        ]);
+        expect(firmar).not.toHaveBeenCalledWith(valor);
+      }
+
+      // Foto propia: subida por el endpoint (reemplaza el valor ajeno sin borrarlo).
+      await subir(e, c, Buffer.from('foto propia')).expect(OK);
+      const propia = (await valorEnBd(e, c)) ?? '';
+      expect(propia.startsWith(prefijo(e, c))).toBe(true);
+      expect(await leerFotoPorGet(e, c)).toMatch(URL_FIRMADA);
+      expect(firmar).toHaveBeenCalledWith(propia);
+    },
+    120000,
+  );
+
+  it('arrendador: el login y el registro tampoco firman un valor ajeno', async () => {
+    const c = await contexto();
+    const firmar = jest.spyOn(almacenamiento, 'generarUrlFirmada');
+    const legado = `contratos/${c.contratoId}/v1-x.pdf`;
+    await fijarValorEnBd('arrendador', c, legado);
+
+    const login = await request(app.getHttpServer())
+      .post('/auth/arrendador/login')
+      .send({
+        correo: c.correoArrendador,
+        contrasena: 'clave123',
+      })
+      .expect(OK);
+
+    expect(
+      (login.body as { arrendador: { foto_cedula_nit_url: unknown } })
+        .arrendador.foto_cedula_nit_url,
+    ).toBeNull();
+    expect(firmar).not.toHaveBeenCalledWith(legado);
+  }, 60000);
+
+  it('respuestas anidadas y directas de la unidad: un valor ajeno sale null y no se firma; el propio se firma', async () => {
+    const c = await contexto();
+    const otro = await contexto();
+    const firmar = jest.spyOn(almacenamiento, 'generarUrlFirmada');
+    const ajeno = `contratos/${c.contratoId}/v1-x.pdf`;
+    const deOtraUnidad = `${prefijo('unidad', otro)}foto-ajena.jpg`;
+    const consultas = (): Array<[string, (b: unknown) => unknown]> => [
+      [
+        `/contratos/${c.contratoId}`,
+        (b) =>
+          (b as { unidad: { foto_principal_url: unknown } }).unidad
+            .foto_principal_url,
+      ],
+      [
+        '/inmuebles',
+        (b) =>
+          (b as Array<{ unidades: Array<{ foto_principal_url: unknown }> }>)[0]
+            .unidades[0].foto_principal_url,
+      ],
+    ];
+
+    for (const valor of [ajeno, deOtraUnidad]) {
+      await fijarValorEnBd('unidad', c, valor);
+      for (const [url, extraer] of consultas()) {
+        const r = await request(app.getHttpServer())
+          .get(url)
+          .set('Authorization', `Bearer ${c.arr}`)
+          .expect(OK);
+        expect([url, extraer(r.body)]).toEqual([url, null]);
+      }
+      expect(firmar).not.toHaveBeenCalledWith(valor);
+    }
+
+    await subir('unidad', c, Buffer.from('foto propia')).expect(OK);
+    const propia = (await valorEnBd('unidad', c)) ?? '';
+    for (const [url, extraer] of consultas()) {
+      const r = await request(app.getHttpServer())
+        .get(url)
+        .set('Authorization', `Bearer ${c.arr}`)
+        .expect(OK);
+      expect([url, extraer(r.body)]).toEqual([
+        url,
+        expect.stringMatching(URL_FIRMADA) as string,
+      ]);
+    }
+    expect(firmar).toHaveBeenCalledWith(propia);
   }, 120000);
 
   // ------------------------------------------------------------------

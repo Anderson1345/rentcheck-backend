@@ -300,6 +300,7 @@ export class AuthService {
         foto_cedula_nit_url: await firmarFotoOpcional(
           this.almacenamiento,
           arrendador.foto_cedula_nit_url,
+          `arrendadores/${arrendador.id}/`,
           this.logger,
         ),
         creado_en: arrendador.creado_en,

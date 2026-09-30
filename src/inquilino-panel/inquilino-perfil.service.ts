@@ -36,6 +36,7 @@ export class InquilinoPerfilService {
       foto_cedula_url: await firmarFotoOpcional(
         this.almacenamiento,
         perfil.foto_cedula_url,
+        `inquilinos/${perfil.id}/`,
         this.logger,
       ),
     };

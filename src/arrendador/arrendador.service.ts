@@ -25,13 +25,14 @@ export class ArrendadorService {
 
   /** El perfil nunca expone la ruta interna: `foto_cedula_nit_url` va firmada. */
   private async conFotoFirmada<
-    T extends { foto_cedula_nit_url: string | null },
+    T extends { id: string; foto_cedula_nit_url: string | null },
   >(perfil: T): Promise<T> {
     return {
       ...perfil,
       foto_cedula_nit_url: await firmarFotoOpcional(
         this.almacenamiento,
         perfil.foto_cedula_nit_url,
+        `arrendadores/${perfil.id}/`,
         this.logger,
       ),
     };

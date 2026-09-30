@@ -419,9 +419,13 @@ export class InmuebleService {
     );
   }
 
-  private unidadConFotoFirmada<T extends { foto_principal_url: string | null }>(
-    unidad: T,
-  ): Promise<T> {
+  private unidadConFotoFirmada<
+    T extends {
+      id: string;
+      inmueble_id: string;
+      foto_principal_url: string | null;
+    },
+  >(unidad: T): Promise<T> {
     return conFotoPrincipalFirmada(unidad, this.almacenamiento, this.logger);
   }
 
@@ -583,7 +587,11 @@ export class InmuebleService {
   private async exponerUrlFirmadaInmueble<
     T extends {
       foto_portada_ruta: string | null;
-      unidades?: Array<{ foto_principal_url: string | null }>;
+      unidades?: Array<{
+        id: string;
+        inmueble_id: string;
+        foto_principal_url: string | null;
+      }>;
     },
   >(
     inmueble: T,
