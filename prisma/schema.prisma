@@ -19,6 +19,8 @@ model Arrendador {
   cedula              String? 
   contrasena_hash     String 
   foto_cedula_nit_url String? 
+  /// Cuándo verificó su correo con el código (D-10). Nulo hasta entonces.
+  correo_verificado_en DateTime?
   creado_en           DateTime @default(now())
   inmuebles           Inmueble[]
   inquilinos          Inquilino[]
@@ -89,6 +91,8 @@ model Inquilino {
   correo            String?     @unique
   contrasena_hash   String?
   foto_cedula_url   String?
+  /// Cuándo verificó su correo con el código (D-10). Nulo hasta entonces.
+  correo_verificado_en DateTime?
   creado_en         DateTime    @default(now())
   contratos          Contrato[]
   codigos_acceso     CodigoAcceso[]
@@ -406,4 +410,24 @@ model ClaveIdempotencia {
   creado_en   DateTime @default(now())
 
   @@unique([inquilino_id, endpoint, clave])
+}
+
+enum PropositoCodigoCorreo {
+  VERIFICACION
+  RECUPERACION
+}
+
+/// Código de 6 dígitos enviado por correo (D-10). Solo se guarda su HMAC-SHA256.
+model CodigoCorreo {
+  id           String                @id @default(uuid()) @db.Uuid
+  /// Correo normalizado al que se envió.
+  correo       String
+  proposito    PropositoCodigoCorreo
+  codigo_hash  String
+  expira_en    DateTime
+  intentos     Int                   @default(0)
+  consumido_en DateTime?
+  creado_en    DateTime              @default(now())
+
+  @@index([correo, proposito, creado_en])
 }

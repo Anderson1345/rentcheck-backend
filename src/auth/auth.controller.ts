@@ -14,7 +14,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Registrar un Arrendador' })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Arrendador registrado correctamente.',
+    description:
+      'Arrendador registrado correctamente (con token). Con proveedor de correo responde { requiere_verificacion: true, correo } SIN token y envía el código de verificación.',
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
@@ -36,6 +37,11 @@ export class AuthController {
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
     description: 'Credenciales inválidas.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description:
+      'CORREO_NO_VERIFICADO: con proveedor de correo, credenciales correctas pero el correo no está verificado (sin token).',
   })
   iniciarSesion(@Body() dto: LoginArrendadorDto) {
     return this.authService.iniciarSesionArrendador(dto);

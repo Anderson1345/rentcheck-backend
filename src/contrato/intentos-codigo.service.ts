@@ -18,14 +18,20 @@ import { CodigoNoValidoException } from './codigo-no-valido.exception';
 export class IntentosCodigoService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async ejecutar<T>(origen: string, accion: () => Promise<T>): Promise<T> {
+  async ejecutar<T>(
+    origen: string,
+    accion: () => Promise<T>,
+    // Qué error cuenta como intento fallido (por defecto, un código de acceso no válido).
+    esFallo: (error: unknown) => boolean = (error) =>
+      error instanceof CodigoNoValidoException,
+  ): Promise<T> {
     await this.verificarNoBloqueado(origen);
     try {
       const resultado = await accion();
       await this.reiniciar(origen);
       return resultado;
     } catch (error) {
-      if (error instanceof CodigoNoValidoException) {
+      if (esFallo(error)) {
         await this.registrarFallo(origen);
       }
       throw error;

@@ -1,13 +1,16 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { EstadoContrato, Prisma } from '@prisma/client';
+import { EstadoContrato, Prisma, PropositoCodigoCorreo } from '@prisma/client';
 import { normalizarCorreo } from '../common/utils/normalizar-correo';
 import * as bcrypt from 'bcrypt';
+import { CodigoCorreoService } from '../correo/codigo-correo.service';
+import { CorreoService } from '../correo/correo.service';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { firmarFotoOpcional } from '../common/foto-perfil';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +38,8 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
+    private readonly correoService: CorreoService,
+    private readonly codigosCorreo: CodigoCorreoService,
     private readonly jwtService: JwtService,
     private readonly vinculacion: VinculacionContratoService,
     private readonly intentos: IntentosCodigoService,
@@ -76,7 +81,11 @@ export class AuthService {
           contrasena_hash,
         },
       });
-      return this.crearRespuestaAutenticacion(arrendador);
+      // Con un proveedor de correo: sin token hasta verificar el correo.
+      if (this.correoService.correoDisponible()) {
+        return await this.pedirVerificacion(correo);
+      }
+      return await this.crearRespuestaAutenticacion(arrendador);
     } catch (error) {
       // Carrera: otro registro con el mismo correo entre la verificación y la escritura.
       if (
@@ -107,7 +116,29 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas.');
     }
 
+    this.exigirCorreoVerificado(arrendador.correo_verificado_en);
     return this.crearRespuestaAutenticacion(arrendador);
+  }
+
+  /**
+   * Con un proveedor de correo, una cuenta sin verificar no inicia sesión
+   * (la contraseña ya se validó: las credenciales malas siguen dando el 401
+   * genérico). Sin proveedor no se exige nada.
+   */
+  private exigirCorreoVerificado(verificadoEn: Date | null): void {
+    if (this.correoService.correoDisponible() && verificadoEn === null) {
+      throw new ForbiddenException({
+        codigo: 'CORREO_NO_VERIFICADO',
+        mensaje:
+          'Verifica tu correo con el código que te enviamos antes de iniciar sesión.',
+      });
+    }
+  }
+
+  /** Envía el código de verificación (nunca falla) y responde sin token. */
+  private async pedirVerificacion(correo: string) {
+    await this.codigosCorreo.emitir(correo, PropositoCodigoCorreo.VERIFICACION);
+    return { requiere_verificacion: true as const, correo };
   }
 
   /**
@@ -258,6 +289,10 @@ export class AuthService {
       });
     });
 
+    // La cuenta y la vinculación ya están confirmadas; el envío va fuera de la transacción.
+    if (this.correoService.correoDisponible()) {
+      return this.pedirVerificacion(correo);
+    }
     return this.crearRespuestaAutenticacionInquilino(inquilino);
   }
 
@@ -279,6 +314,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas.');
     }
 
+    this.exigirCorreoVerificado(inquilino.correo_verificado_en);
     return this.crearRespuestaAutenticacionInquilino(inquilino);
   }
 

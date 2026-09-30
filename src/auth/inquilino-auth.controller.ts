@@ -5,7 +5,9 @@ import {
   HttpStatus,
   Ip,
   Post,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -46,7 +48,12 @@ export class InquilinoAuthController {
   @ApiBody({ type: CompletarRegistroInquilinoDto })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Registro completado correctamente.',
+    description: 'Registro completado correctamente (sin proveedor de correo).',
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description:
+      'Con proveedor de correo: cuenta creada y contrato vinculado, sin token. Responde { requiere_verificacion: true, correo } y envía el código de verificación.',
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
@@ -62,11 +69,19 @@ export class InquilinoAuthController {
     description:
       'DEMASIADOS_INTENTOS: 5 códigos no válidos seguidos bloquean 15 minutos.',
   })
-  completarRegistro(
+  async completarRegistro(
     @Body() dto: CompletarRegistroInquilinoDto,
     @Ip() ip: string,
+    @Res({ passthrough: true }) respuesta: Response,
   ) {
-    return this.authService.completarRegistroInquilino(dto, ip);
+    const resultado = await this.authService.completarRegistroInquilino(
+      dto,
+      ip,
+    );
+    if ('requiere_verificacion' in resultado) {
+      respuesta.status(HttpStatus.CREATED);
+    }
+    return resultado;
   }
 
   @Post('login')
@@ -81,6 +96,11 @@ export class InquilinoAuthController {
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
     description: 'Credenciales inválidas.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description:
+      'CORREO_NO_VERIFICADO: con proveedor de correo, credenciales correctas pero el correo no está verificado (sin token).',
   })
   iniciarSesion(@Body() dto: LoginInquilinoDto) {
     return this.authService.iniciarSesionInquilino(dto);

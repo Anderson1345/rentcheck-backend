@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AlmacenamientoModule } from '../almacenamiento/almacenamiento.module';
 import { VinculacionModule } from '../contrato/vinculacion.module';
+import { CorreoModule } from '../correo/correo.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { ArrendadorGuard } from './arrendador.guard';
 import { AuthController } from './auth.controller';
@@ -12,10 +13,13 @@ import { InquilinoAuthController } from './inquilino-auth.controller';
 import { InquilinoGuard } from './inquilino.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './jwt.strategy';
+import { VerificacionCorreoController } from './verificacion-correo.controller';
+import { VerificacionCorreoService } from './verificacion-correo.service';
 
 @Module({
   imports: [
     AlmacenamientoModule,
+    CorreoModule,
     VinculacionModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
@@ -26,9 +30,14 @@ import { JwtStrategy } from './jwt.strategy';
       }),
     }),
   ],
-  controllers: [AuthController, InquilinoAuthController],
+  controllers: [
+    AuthController,
+    InquilinoAuthController,
+    VerificacionCorreoController,
+  ],
   providers: [
     AuthService,
+    VerificacionCorreoService,
     PrismaService,
     JwtStrategy,
     JwtAuthGuard,
