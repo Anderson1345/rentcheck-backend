@@ -13,6 +13,8 @@ import { InquilinoAuthController } from './inquilino-auth.controller';
 import { InquilinoGuard } from './inquilino.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './jwt.strategy';
+import { RecuperacionContrasenaController } from './recuperacion-contrasena.controller';
+import { RecuperacionContrasenaService } from './recuperacion-contrasena.service';
 import { VerificacionCorreoController } from './verificacion-correo.controller';
 import { VerificacionCorreoService } from './verificacion-correo.service';
 
@@ -34,10 +36,12 @@ import { VerificacionCorreoService } from './verificacion-correo.service';
     AuthController,
     InquilinoAuthController,
     VerificacionCorreoController,
+    RecuperacionContrasenaController,
   ],
   providers: [
     AuthService,
     VerificacionCorreoService,
+    RecuperacionContrasenaService,
     PrismaService,
     JwtStrategy,
     JwtAuthGuard,

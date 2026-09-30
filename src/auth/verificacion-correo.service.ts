@@ -1,25 +1,15 @@
-import {
-  BadRequestException,
-  Injectable,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PropositoCodigoCorreo } from '@prisma/client';
 import { CodigoCorreoService } from '../correo/codigo-correo.service';
 import { CorreoService } from '../correo/correo.service';
 import { IntentosCodigoService } from '../contrato/intentos-codigo.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  CodigoCorreoInvalidoException,
+  esCodigoCorreoInvalido,
+} from './codigo-correo-invalido.exception';
 import { ReenviarVerificacionDto } from './dto/reenviar-verificacion.dto';
 import { VerificarCorreoDto } from './dto/verificar-correo.dto';
-
-/** Siempre el mismo error: no distingue código equivocado, vencido, consumido ni correo desconocido. */
-export class CodigoCorreoInvalidoException extends BadRequestException {
-  constructor() {
-    super({
-      codigo: 'CODIGO_INVALIDO',
-      mensaje: 'El código no es válido o ya venció.',
-    });
-  }
-}
 
 export const MENSAJE_REENVIO =
   'Si el correo corresponde a una cuenta sin verificar, te enviamos un código.';
@@ -47,22 +37,13 @@ export class VerificacionCorreoService {
     };
   }
 
-  private exigirCorreoDisponible(): void {
-    if (!this.correo.correoDisponible()) {
-      throw new ServiceUnavailableException({
-        codigo: 'CORREO_NO_DISPONIBLE',
-        mensaje: 'El envío de correos no está disponible por ahora.',
-      });
-    }
-  }
-
   /**
    * Reenvía el código SOLO si el correo es de una cuenta existente sin
    * verificar y no está en espera ni en el tope por hora. La respuesta no
    * depende de nada de eso.
    */
   async reenviar(dto: ReenviarVerificacionDto) {
-    this.exigirCorreoDisponible();
+    this.correo.exigirDisponible();
     const [arrendador, inquilino] = await Promise.all([
       this.prisma.arrendador.findUnique({
         where: { correo: dto.correo },
@@ -87,7 +68,7 @@ export class VerificacionCorreoService {
    * fallos; el código en sí admite 5 intentos y se consume al usarse.
    */
   verificar(dto: VerificarCorreoDto, ip: string) {
-    this.exigirCorreoDisponible();
+    this.correo.exigirDisponible();
     return this.intentos.ejecutar(
       `verificacion:${ip}`,
       async () => {
@@ -114,7 +95,7 @@ export class VerificacionCorreoService {
         }
         return { correo_verificado: true as const };
       },
-      (error) => error instanceof CodigoCorreoInvalidoException,
+      esCodigoCorreoInvalido,
     );
   }
 }

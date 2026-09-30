@@ -76,7 +76,7 @@ export class CodigoCorreoService {
       return false;
     }
     try {
-      await this.correo.enviarCodigoVerificacion(correo, codigo);
+      await this.correo.enviarCodigo(correo, codigo, proposito);
       return true;
     } catch (error) {
       this.logger.warn(

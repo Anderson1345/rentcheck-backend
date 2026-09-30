@@ -1,12 +1,7 @@
 import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsString,
-  Matches,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 import { normalizarCorreo } from '../../common/utils/normalizar-correo';
+import { ContrasenaValida } from '../contrasena.util';
 
 export class RegistroArrendadorDto {
   @IsString()
@@ -23,11 +18,6 @@ export class RegistroArrendadorDto {
   @IsNotEmpty()
   telefono: string;
 
-  @IsString()
-  @MinLength(8)
-  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
-    message:
-      'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
-  })
+  @ContrasenaValida()
   contrasena: string;
 }

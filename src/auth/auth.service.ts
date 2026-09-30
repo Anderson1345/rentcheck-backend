@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { errorCodigoNoValido } from '../contrato/codigo-no-valido.exception';
 import { IntentosCodigoService } from '../contrato/intentos-codigo.service';
 import { VinculacionContratoService } from '../contrato/vinculacion-contrato.service';
+import { COSTO_BCRYPT } from './contrasena.util';
 import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
 import { LoginArrendadorDto } from './dto/login-arrendador.dto';
 import { LoginInquilinoDto } from './dto/login-inquilino.dto';
@@ -71,7 +72,7 @@ export class AuthService {
       throw new ConflictException(MENSAJE_REGISTRO_NO_COMPLETADO);
     }
 
-    const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
+    const contrasena_hash = await bcrypt.hash(dto.contrasena, COSTO_BCRYPT);
     try {
       const arrendador = await this.prisma.arrendador.create({
         data: {
@@ -226,7 +227,7 @@ export class AuthService {
 
   private async completarSinBloqueo(dto: CompletarRegistroInquilinoDto) {
     const correo = normalizarCorreo(dto.correo);
-    const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
+    const contrasena_hash = await bcrypt.hash(dto.contrasena, COSTO_BCRYPT);
 
     const inquilino = await this.prisma.$transaction(async (tx) => {
       const codigoAcceso = await tx.codigoAcceso.findUnique({

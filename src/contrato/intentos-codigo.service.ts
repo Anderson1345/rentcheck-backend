@@ -12,7 +12,8 @@ import { CodigoNoValidoException } from './codigo-no-valido.exception';
  * Un intento cuenta como fallido cuando el código no es utilizable
  * (inexistente, vencido, ajeno, ya usado o cancelado). 5 fallidos seguidos
  * bloquean 15 minutos; un intento correcto reinicia el contador. Las
- * actualizaciones del contador son atómicas (upsert con incremento).
+ * actualizaciones del contador son atómicas (`createMany` con `skipDuplicates`
+ * y `updateMany` con incremento; nunca un upsert).
  */
 @Injectable()
 export class IntentosCodigoService {
