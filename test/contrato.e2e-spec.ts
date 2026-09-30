@@ -12,6 +12,7 @@ import {
   crearInquilino,
   registrarArrendador,
 } from './helpers/crear-datos.helper';
+import { enDias, fechasDeContratoPorDefecto } from './helpers/fechas.helper';
 import { limpiarBd } from './helpers/limpiar-bd';
 
 interface ContratoListado {
@@ -72,8 +73,10 @@ describe('ContratoController (e2e)', () => {
     );
     expect(contrato.unidad.id).toBe(inmueble.unidades[0].id);
     expect(contrato.inquilino.id).toBe(inquilino.id);
-    expect(contrato.fecha_inicio).toContain('2026-01-10');
-    expect(contrato.fecha_fin).toContain('2026-12-31');
+    // Las fechas por defecto del helper (relativas a hoy en Bogotá).
+    const { fecha_inicio, fecha_fin } = fechasDeContratoPorDefecto();
+    expect(contrato.fecha_inicio).toContain(fecha_inicio);
+    expect(contrato.fecha_fin).toContain(fecha_fin);
   });
 
   it('rechaza con 400 cuando fecha_fin no es posterior a fecha_inicio', async () => {
@@ -90,8 +93,9 @@ describe('ContratoController (e2e)', () => {
       .set('Authorization', `Bearer ${access_token}`)
       .send(
         contratoValido(inmueble.unidades[0].id, inquilino.id, {
-          fecha_inicio: '2026-12-31',
-          fecha_fin: '2026-01-10',
+          // Fin anterior al inicio (ambas futuras: solo falla por el orden).
+          fecha_inicio: enDias(300),
+          fecha_fin: enDias(10),
         }),
       )
       .expect(HttpStatus.BAD_REQUEST);

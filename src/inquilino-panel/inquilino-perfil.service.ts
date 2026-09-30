@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { firmarFotoOpcional, reemplazarFoto } from '../common/foto-perfil';
 import { PrismaService } from '../prisma/prisma.service';
+import { ActualizarPerfilInquilinoDto } from './dto/actualizar-perfil-inquilino.dto';
 
 const CAMPOS_PERFIL_INQUILINO = {
   id: true,
@@ -40,6 +41,34 @@ export class InquilinoPerfilService {
         this.logger,
       ),
     };
+  }
+
+  /**
+   * Cambia el nombre y/o el teléfono del inquilino autenticado y responde con
+   * el mismo perfil que `GET /inquilino/perfil`.
+   *
+   * Solo escribe en `Inquilino` (el perfil global de la persona). NO toca nada
+   * de los contratos: la copia de lo que escribió el arrendador
+   * (`Contrato.inquilino_nombre/cedula/telefono`), las versiones del PDF y los
+   * `DocumentoContrato` conservan lo firmado. Por eso el arrendador sigue
+   * viendo la copia del contrato (nunca este perfil).
+   */
+  async actualizarPerfil(
+    inquilinoId: string,
+    dto: ActualizarPerfilInquilinoDto,
+  ) {
+    const data: { nombre?: string; telefono?: string } = {};
+    if (dto.nombre !== undefined) data.nombre = dto.nombre;
+    if (dto.telefono !== undefined) data.telefono = dto.telefono;
+
+    const resultado = await this.prisma.inquilino.updateMany({
+      where: { id: inquilinoId },
+      data,
+    });
+    if (resultado.count === 0) {
+      throw new NotFoundException('Inquilino no encontrado.');
+    }
+    return this.verPerfil(inquilinoId);
   }
 
   /** Sube o reemplaza la foto de la cédula (patrón de la portada del inmueble). */

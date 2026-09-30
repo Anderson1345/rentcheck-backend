@@ -90,13 +90,26 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
       `NOREN-${contador}`,
     );
     const inquilino = await crearInquilino(app, access_token);
+    // B-55: la API no crea contratos con fecha_fin pasada ni de hoy. Los que
+    // necesitan esa fecha (ya vencidos o en su último día) se crean vigentes y
+    // se les ajusta la fecha de fin directo en la base.
+    const finFuturo = fin.getTime() > hoy.getTime();
     const contrato = await crearContrato(
       app,
       access_token,
       inmueble.unidades[0].id,
       inquilino.id,
-      { fecha_inicio: iso(inicio), fecha_fin: iso(fin) },
+      {
+        fecha_inicio: iso(inicio),
+        fecha_fin: iso(finFuturo ? fin : dia(365)),
+      },
     );
+    if (!finFuturo) {
+      await prisma.contrato.update({
+        where: { id: contrato.id },
+        data: { fecha_fin: fin },
+      });
+    }
     const inq = await autenticarInquilino(
       app,
       contrato.codigo_acceso?.codigo ?? '',

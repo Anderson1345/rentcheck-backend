@@ -43,10 +43,6 @@ import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
-import {
-  plantillaEsperadaParaUnidad,
-  plantillaValidaParaUnidad,
-} from './plantilla-unidad';
 import { DocumentoContratoService } from './documento-contrato.service';
 import {
   bloquearUnidad,
@@ -54,6 +50,8 @@ import {
   estadoInicialSegunFecha,
   normalizarDeposito,
   validarDepositoSegunPlantilla,
+  validarFinFuturo,
+  validarPlantillaParaUnidad,
   verificarTraslapeEnUnidad,
 } from './reglas-contrato';
 
@@ -586,6 +584,8 @@ export class ContratoService {
     }
     const depositoCentavos = normalizarDeposito(dto.deposito_centavos);
     validarDepositoSegunPlantilla(dto.tipo_plantilla, depositoCentavos);
+    // B-55 (después de fin > inicio, que valida el DTO): sin fecha de fin pasada.
+    validarFinFuturo(dto.fecha_fin, hoyEnBogota());
 
     const arrendador = await this.prisma.arrendador.findUnique({
       where: { id: arrendadorId },
@@ -610,22 +610,7 @@ export class ContratoService {
     }
 
     // B-47: la plantilla debe corresponder al tipo y uso de la unidad.
-    if (
-      !plantillaValidaParaUnidad(
-        dto.tipo_plantilla,
-        unidad.tipo,
-        unidad.uso_permitido,
-      )
-    ) {
-      const esperada = plantillaEsperadaParaUnidad(
-        unidad.tipo,
-        unidad.uso_permitido,
-      );
-      throw new BadRequestException({
-        codigo: 'PLANTILLA_NO_CORRESPONDE_A_UNIDAD',
-        mensaje: `La plantilla ${dto.tipo_plantilla} no corresponde a esta unidad (tipo ${unidad.tipo}, uso ${unidad.uso_permitido}); corresponde la plantilla ${esperada}.`,
-      });
-    }
+    validarPlantillaParaUnidad(dto.tipo_plantilla, unidad);
 
     // Datos que escribió el arrendador: se guardan como copia en el contrato.
     let datosInquilino: { nombre: string; cedula: string; telefono: string };
@@ -656,6 +641,16 @@ export class ContratoService {
             // Bloquea la fila de la unidad y valida el traslape (reglas
             // compartidas con la corrección del contrato).
             await bloquearUnidad(tx, dto.unidad_id);
+            // B-48: con la unidad bloqueada se revalida la plantilla con su tipo y
+            // uso ACTUALES (un cambio de tipo pudo confirmarse tras la lectura inicial).
+            const unidadBloqueada = await tx.unidad.findUnique({
+              where: { id: dto.unidad_id },
+              select: { tipo: true, uso_permitido: true },
+            });
+            if (!unidadBloqueada) {
+              throw new NotFoundException('Unidad no encontrada');
+            }
+            validarPlantillaParaUnidad(dto.tipo_plantilla, unidadBloqueada);
             await verificarTraslapeEnUnidad(tx, {
               unidadId: dto.unidad_id,
               inicio: dto.fecha_inicio,

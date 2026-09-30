@@ -133,6 +133,11 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
           ).body as Awaited<ReturnType<typeof crearInmueble>>)
         : await crearInmueble(app, access_token, `INC-${sufijo}`);
     const inquilino = await crearInquilino(app, access_token);
+    // B-55: la API no crea contratos con fecha_fin pasada ni de hoy. Los que
+    // necesitan esa fecha (en su último día o ya vencidos) se crean vigentes y
+    // se les ajusta la fecha de fin directo en la base.
+    const hoyDePrueba = hoyEnBogota();
+    const finFuturo = opciones.fin.getTime() > hoyDePrueba.getTime();
     const contrato = await crearContrato(
       app,
       access_token,
@@ -140,7 +145,9 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
       inquilino.id,
       {
         fecha_inicio: fechaISO(opciones.inicio),
-        fecha_fin: fechaISO(opciones.fin),
+        fecha_fin: fechaISO(
+          finFuturo ? opciones.fin : sumarDiasUTC(hoyDePrueba, 365),
+        ),
         canon_centavos: opciones.canon ?? 1_000_000,
         dia_pago: opciones.diaPago ?? 5,
         ...(opciones.tipoPlantilla
@@ -148,6 +155,12 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
           : {}),
       },
     );
+    if (!finFuturo) {
+      await prisma.contrato.update({
+        where: { id: contrato.id },
+        data: { fecha_fin: opciones.fin },
+      });
+    }
     return { access_token, arrendadorId: arrendador.id, contrato };
   }
 

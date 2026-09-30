@@ -24,6 +24,7 @@ import {
   estadoInicialSegunFecha,
   normalizarDeposito,
   validarDepositoSegunPlantilla,
+  validarFinFuturo,
   validarFinPosteriorAInicio,
   verificarTraslapeEnUnidad,
 } from './reglas-contrato';
@@ -170,6 +171,9 @@ export class CorreccionContratoService {
           const inicio = soloDia(dto.fecha_inicio ?? actual.fecha_inicio);
           const fin = soloDia(dto.fecha_fin ?? actual.fecha_fin);
           validarFinPosteriorAInicio(inicio, fin);
+          // B-55: la fecha de fin resultante debe ser futura (solo si el PATCH
+          // envía alguna fecha; los demás campos no la revalidan).
+          validarFinFuturo(fin, hoy);
           const cambianLasFechas =
             inicio.getTime() !== actual.fecha_inicio.getTime() ||
             fin.getTime() !== actual.fecha_fin.getTime();

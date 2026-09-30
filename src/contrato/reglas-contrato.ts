@@ -1,6 +1,16 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { EstadoContrato, Prisma, TipoPlantillaContrato } from '@prisma/client';
+import {
+  EstadoContrato,
+  Prisma,
+  TipoPlantillaContrato,
+  TipoUnidad,
+  UsoPermitido,
+} from '@prisma/client';
 import { buscarTraslape } from '../common/traslape.util';
+import {
+  plantillaEsperadaParaUnidad,
+  plantillaValidaParaUnidad,
+} from './plantilla-unidad';
 
 /**
  * Reglas de creación de un contrato que también aplican al corregirlo
@@ -43,6 +53,50 @@ export function estadoInicialSegunFecha(
   return fechaInicio.getTime() > hoy.getTime()
     ? EstadoContrato.PROGRAMADO
     : EstadoContrato.ACTIVO;
+}
+
+/**
+ * B-55: la fecha de fin debe ser posterior a hoy (Contexto §5.6). `hoy` es el
+ * día calendario de Bogotá (`hoyEnBogota()`); la comparación es por día, sin
+ * hora. Se valida DESPUÉS de fin > inicio. No se revalidan contratos ya
+ * existentes.
+ */
+export function validarFinFuturo(fin: Date, hoy: Date): void {
+  const finDelDia = Date.UTC(
+    fin.getUTCFullYear(),
+    fin.getUTCMonth(),
+    fin.getUTCDate(),
+  );
+  if (finDelDia <= hoy.getTime()) {
+    throw new BadRequestException({
+      codigo: 'FECHA_FIN_PASADA',
+      mensaje: 'La fecha de fin del contrato debe ser posterior a hoy.',
+    });
+  }
+}
+
+/**
+ * B-47: la plantilla debe corresponder al tipo y uso de la unidad. Se usa en
+ * `crear()` dos veces: con la unidad leída al empezar (para el error de
+ * siempre) y otra vez con la unidad bloqueada (B-48), porque `actualizarUnidad`
+ * puede haber cambiado su tipo entre las dos.
+ */
+export function validarPlantillaParaUnidad(
+  plantilla: TipoPlantillaContrato,
+  unidad: { tipo: TipoUnidad; uso_permitido: UsoPermitido },
+): void {
+  if (
+    !plantillaValidaParaUnidad(plantilla, unidad.tipo, unidad.uso_permitido)
+  ) {
+    const esperada = plantillaEsperadaParaUnidad(
+      unidad.tipo,
+      unidad.uso_permitido,
+    );
+    throw new BadRequestException({
+      codigo: 'PLANTILLA_NO_CORRESPONDE_A_UNIDAD',
+      mensaje: `La plantilla ${plantilla} no corresponde a esta unidad (tipo ${unidad.tipo}, uso ${unidad.uso_permitido}); corresponde la plantilla ${esperada}.`,
+    });
+  }
 }
 
 /** Misma respuesta que el validador `FechaFinPosteriorAFechaInicio` del DTO. */

@@ -3,6 +3,7 @@ import { TipoPlantillaContrato } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { fechasDeContratoPorDefecto } from './fechas.helper';
 
 export interface RespuestaAutenticacion {
   access_token: string;
@@ -65,8 +66,8 @@ export function contratoValido(
     dia_pago: 5,
     forma_pago: 'Transferencia bancaria',
     datos_recaudo: 'Bancolombia ahorros 123456789',
-    fecha_inicio: '2026-01-10',
-    fecha_fin: '2026-12-31',
+    // Siempre relativas a hoy en Bogotá (nunca fijas: una fecha fija se vuelve pasada).
+    ...fechasDeContratoPorDefecto(),
     ...overrides,
   };
 }

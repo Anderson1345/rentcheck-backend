@@ -18,6 +18,7 @@ import { basename, extname, join } from 'path';
 import { PassThrough } from 'stream';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { conFotoPrincipalFirmada, reemplazarFoto } from '../common/foto-perfil';
+import { bloquearUnidad } from '../contrato/reglas-contrato';
 import { PrismaService } from '../prisma/prisma.service';
 import { CrearInmuebleDto } from './dto/crear-inmueble.dto';
 import { ActualizarInmuebleDto } from './dto/actualizar-inmueble.dto';
@@ -305,6 +306,11 @@ export class InmuebleService {
     arrendadorId: string,
   ): Promise<Prisma.UnidadGetPayload<object> | null> {
     const actualizada = await this.prisma.$transaction(async (tx) => {
+      // B-48: todo ocurre con la fila de la unidad bloqueada (el mismo bloqueo
+      // que toma `crear()` del contrato): pertenencia, contrato activo y
+      // escritura ya no pueden intercalarse con la creación de un contrato.
+      // Orden de bloqueos de siempre: unidad antes que contrato.
+      await bloquearUnidad(tx, unidadId);
       const inmueble = await tx.inmueble.findFirst({
         where: { id: inmuebleId, arrendador_id: arrendadorId },
       });
