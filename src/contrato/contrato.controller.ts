@@ -4,10 +4,13 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { RolSolicitante } from '@prisma/client';
+import type { Request } from 'express';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -24,12 +27,20 @@ import {
   JwtAuthGuard,
 } from '../auth/auth.module';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
+import {
+  CAMPOS_CORREGIR_CONTRATO,
+  CAMPOS_CORREGIR_INQUILINO,
+  validarCamposDeCorreccion,
+} from './campos-correccion';
 import { ContratoService } from './contrato.service';
+import { CorreccionContratoService } from './correccion-contrato.service';
 import { AvisoNoRenovacionService } from './aviso-no-renovacion.service';
 import { AvisoNoRenovacionDto } from './dto/aviso-no-renovacion.dto';
 import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
 import { DocumentoContratoService } from './documento-contrato.service';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
+import { CorregirContratoDto } from './dto/corregir-contrato.dto';
+import { CorregirInquilinoContratoDto } from './dto/corregir-inquilino-contrato.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
 import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
@@ -41,6 +52,7 @@ import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-a
 export class ContratoController {
   constructor(
     private readonly contratoService: ContratoService,
+    private readonly correccionService: CorreccionContratoService,
     private readonly documentoContratoService: DocumentoContratoService,
     private readonly terminacionService: TerminacionAnticipadaService,
     private readonly avisoService: AvisoNoRenovacionService,
@@ -95,6 +107,68 @@ export class ContratoController {
       throw new NotFoundException('Contrato no encontrado.');
     }
     return estadoCuenta;
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Corregir los términos de un contrato sin vincular',
+    description:
+      'Mientras el inquilino NO haya vinculado el contrato (y sin incrementos, prórrogas, pagos ni terminación solicitada), corrige canon, día de pago, forma de pago, datos de recaudo, depósito, garantías (datos_fiador_o_poliza), condiciones particulares (condicionesParticularesTexto) y fechas. Mismas validaciones que al crear; si cambian las fechas se valida el traslape con la unidad (sin contar este contrato) y el estado pasa a PROGRAMADO o ACTIVO según la fecha de inicio. No se pueden cambiar la unidad, el inquilino por id, la plantilla, el estado ni el código. Si algún valor cambia, se genera una NUEVA versión de CONTRATO_ORIGINAL (la anterior no se toca); si la generación falla, la corrección queda aplicada y `documento` es null (usa POST /contratos/:id/documentos/regenerar). Sin cambios reales responde 200 sin versión nueva. Un cambio después de vincular es un otrosí.',
+  })
+  @ApiOkResponse({
+    description:
+      'El contrato (misma forma que GET /contratos/:id, sin codigo_acceso) más `documento`: la versión del original generada ({ id, tipo, version, hash_sha256, generado_en, url_firmada }) o null.',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'VALIDACION, SIN_CAMPOS, CAMPO_NO_EDITABLE o DEPOSITO_NO_PERMITIDO_VIVIENDA.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description:
+      'CONTRATO_YA_VINCULADO, CONTRATO_NO_EDITABLE o TRASLAPE_DE_CONTRATOS.',
+  })
+  corregir(
+    @Param('id', ParseIdPipe) id: string,
+    @Body() dto: CorregirContratoDto,
+    @Req() peticion: Request,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    validarCamposDeCorreccion(peticion.body, CAMPOS_CORREGIR_CONTRATO);
+    return this.correccionService.corregirTerminos(id, arrendadorId, dto);
+  }
+
+  @Patch(':id/inquilino')
+  @ApiOperation({
+    summary:
+      'Corregir los datos del inquilino escritos en un contrato sin vincular',
+    description:
+      'Corrige nombre, teléfono y/o cédula tal como los escribió el arrendador (nombre y teléfono sin espacios sobrantes y no vacíos; cédula normalizada de 5 a 20 caracteres). Nunca modifica el perfil global de la persona. Si cambia la cédula, el contrato se reasigna a la identidad de esa cédula (se crea si no existe, se reutiliza sin tocarla si existe; la respuesta es idéntica en los dos casos) y el código de acceso se regenera: el anterior deja de servir y el nuevo (formato RC-AB3D-9KPX) viaja en `codigo_acceso`. Cambiar solo nombre o teléfono no regenera el código. Mismas condiciones de edición y misma generación de PDF (nueva versión de CONTRATO_ORIGINAL si cambia el nombre o la cédula) que PATCH /contratos/:id.',
+  })
+  @ApiOkResponse({
+    description:
+      'El contrato (misma forma que GET /contratos/:id) más `documento`, y `codigo_acceso` { codigo, expira_en } solo si se regeneró.',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'INQUILINO_DATOS_INVALIDOS, SIN_CAMPOS, CAMPO_NO_EDITABLE o cédula inválida.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({
+    description: 'CONTRATO_YA_VINCULADO o CONTRATO_NO_EDITABLE.',
+  })
+  corregirInquilino(
+    @Param('id', ParseIdPipe) id: string,
+    @Body() dto: CorregirInquilinoContratoDto,
+    @Req() peticion: Request,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    validarCamposDeCorreccion(peticion.body, CAMPOS_CORREGIR_INQUILINO);
+    return this.correccionService.corregirInquilino(id, arrendadorId, dto);
   }
 
   @Post(':id/aplicar-incremento')

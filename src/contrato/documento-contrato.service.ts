@@ -78,6 +78,8 @@ interface VinculoDocumento {
 interface DocumentoPendiente {
   tipo: TipoDocumentoContrato;
   vinculo: VinculoDocumento;
+  /** Nueva versión del original tras corregir el contrato sin vincular (B-35). */
+  correccion?: boolean;
   construirTexto: (ahora: Date) => string;
 }
 
@@ -158,11 +160,28 @@ export class DocumentoContratoService {
     }
   }
 
-  private buscarExistente(
+  private async buscarExistente(
     contratoId: string,
     tipo: TipoDocumentoContrato,
     vinculo: VinculoDocumento,
+    correccion = false,
   ) {
+    if (correccion) {
+      // Corrección del original: ya está hecha cuando el puntero
+      // `pdf_contrato_ruta` volvió a apuntar a un original (lo deja en NULL la
+      // corrección y lo fija la generación); entonces el existente es el último.
+      const contrato = await this.prisma.contrato.findUnique({
+        where: { id: contratoId },
+        select: { pdf_contrato_ruta: true },
+      });
+      if (!contrato?.pdf_contrato_ruta) {
+        return null;
+      }
+      return this.prisma.documentoContrato.findFirst({
+        where: { contrato_id: contratoId, tipo },
+        orderBy: { version: 'desc' },
+      });
+    }
     if (vinculo.incremento_id) {
       return this.prisma.documentoContrato.findUnique({
         where: { incremento_id: vinculo.incremento_id },
@@ -192,12 +211,18 @@ export class DocumentoContratoService {
     tipo: TipoDocumentoContrato,
     buffer: Buffer,
     vinculo: VinculoDocumento = {},
+    correccion = false,
   ) {
     const hash = createHash('sha256').update(buffer).digest('hex');
     let versionMinima = 1;
 
     for (let intento = 1; intento <= INTENTOS_DE_VERSION; intento += 1) {
-      const existente = await this.buscarExistente(contratoId, tipo, vinculo);
+      const existente = await this.buscarExistente(
+        contratoId,
+        tipo,
+        vinculo,
+        correccion,
+      );
       if (existente) {
         return { documento: existente, creado: false };
       }
@@ -229,6 +254,7 @@ export class DocumentoContratoService {
             contratoId,
             tipo,
             vinculo,
+            correccion,
           );
           if (creadoPorOtra) {
             return { documento: creadoPorOtra, creado: false };
@@ -258,6 +284,7 @@ export class DocumentoContratoService {
           contratoId,
           tipo,
           vinculo,
+          correccion,
         );
         if (creadoPorOtra) {
           return { documento: creadoPorOtra, creado: false };
@@ -301,15 +328,18 @@ export class DocumentoContratoService {
     };
     const pendientes: DocumentoPendiente[] = [];
 
-    if (
-      !contrato.documentos.some(
-        (documento) =>
-          documento.tipo === TipoDocumentoContrato.CONTRATO_ORIGINAL,
-      )
-    ) {
+    const hayOriginal = contrato.documentos.some(
+      (documento) => documento.tipo === TipoDocumentoContrato.CONTRATO_ORIGINAL,
+    );
+    // Un original existente con `pdf_contrato_ruta` en NULL es una corrección
+    // del contrato (B-35) cuyo PDF nuevo aún no se generó: el original vigente
+    // es siempre la última versión, así que hay que generar una nueva.
+    const correccionPendiente = hayOriginal && !contrato.pdf_contrato_ruta;
+    if (!hayOriginal || correccionPendiente) {
       pendientes.push({
         tipo: TipoDocumentoContrato.CONTRATO_ORIGINAL,
         vinculo: {},
+        correccion: correccionPendiente,
         construirTexto: (ahora) =>
           construirTextoContrato(
             { ...contrato, inquilino },
@@ -410,13 +440,6 @@ export class DocumentoContratoService {
       throw new NotFoundException('Contrato no encontrado.');
     }
 
-    const original = contrato.documentos.find(
-      (documento) => documento.tipo === TipoDocumentoContrato.CONTRATO_ORIGINAL,
-    );
-    if (original && !contrato.pdf_contrato_ruta) {
-      await this.asegurarRutaDelContrato(contrato.id, original.ruta);
-    }
-
     const pendientes = this.construirPendientes(contrato);
     const esperados =
       1 + contrato.incrementos_ipc.length + contrato.prorrogas.length;
@@ -434,6 +457,7 @@ export class DocumentoContratoService {
           pendiente.tipo,
           buffer,
           pendiente.vinculo,
+          pendiente.correccion ?? false,
         );
         if (!creado) {
           yaExistian += 1;
@@ -538,11 +562,49 @@ export class DocumentoContratoService {
       },
     });
 
-    return Promise.all(
-      documentos.map(async ({ ruta, ...documento }) => ({
-        ...documento,
-        url_firmada: await this.firmarRuta(ruta),
-      })),
-    );
+    return Promise.all(documentos.map((documento) => this.resumir(documento)));
+  }
+
+  private async resumir<T extends { ruta: string }>(documento: T) {
+    const { ruta, ...resto } = documento;
+    return { ...resto, url_firmada: await this.firmarRuta(ruta) };
+  }
+
+  /**
+   * Genera el PDF de un contrato recién corregido (B-35), FUERA de la
+   * transacción de la corrección: una nueva versión de `CONTRATO_ORIGINAL` con
+   * los términos actuales. Devuelve el documento vigente (sin la ruta interna)
+   * o null si la generación falló: la corrección ya está aplicada y el PDF se
+   * recupera con `POST /contratos/:id/documentos/regenerar`.
+   */
+  async generarOriginalTrasCorreccion(contratoId: string) {
+    try {
+      const { fallo } = await this.generarFaltantes(contratoId);
+      if (fallo) {
+        return null;
+      }
+      const original = await this.prisma.documentoContrato.findFirst({
+        where: {
+          contrato_id: contratoId,
+          tipo: TipoDocumentoContrato.CONTRATO_ORIGINAL,
+        },
+        orderBy: { version: 'desc' },
+        select: {
+          id: true,
+          tipo: true,
+          version: true,
+          ruta: true,
+          hash_sha256: true,
+          generado_en: true,
+        },
+      });
+      return original ? await this.resumir(original) : null;
+    } catch (error) {
+      this.logger.error(
+        `No fue posible generar el PDF corregido del contrato ${contratoId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return null;
+    }
   }
 }

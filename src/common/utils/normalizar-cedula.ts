@@ -41,3 +41,29 @@ export function normalizarYValidarDatosInquilino(datos: {
   }
   return { nombre, cedula: normalizarYValidarCedula(datos.cedula), telefono };
 }
+
+/**
+ * Como `normalizarYValidarDatosInquilino`, pero para correcciones parciales:
+ * solo normaliza y valida los campos que llegan (mismas reglas y mismo error).
+ */
+export function normalizarCamposInquilino(datos: {
+  nombre?: string;
+  cedula?: string;
+  telefono?: string;
+}): { nombre?: string; cedula?: string; telefono?: string } {
+  const nombre = datos.nombre?.trim();
+  const telefono = datos.telefono?.trim();
+  if (nombre === '' || telefono === '') {
+    throw new BadRequestException({
+      codigo: 'INQUILINO_DATOS_INVALIDOS',
+      mensaje: 'El nombre y el teléfono del inquilino no pueden estar vacíos.',
+    });
+  }
+  return {
+    ...(nombre !== undefined ? { nombre } : {}),
+    ...(telefono !== undefined ? { telefono } : {}),
+    ...(datos.cedula !== undefined
+      ? { cedula: normalizarYValidarCedula(datos.cedula) }
+      : {}),
+  };
+}

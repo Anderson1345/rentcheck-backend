@@ -34,7 +34,6 @@ import {
   generarCodigoAcceso,
 } from '../common/utils/codigo-acceso';
 import { normalizarYValidarDatosInquilino } from '../common/utils/normalizar-cedula';
-import { buscarTraslape } from '../common/traslape.util';
 import { aplicarProrroga, mesesDelTerminoInicial } from './aplicar-prorroga';
 import {
   fechaFinParaEstadoCuenta,
@@ -49,6 +48,14 @@ import {
   plantillaValidaParaUnidad,
 } from './plantilla-unidad';
 import { DocumentoContratoService } from './documento-contrato.service';
+import {
+  bloquearUnidad,
+  esColisionDeCodigoAcceso,
+  estadoInicialSegunFecha,
+  normalizarDeposito,
+  validarDepositoSegunPlantilla,
+  verificarTraslapeEnUnidad,
+} from './reglas-contrato';
 
 const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
   estado: true,
@@ -117,28 +124,7 @@ export class ContratoService {
   }
 
   private esColisionDeCodigoAcceso(error: unknown): boolean {
-    if (
-      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-      error.code !== 'P2002'
-    ) {
-      return false;
-    }
-
-    // Con el adaptador de pg el error no trae `meta.target`: la restricción
-    // viene en el mensaje del driver (`meta.driverAdapterError.cause`).
-    const target = error.meta?.target;
-    const causa = (
-      error.meta?.driverAdapterError as
-        { cause?: { originalMessage?: unknown } } | undefined
-    )?.cause;
-    const mensajeDelDriver =
-      typeof causa?.originalMessage === 'string' ? causa.originalMessage : '';
-    return (
-      (Array.isArray(target) && target.includes('codigo')) ||
-      (typeof target === 'string' &&
-        target.includes('CodigoAcceso_codigo_key')) ||
-      mensajeDelDriver.includes('CodigoAcceso_codigo_key')
-    );
+    return esColisionDeCodigoAcceso(error);
   }
 
   async listar(arrendadorId: string) {
@@ -598,17 +584,8 @@ export class ContratoService {
         mensaje: 'Debes indicar inquilino_id o inquilino_nuevo.',
       });
     }
-    const depositoCentavos = dto.deposito_centavos || null;
-    if (
-      dto.tipo_plantilla === TipoPlantillaContrato.VIVIENDA_URBANA_LEY_820 &&
-      depositoCentavos !== null
-    ) {
-      throw new BadRequestException({
-        codigo: 'DEPOSITO_NO_PERMITIDO_VIVIENDA',
-        mensaje:
-          'La Ley 820 de 2003, art. 16, no permite depósitos en dinero en arriendos de vivienda urbana. Se pueden pactar garantías como fiador, codeudor o póliza.',
-      });
-    }
+    const depositoCentavos = normalizarDeposito(dto.deposito_centavos);
+    validarDepositoSegunPlantilla(dto.tipo_plantilla, depositoCentavos);
 
     const arrendador = await this.prisma.arrendador.findUnique({
       where: { id: arrendadorId },
@@ -665,10 +642,10 @@ export class ContratoService {
 
     // B-41: con fecha de inicio futura el contrato nace PROGRAMADO y no
     // bloquea la unidad; el cron diario lo activa cuando llega su fecha.
-    const estadoInicial =
-      dto.fecha_inicio.getTime() > hoyEnBogota().getTime()
-        ? EstadoContrato.PROGRAMADO
-        : EstadoContrato.ACTIVO;
+    const estadoInicial = estadoInicialSegunFecha(
+      dto.fecha_inicio,
+      hoyEnBogota(),
+    );
 
     let contratoCreado: Prisma.ContratoGetPayload<object> | undefined;
 
@@ -676,58 +653,15 @@ export class ContratoService {
       for (let intento = 1; intento <= 5; intento += 1) {
         try {
           contratoCreado = await this.prisma.$transaction(async (tx) => {
-            // Bloquea la fila de la unidad: el índice único solo cubre los
-            // ACTIVO, así que dos creaciones simultáneas de contratos
-            // PROGRAMADO traslapados se serializan aquí.
-            await tx.$queryRaw`SELECT id FROM "Unidad" WHERE id = ${dto.unidad_id}::uuid FOR UPDATE`;
-            const existentes = await tx.contrato.findMany({
-              where: {
-                unidad_id: dto.unidad_id,
-                estado: {
-                  in: [EstadoContrato.ACTIVO, EstadoContrato.PROGRAMADO],
-                },
-              },
-              select: {
-                estado: true,
-                fecha_inicio: true,
-                fecha_fin: true,
-                terminacion_fecha_efectiva: true,
-                terminacionAnticipadaConfirmadaEn: true,
-              },
+            // Bloquea la fila de la unidad y valida el traslape (reglas
+            // compartidas con la corrección del contrato).
+            await bloquearUnidad(tx, dto.unidad_id);
+            await verificarTraslapeEnUnidad(tx, {
+              unidadId: dto.unidad_id,
+              inicio: dto.fecha_inicio,
+              fin: dto.fecha_fin,
+              estado: estadoInicial,
             });
-            const choque = buscarTraslape(
-              { inicio: dto.fecha_inicio, fin: dto.fecha_fin },
-              existentes.map((existente) => ({
-                estado: existente.estado,
-                inicio: existente.fecha_inicio,
-                fin: existente.fecha_fin,
-                terminacion_fecha_efectiva:
-                  existente.terminacion_fecha_efectiva,
-                confirmada:
-                  existente.terminacionAnticipadaConfirmadaEn !== null,
-              })),
-            );
-            if (choque) {
-              // Compatibilidad: un contrato nuevo ACTIVO sobre uno ACTIVO
-              // conserva el error de siempre.
-              if (
-                estadoInicial === EstadoContrato.ACTIVO &&
-                choque.estado === EstadoContrato.ACTIVO
-              ) {
-                throw new ConflictException(
-                  'Esta unidad ya tiene un contrato activo',
-                );
-              }
-              throw new ConflictException({
-                codigo: 'TRASLAPE_DE_CONTRATOS',
-                mensaje:
-                  'Las fechas se traslapan con otro contrato de esta unidad. El siguiente contrato debe empezar después del último día del anterior.',
-                detalles: {
-                  fecha_inicio: choque.inicio.toISOString().slice(0, 10),
-                  fecha_fin: choque.fin.toISOString().slice(0, 10),
-                },
-              });
-            }
 
             // Identidad global de la persona: con inquilino_nuevo se busca por
             // cédula normalizada y, si no existe, se crea con skipDuplicates

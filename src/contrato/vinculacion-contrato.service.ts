@@ -17,17 +17,30 @@ export class VinculacionContratoService {
   ) {}
 
   /**
-   * Fija `vinculado_en` con una escritura condicionada (`vinculado_en` nulo) y,
-   * solo la primera vez, avisa al arrendador. Devuelve false si el contrato ya
-   * estaba vinculado. Se usa dentro de la transacción de quien vincula
+   * Fija `vinculado_en` con una escritura condicionada (`vinculado_en` nulo y
+   * el contrato todavía de `inquilinoId`) y, solo la primera vez, avisa al
+   * arrendador. Devuelve false si no se vinculó ahora: ya estaba vinculado o
+   * el arrendador lo reasignó a otra persona.
+   *
+   * Compatible con la corrección del contrato (`PATCH /contratos/:id`, B-35),
+   * que toma `SELECT ... FOR UPDATE` de la fila: este UPDATE espera ese
+   * bloqueo y, en READ COMMITTED, reevalúa el WHERE con lo ya confirmado. Si
+   * la corrección fue primero, se vincula con los datos corregidos; si el
+   * contrato se reasignó (cambio de cédula) el WHERE ya no coincide y no se
+   * vincula. Se usa dentro de la transacción de quien vincula
    * (`completar-registro` la comparte con la creación de la cuenta).
    */
   async vincularEnTransaccion(
     tx: Prisma.TransactionClient,
     contratoId: string,
+    inquilinoId: string,
   ): Promise<boolean> {
     const resultado = await tx.contrato.updateMany({
-      where: { id: contratoId, vinculado_en: null },
+      where: {
+        id: contratoId,
+        inquilino_id: inquilinoId,
+        vinculado_en: null,
+      },
       data: { vinculado_en: new Date() },
     });
     if (resultado.count === 0) {
@@ -84,12 +97,17 @@ export class VinculacionContratoService {
         throw errorCodigoNoValido();
       }
 
-      await this.vincularEnTransaccion(tx, codigoAcceso.contrato.id);
+      await this.vincularEnTransaccion(
+        tx,
+        codigoAcceso.contrato.id,
+        inquilinoId,
+      );
 
       const contrato = await tx.contrato.findUniqueOrThrow({
         where: { id: codigoAcceso.contrato.id },
         select: {
           id: true,
+          inquilino_id: true,
           estado: true,
           fecha_inicio: true,
           fecha_fin: true,
@@ -107,7 +125,13 @@ export class VinculacionContratoService {
           },
         },
       });
-      const { unidad, datos_recaudo, ...resto } = contrato;
+      // Si el arrendador reasignó el contrato mientras se vinculaba, este código
+      // ya no le corresponde: mismo 404 que un código inexistente.
+      if (contrato.inquilino_id !== inquilinoId) {
+        throw errorCodigoNoValido();
+      }
+      const { unidad, datos_recaudo, inquilino_id, ...resto } = contrato;
+      void inquilino_id;
       const { inmueble, ...datosUnidad } = unidad;
       return {
         ...resto,

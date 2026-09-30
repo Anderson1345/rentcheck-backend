@@ -247,6 +247,7 @@ export class AuthService {
       const vinculado = await this.vinculacion.vincularEnTransaccion(
         tx,
         codigoAcceso.contrato_id,
+        codigoAcceso.inquilino.id,
       );
       if (!vinculado) {
         throw errorCodigoNoValido();
