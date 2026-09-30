@@ -1,8 +1,11 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.10 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.11 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.11 frente a la 2.10** (entrega B0.4-C, precisión de 5.8, sin reglas nuevas):
+- Corregir un contrato sin vincular (términos o datos del inquilino) genera una **nueva versión del Contrato original**; las anteriores se conservan. Si se corrige la cédula, el contrato pasa a la identidad correcta y el código se regenera.
 
 **Cambios de la versión 2.10 frente a la 2.9** (entrega B0.4-A3, precisiones de 3.3 y del modelo de datos):
 - **Intentos fallidos por origen, no por código:** quien adivina no tiene un código real contra el cual contar. Tras 5 intentos fallidos seguidos desde el mismo origen (o desde la misma cuenta, al agregar un contrato), quedan bloqueados 15 minutos; un intento correcto reinicia la cuenta. El código vencido, ajeno, ya usado o cancelado responde igual que uno inexistente.
@@ -269,7 +272,7 @@ Historial: fecha de aplicación, canon anterior, canon nuevo, porcentaje aplicad
 | Versión, fecha de generación | — |
 | Huella (hash) | Permite confirmar que un PDF corresponde a lo pactado |
 
-Ningún documento se sobrescribe ni se borra. Si la generación del PDF falla, la operación de negocio igual queda registrada y el PDF se puede regenerar después.
+Ningún documento se sobrescribe ni se borra. Corregir un contrato sin vincular crea una nueva versión del Contrato original (el vigente es la última; las anteriores quedan como historial). Si la generación del PDF falla, la operación de negocio igual queda registrada y el PDF se puede regenerar después.
 
 ### 5.9 Medio de activación
 
