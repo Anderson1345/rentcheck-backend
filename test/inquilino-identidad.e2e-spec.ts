@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { configurarApp } from '../src/configurar-app';
+import { ContratoService } from '../src/contrato/contrato.service';
 import { DocumentoContratoService } from '../src/contrato/documento-contrato.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
@@ -45,6 +46,7 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let documentos: DocumentoContratoService;
+  let contratoService: ContratoService;
   let contador = 0;
 
   beforeEach(async () => {
@@ -59,6 +61,7 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
     app = moduleFixture.createNestApplication();
     configurarApp(app);
     documentos = moduleFixture.get(DocumentoContratoService);
+    contratoService = moduleFixture.get(ContratoService);
     await app.init();
   });
 
@@ -345,6 +348,99 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
 
     await postContrato(token, conInquilinoNuevo(libre, cuerpo)).expect(CREADO);
     expect(await prisma.inquilino.count({ where: { cedula } })).toBe(1);
+  }, 90000);
+
+  it('(h) nombre o teléfono vacíos (solo espacios) → 400 INQUILINO_DATOS_INVALIDOS sin filas nuevas, también en POST /inquilinos', async () => {
+    const token = await arrendador();
+    const unidadId = await unidadNueva(token);
+    const casos = [
+      { nombre: '   ', telefono: '3001' },
+      { nombre: 'Persona', telefono: '   ' },
+    ];
+
+    for (const caso of casos) {
+      const cedula = cedulaUnica();
+      const contrato = await postContrato(
+        token,
+        conInquilinoNuevo(unidadId, { ...caso, cedula }),
+      );
+      expect(contrato.status).toBe(SOLICITUD_INVALIDA);
+      expect(codigo(contrato)).toBe('INQUILINO_DATOS_INVALIDOS');
+      expect((contrato.body as CuerpoError).mensaje).toBe(
+        'El nombre y el teléfono del inquilino no pueden estar vacíos.',
+      );
+
+      const ficha = await request(app.getHttpServer())
+        .post('/inquilinos')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ ...caso, cedula });
+      expect(ficha.status).toBe(SOLICITUD_INVALIDA);
+      expect(codigo(ficha)).toBe('INQUILINO_DATOS_INVALIDOS');
+
+      expect(await prisma.inquilino.count({ where: { cedula } })).toBe(0);
+    }
+    expect(await prisma.contrato.count()).toBe(0);
+    expect(await prisma.inquilino.count()).toBe(0);
+
+    // Los valores válidos se guardan ya sin espacios sobrantes.
+    const cedula = cedulaUnica();
+    const ok = await postContrato(
+      token,
+      conInquilinoNuevo(unidadId, {
+        nombre: '  Persona Válida  ',
+        cedula,
+        telefono: ' 3001234567 ',
+      }),
+    ).expect(CREADO);
+    expect((ok.body as ContratoVista).inquilino).toMatchObject({
+      nombre: 'Persona Válida',
+      telefono: '3001234567',
+    });
+    const ficha = await request(app.getHttpServer())
+      .post('/inquilinos')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nombre: '  Ficha  ', cedula: cedulaUnica(), telefono: ' 3009 ' })
+      .expect(CREADO);
+    expect(ficha.body).toMatchObject({ nombre: 'Ficha', telefono: '3009' });
+  }, 90000);
+
+  it('(i) si la creación del contrato falla DESPUÉS de crear la identidad, la transacción revierte todo', async () => {
+    const token = await arrendador();
+    const existente = await crearInquilino(app, token);
+    const primero = await crearContrato(
+      app,
+      token,
+      await unidadNueva(token),
+      existente.id,
+    );
+    const codigoExistente = primero.codigo_acceso?.codigo ?? '';
+    expect(codigoExistente).not.toBe('');
+
+    // Todos los intentos generan un código que ya existe: 5 colisiones → 500.
+    // La identidad ya se creó dentro de la transacción antes de fallar.
+    const generador = contratoService as unknown as {
+      generarCodigoAcceso: () => string;
+    };
+    const espia = jest
+      .spyOn(generador, 'generarCodigoAcceso')
+      .mockReturnValue(codigoExistente);
+    const cedula = cedulaUnica();
+    const contratosAntes = await prisma.contrato.count();
+
+    const fallido = await postContrato(
+      token,
+      conInquilinoNuevo(await unidadNueva(token), {
+        nombre: 'Se Revierte',
+        cedula,
+        telefono: '3010',
+      }),
+    );
+
+    expect(fallido.status).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(espia).toHaveBeenCalledTimes(5);
+    expect(await prisma.inquilino.count({ where: { cedula } })).toBe(0);
+    expect(await prisma.contrato.count()).toBe(contratosAntes);
+    expect(await prisma.codigoAcceso.count()).toBe(1);
   }, 90000);
 
   it('(e) sin inquilino → 400 INQUILINO_REQUERIDO; con los dos → 400 INQUILINO_AMBIGUO', async () => {

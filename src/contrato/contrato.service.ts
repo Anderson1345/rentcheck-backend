@@ -29,7 +29,7 @@ import {
   conInquilinoResumido,
   OMITIR_COPIA_INQUILINO,
 } from '../common/inquilino-copia';
-import { normalizarYValidarCedula } from '../common/utils/normalizar-cedula';
+import { normalizarYValidarDatosInquilino } from '../common/utils/normalizar-cedula';
 import { buscarTraslape } from '../common/traslape.util';
 import { aplicarProrroga, mesesDelTerminoInicial } from './aplicar-prorroga';
 import {
@@ -119,10 +119,20 @@ export class ContratoService {
       return false;
     }
 
+    // Con el adaptador de pg el error no trae `meta.target`: la restricción
+    // viene en el mensaje del driver (`meta.driverAdapterError.cause`).
     const target = error.meta?.target;
+    const causa = (
+      error.meta?.driverAdapterError as
+        { cause?: { originalMessage?: unknown } } | undefined
+    )?.cause;
+    const mensajeDelDriver =
+      typeof causa?.originalMessage === 'string' ? causa.originalMessage : '';
     return (
       (Array.isArray(target) && target.includes('codigo')) ||
-      (typeof target === 'string' && target.includes('CodigoAcceso_codigo_key'))
+      (typeof target === 'string' &&
+        target.includes('CodigoAcceso_codigo_key')) ||
+      mensajeDelDriver.includes('CodigoAcceso_codigo_key')
     );
   }
 
@@ -628,12 +638,8 @@ export class ContratoService {
     let datosInquilino: { nombre: string; cedula: string; telefono: string };
     let cedulaNueva: string | null = null;
     if (dto.inquilino_nuevo) {
-      cedulaNueva = normalizarYValidarCedula(dto.inquilino_nuevo.cedula);
-      datosInquilino = {
-        nombre: dto.inquilino_nuevo.nombre.trim(),
-        cedula: cedulaNueva,
-        telefono: dto.inquilino_nuevo.telefono.trim(),
-      };
+      datosInquilino = normalizarYValidarDatosInquilino(dto.inquilino_nuevo);
+      cedulaNueva = datosInquilino.cedula;
     } else {
       datosInquilino = await this.resolverInquilinoPorId(
         dto.inquilino_id ?? '',

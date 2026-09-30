@@ -20,3 +20,24 @@ export function normalizarYValidarCedula(valor: string): string {
   }
   return cedula;
 }
+
+/**
+ * Datos del inquilino tal como los escribe el arrendador: nombre y teléfono
+ * sin espacios sobrantes (y no vacíos) y cédula normalizada. La validación
+ * ocurre antes de tocar la base de datos.
+ */
+export function normalizarYValidarDatosInquilino(datos: {
+  nombre: string;
+  cedula: string;
+  telefono: string;
+}): { nombre: string; cedula: string; telefono: string } {
+  const nombre = datos.nombre.trim();
+  const telefono = datos.telefono.trim();
+  if (!nombre || !telefono) {
+    throw new BadRequestException({
+      codigo: 'INQUILINO_DATOS_INVALIDOS',
+      mensaje: 'El nombre y el teléfono del inquilino no pueden estar vacíos.',
+    });
+  }
+  return { nombre, cedula: normalizarYValidarCedula(datos.cedula), telefono };
+}
