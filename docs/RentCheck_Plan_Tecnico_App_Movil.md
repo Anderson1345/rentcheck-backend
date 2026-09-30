@@ -1,8 +1,16 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.11 — 30 de septiembre de 2026.** Reemplaza a la versión 3.10.
+> **Versión 3.12 — 30 de septiembre de 2026.** Reemplaza a la versión 3.11.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.12:**
+
+- **0.5-B fusionada y en producción.**
+- **0.5-C cerrada (rama `feat/b05c-validar-imagenes-limpieza`, commit `3d11a2b`, 30 archivos, sin migración):** `src/common/validar-contenido-archivo.ts` detecta JPEG, PNG, PDF y MP4 por sus primeros bytes; el tipo detectado debe estar permitido por el endpoint y coincidir con el mimetype declarado (415 `ARCHIVO_CONTENIDO_INVALIDO` antes de tocar el bucket o la base); la extensión guardada y el Content-Type del bucket salen del tipo detectado. Enganchado en los 8 endpoints de subida (cédula arrendador, cédula inquilino, foto de unidad, portada, documentos del inmueble, comprobante de pago, adjunto de solicitud, foto de inventario; verificado con grep y con una prueba estructural que falla si un controlador agrega un `FileInterceptor` sin el validador). **B-42 🔶 parcial:** `eliminarUnidad` borra la foto de la unidad y `eliminar` (inmueble) borra la portada, después de confirmar la base, solo con prefijo propio y en modo best-effort (`borrarFotoPropia`). e2e 38 suites / 360, unitarias 22 / 126; 15 archivos de prueba con fixtures corregidos (buffers de texto declarados como imagen pasaron a imágenes/PDF mínimos reales; ninguna aserción cambió).
+- **Decisiones:** (1) el adjunto de solicitudes ya permitía `video/mp4`, así que el validador reconoce MP4 por la caja `ftyp` y excluye las marcas HEIC/AVIF; WebP no se detecta porque ningún endpoint lo permite. (2) `eliminar` inmueble responde 409 si tiene unidades, así que un inmueble eliminable nunca tiene unidades con foto: no hay código para fotos de unidades a nivel inmueble. (3) La respuesta de eliminar conserva su forma (con `foto_portada_url` firmada de un archivo ya borrado).
+- **Límites / pendientes de B-42:** los comprobantes reemplazados o rechazados se siguen acumulando en el bucket (tienen valor legal y de historial; decisión pendiente de política de retención, baja prioridad); la validación es por firma binaria (no detecta un archivo corrupto con cabecera válida ni contenido malicioso dentro de un PDF).
+- **Bloque 0.5 cerrado** salvo el ítem opcional (columna explícita que reemplace el marcador `pdf_contrato_ruta` = NULL).
 
 **Qué cambió en la versión 3.11:**
 
@@ -332,7 +340,7 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-39 | Menor | `fecha_reportada` de un pago no se valida contra la fecha de inicio del contrato | 0.2-B | ✅ Corregido |
 | B-40 | Importante | `mi-contrato` nunca devolvía las fotos de devolución (solo las de entrega) | 0.1 | ✅ Corregido |
 | B-41 | Importante | Un contrato con fecha de inicio futura nace `ACTIVO` de inmediato y bloquea la unidad antes de tiempo | 0.3-A3-3 | ✅ Corregido |
-| B-42 | Importante | Comprobantes reemplazados y rechazados se acumulan en el bucket sin política de retención | 0.5 | ⬜ |
+| B-42 | Importante | Comprobantes reemplazados y rechazados se acumulan en el bucket sin política de retención | 0.5-C | 🔶 Parcial |
 | B-43 | Menor | La unidad principal se crea automáticamente con valores que el propio validador del DTO rechazaría | 0.3-A1 | ✅ Corregido |
 | B-44 | Importante | El ZIP de documentos descarga todo a memoria en una sola petición: riesgo de tiempo agotado con historiales grandes | 0.5 | ✅ 0.5-B |
 | B-45 | Importante | No se puede anular una aprobación de pago hecha por error | 0.6 | ⬜ |
