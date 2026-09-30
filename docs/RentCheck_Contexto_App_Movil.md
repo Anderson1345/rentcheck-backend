@@ -1,8 +1,13 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.9 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.10 — 30 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.10 frente a la 2.9** (entrega B0.4-A3, precisiones de 3.3 y del modelo de datos):
+- **Intentos fallidos por origen, no por código:** quien adivina no tiene un código real contra el cual contar. Tras 5 intentos fallidos seguidos desde el mismo origen (o desde la misma cuenta, al agregar un contrato), quedan bloqueados 15 minutos; un intento correcto reinicia la cuenta. El código vencido, ajeno, ya usado o cancelado responde igual que uno inexistente.
+- La forma escrita del código no importa: se aceptan minúsculas, espacios y ausencia de guiones.
+- Ya rigen las reglas 24 a 26 (correo único entre roles, en minúsculas y con mensaje genérico) y no existe un modo de preguntar si una cédula está registrada.
 
 **Cambios de la versión 2.9 frente a la 2.8** (entrega B0.4-A2, sin reglas nuevas: precisiones de 3.2, 3.3 y 5.6):
 - Un contrato **sin vincular** no existe para el Inquilino (no aparece en ninguna pantalla ni permite reportar pagos o crear solicitudes). Vincular ocurre al crear la cuenta con el código o con "Agregar contrato con código".
@@ -114,7 +119,7 @@ Implicaciones:
 
 - Se genera al confirmar el Contrato. El Arrendador puede copiarlo, compartirlo (con el menú nativo de compartir, sin pedir permiso de contactos) o **regenerarlo**.
 - Regenerar invalida el anterior de inmediato. No se guarda historial de códigos.
-- Expira a los **7 días** si no se usa (el Arrendador puede regenerarlo) y deja de funcionar tras **5 intentos fallidos** seguidos de validación desde el mismo origen.
+- Expira a los **7 días** si no se usa (el Arrendador puede regenerarlo) y y quien acumula **5 intentos fallidos** seguidos con códigos inválidos desde el mismo origen (o la misma cuenta) queda bloqueado 15 minutos; un intento correcto reinicia el conteo.
 - Una vez usado para vincular, deja de servir.
 - La ficha muestra "Vinculado" o "Sin vincular" **por contrato**.
 
@@ -268,7 +273,7 @@ Ningún documento se sobrescribe ni se borra. Si la generación del PDF falla, l
 
 ### 5.9 Medio de activación
 
-Código (`RC-XXXX-XXXX`, único), enlace/QR equivalente, contrato asociado, fecha de generación, fecha de expiración, intentos fallidos, fecha de uso.
+Código (`RC-XXXX-XXXX`, único), enlace/QR equivalente, contrato asociado, fecha de generación, fecha de expiración, fecha de uso (el contrato vinculado). Los intentos fallidos se cuentan aparte, por origen.
 
 ### 5.10 Pago
 
@@ -317,7 +322,7 @@ Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso rela
 1. El Arrendador se registra libremente; el Inquilino nunca se registra por su cuenta.
 2. El medio de activación se genera automáticamente al confirmar la creación del Contrato, nunca antes ni en otro punto de la aplicación.
 3. Una persona sin cuenta la crea al usar su primer código; una persona con cuenta vincula cada contrato nuevo con su código desde la app. Un contrato sin vincular no aparece en el portal del inquilino.
-4. Regenerar el medio de activación invalida el anterior de inmediato. El código expira a los 7 días sin uso y se bloquea tras 5 intentos fallidos.
+4. Regenerar el medio de activación invalida el anterior de inmediato. El código expira a los 7 días sin uso; 5 intentos fallidos seguidos desde el mismo origen bloquean 15 minutos.
 5. Al crear un Inmueble se crea automáticamente una Unidad principal.
 6. Dirección, ciudad y matrícula son obligatorias en un Inmueble; el estrato solo si tiene alguna Unidad Residencial.
 7. Los campos residenciales de una Unidad solo aplican si su uso es Residencial. El uso y el tipo no cambian mientras haya un contrato Activo.
