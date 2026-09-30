@@ -27,9 +27,14 @@ import {
   sumarMesesUTC,
 } from '../common/fechas-contrato.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
 import { ProrrogarContratoDto } from './dto/prorrogar-contrato.dto';
+import {
+  plantillaEsperadaParaUnidad,
+  plantillaValidaParaUnidad,
+} from './plantilla-unidad';
 import { DocumentoContratoService } from './documento-contrato.service';
 
 const SELECT_CONTRATO_PARA_ESTADO_CUENTA = {
@@ -311,6 +316,10 @@ export class ContratoService {
         },
       });
 
+      // B-50: el estado de pago se recalcula con el canon nuevo, en la misma
+      // transacción y antes de leer el contrato para la respuesta.
+      await recalcularEstadoPagoContrato(tx, id, hoy);
+
       return {
         contrato: await tx.contrato.findUniqueOrThrow({
           where: { id },
@@ -409,6 +418,10 @@ export class ContratoService {
         },
       });
 
+      // B-50: el estado de pago se recalcula con la nueva fecha de fin, en
+      // la misma transacción y antes de leer el contrato para la respuesta.
+      await recalcularEstadoPagoContrato(tx, id, hoy);
+
       return {
         contrato: await tx.contrato.findUniqueOrThrow({
           where: { id },
@@ -500,6 +513,24 @@ export class ContratoService {
     });
     if (!unidad) {
       throw new NotFoundException('Unidad no encontrada');
+    }
+
+    // B-47: la plantilla debe corresponder al tipo y uso de la unidad.
+    if (
+      !plantillaValidaParaUnidad(
+        dto.tipo_plantilla,
+        unidad.tipo,
+        unidad.uso_permitido,
+      )
+    ) {
+      const esperada = plantillaEsperadaParaUnidad(
+        unidad.tipo,
+        unidad.uso_permitido,
+      );
+      throw new BadRequestException({
+        codigo: 'PLANTILLA_NO_CORRESPONDE_A_UNIDAD',
+        mensaje: `La plantilla ${dto.tipo_plantilla} no corresponde a esta unidad (tipo ${unidad.tipo}, uso ${unidad.uso_permitido}); corresponde la plantilla ${esperada}.`,
+      });
     }
 
     const inquilino = await this.prisma.inquilino.findFirst({

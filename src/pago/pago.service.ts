@@ -11,32 +11,16 @@ import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service'
 import { PrismaService } from '../prisma/prisma.service';
 import {
   calcularEstadoCuenta,
-  derivarEstadoPagoContrato,
   PeriodoEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { calcularHuellaPago } from '../common/huella-idempotencia.util';
 import {
   IdempotenciaService,
   ParametrosClave,
 } from '../idempotencia/idempotencia.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
-
-const SELECT_PARA_ESTADO_CUENTA = {
-  fecha_inicio: true,
-  fecha_fin: true,
-  dia_pago: true,
-  canon_centavos: true,
-  estado_pago: true,
-  incrementos_ipc: {
-    select: {
-      fecha_aplicacion: true,
-      canon_anterior_centavos: true,
-      canon_nuevo_centavos: true,
-    },
-  },
-  pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
-} as const satisfies Prisma.ContratoSelect;
 
 function mismoMesUTC(a: Date, b: Date): boolean {
   return (
@@ -289,7 +273,7 @@ export class PagoService {
         await this.idempotencia.asociarRecurso(tx, datos.reclamoId, creado.id);
       }
 
-      await this.recalcularEstadoPagoContrato(tx, datos.contratoId);
+      await recalcularEstadoPagoContrato(tx, datos.contratoId);
 
       return creado;
     });
@@ -394,49 +378,13 @@ export class PagoService {
         });
       }
 
-      await this.recalcularEstadoPagoContrato(tx, pagoExistente.contrato_id);
+      await recalcularEstadoPagoContrato(tx, pagoExistente.contrato_id);
 
       return tx.pago.findUniqueOrThrow({
         where: { id },
         include: this.INCLUDE_PAGO,
       });
     });
-  }
-
-  /**
-   * Recalcula `estado_pago` del contrato con `calcularEstadoCuenta` +
-   * `derivarEstadoPagoContrato`, usando los pagos ya actualizados dentro de
-   * la transacción. Nunca lo fija a mano.
-   */
-  private async recalcularEstadoPagoContrato(
-    tx: Prisma.TransactionClient,
-    contratoId: string,
-  ): Promise<void> {
-    const contrato = await tx.contrato.findUniqueOrThrow({
-      where: { id: contratoId },
-      select: SELECT_PARA_ESTADO_CUENTA,
-    });
-
-    const periodos = calcularEstadoCuenta(
-      {
-        fecha_inicio: contrato.fecha_inicio,
-        fecha_fin: contrato.fecha_fin,
-        dia_pago: contrato.dia_pago,
-        canon_centavos: contrato.canon_centavos,
-      },
-      contrato.incrementos_ipc,
-      contrato.pagos,
-      hoyEnBogota(),
-    );
-
-    const nuevoEstadoPago = derivarEstadoPagoContrato(periodos);
-
-    if (nuevoEstadoPago !== contrato.estado_pago) {
-      await tx.contrato.update({
-        where: { id: contratoId },
-        data: { estado_pago: nuevoEstadoPago },
-      });
-    }
   }
 
   private async exponerUrlFirmada<

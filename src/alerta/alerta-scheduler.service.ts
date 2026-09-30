@@ -7,11 +7,9 @@ import {
   TipoAlerta,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  calcularEstadoCuenta,
-  derivarEstadoPagoContrato,
-} from '../common/estado-cuenta.util';
+import { calcularEstadoCuenta } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
   fecha_aplicacion: true,
@@ -359,35 +357,16 @@ export class AlertaSchedulerService {
             inmueble: { select: { arrendador_id: true } },
           },
         },
-        incrementos_ipc: { select: SELECT_INCREMENTOS_PARA_ESTADO_CUENTA },
-        pagos: { select: SELECT_PAGOS_PARA_ESTADO_CUENTA },
       },
     });
 
     let enMora = 0;
     let creadas = 0;
     for (const contrato of contratos) {
-      const periodos = calcularEstadoCuenta(
-        {
-          fecha_inicio: contrato.fecha_inicio,
-          fecha_fin: contrato.fecha_fin,
-          dia_pago: contrato.dia_pago,
-          canon_centavos: contrato.canon_centavos,
-        },
-        contrato.incrementos_ipc,
-        contrato.pagos,
-        hoy,
-      );
-      const estadoDerivado = derivarEstadoPagoContrato(periodos);
-
-      // Entra y sale de mora en ambos sentidos: se guarda siempre que el
-      // estado derivado difiera del guardado, no solo al entrar en mora.
-      if (estadoDerivado !== contrato.estado_pago) {
-        await this.prisma.contrato.update({
-          where: { id: contrato.id },
-          data: { estado_pago: estadoDerivado },
-        });
-      }
+      // Entra y sale de mora en ambos sentidos: el recálculo guarda siempre
+      // que el estado derivado difiera del guardado, no solo al entrar en mora.
+      const { estadoPago: estadoDerivado, periodos } =
+        await recalcularEstadoPagoContrato(this.prisma, contrato.id, hoy);
 
       if (estadoDerivado !== EstadoPagoContrato.EN_MORA) {
         continue;

@@ -116,7 +116,22 @@ describe('Incremento de IPC y prórroga (e2e)', () => {
       `Arrendador ${sufijo}`,
       `incr-${sufijo}@correo.com`,
     );
-    const inmueble = await crearInmueble(app, access_token, `INC-${sufijo}`);
+    // B-47: una plantilla de local comercial exige una unidad comercial.
+    const inmueble =
+      opciones.tipoPlantilla === 'LOCAL_COMERCIAL'
+        ? ((
+            await request(app.getHttpServer())
+              .post('/inmuebles')
+              .set('Authorization', `Bearer ${access_token}`)
+              .send({
+                direccion: 'Carrera 7 # 10-20',
+                ciudad: 'Bogota',
+                matricula_inmobiliaria: `INC-${sufijo}`,
+                uso_unidad_principal: 'COMERCIAL',
+              })
+              .expect(HttpStatus.CREATED)
+          ).body as Awaited<ReturnType<typeof crearInmueble>>)
+        : await crearInmueble(app, access_token, `INC-${sufijo}`);
     const inquilino = await crearInquilino(app, access_token);
     const contrato = await crearContrato(
       app,
