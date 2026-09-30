@@ -19,6 +19,7 @@ import {
   fechaFinParaEstadoCuenta,
   resumenTerminacion,
 } from '../common/terminacion.util';
+import { VinculacionContratoService } from '../contrato/vinculacion-contrato.service';
 import { AvisoNoRenovacionService } from '../contrato/aviso-no-renovacion.service';
 import { TerminacionAnticipadaService } from '../contrato/terminacion-anticipada.service';
 import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
@@ -41,6 +42,7 @@ export class InquilinoPanelService {
     private readonly almacenamiento: AlmacenamientoService,
     private readonly terminacion: TerminacionAnticipadaService,
     private readonly aviso: AvisoNoRenovacionService,
+    private readonly vinculacion: VinculacionContratoService,
   ) {}
 
   async obtenerMiPanel(inquilinoId: string) {
@@ -192,6 +194,10 @@ export class InquilinoPanelService {
       motivo,
       fechaEfectiva,
     );
+  }
+
+  vincularContrato(inquilinoId: string, codigo: string) {
+    return this.vinculacion.vincular(inquilinoId, codigo);
   }
 
   async darAvisoNoRenovacion(inquilinoId: string, motivo?: string) {

@@ -545,7 +545,12 @@ describe('Terminación anticipada por mutuo acuerdo (e2e)', () => {
     const tipos = async () =>
       (
         await prisma.alerta.findMany({
-          where: { arrendador_id: arrendadorId, contrato_id: contratoId },
+          where: {
+            arrendador_id: arrendadorId,
+            contrato_id: contratoId,
+            // La alerta de vinculación del registro del inquilino es aparte.
+            tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+          },
           orderBy: { creado_en: 'asc' },
         })
       ).map((a) => a.tipo as string);

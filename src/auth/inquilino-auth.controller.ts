@@ -4,6 +4,7 @@ import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
 import { LoginInquilinoDto } from './dto/login-inquilino.dto';
+import { RespuestaValidarCodigoDto } from './dto/respuesta-validar-codigo.dto';
 import { ValidarCodigoAccesoDto } from './dto/validar-codigo-acceso.dto';
 
 @ApiTags('Autenticación de Inquilino')
@@ -18,16 +19,14 @@ export class InquilinoAuthController {
   @ApiBody({ type: ValidarCodigoAccesoDto })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Código válido; el inquilino puede continuar su registro.',
+    type: RespuestaValidarCodigoDto,
+    description:
+      'Código utilizable. Sin cuenta: datos del contrato para continuar el registro. Con cuenta: requiere_inicio_sesion (sin nombre).',
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
-    description: 'Código de acceso no válido.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CONFLICT,
     description:
-      'La cuenta ya fue activada; debe iniciar sesión con correo y contraseña.',
+      'Código de acceso no válido (inexistente, ya usado o de un contrato cancelado; no se distingue).',
   })
   validarCodigo(@Body() dto: ValidarCodigoAccesoDto) {
     return this.authService.validarCodigoAccesoInquilino(dto);
@@ -44,11 +43,12 @@ export class InquilinoAuthController {
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
-    description: 'Código de acceso no válido.',
+    description: 'Código de acceso no válido o ya usado.',
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'La cuenta ya fue activada o el correo ya está en uso.',
+    description:
+      'REQUIERE_INICIO_SESION (la persona ya tiene cuenta) o el correo ya está en uso.',
   })
   completarRegistro(@Body() dto: CompletarRegistroInquilinoDto) {
     return this.authService.completarRegistroInquilino(dto);

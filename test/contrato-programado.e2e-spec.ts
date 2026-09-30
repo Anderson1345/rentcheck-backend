@@ -617,9 +617,11 @@ describe('Contrato programado, traslape y cron de estados (e2e)', () => {
           contrasena: 'clave1234',
         });
 
-      expect(validar.status).toBe(CONFLICTO);
-      expect(completar.status).toBe(CONFLICTO);
-      expect(codigo(completar)).toBe('CONTRATO_CANCELADO');
+      // Regla de B0.4-A2: un código de un contrato CANCELADO da la misma
+      // respuesta que uno inexistente (no se distingue la causa).
+      expect(validar.status).toBe(NO_ENCONTRADO);
+      expect(completar.status).toBe(NO_ENCONTRADO);
+      expect(completar.body).toEqual(validar.body);
     }, 60000);
 
     it('reportar pago o crear mantenimiento con un PROGRAMADO responde 409 CONTRATO_NO_ACTIVO sin decir "terminado"', async () => {

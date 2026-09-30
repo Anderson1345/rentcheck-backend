@@ -109,6 +109,8 @@ export class PagoService {
       where: {
         id: dto.contratoId,
         inquilino_id: inquilinoId,
+        // Un contrato sin vincular no existe para el portal del inquilino.
+        vinculado_en: { not: null },
       },
       include: {
         unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
@@ -332,7 +334,7 @@ export class PagoService {
   async listarMios(inquilinoId: string) {
     const pagos = await this.prisma.pago.findMany({
       where: {
-        contrato: { inquilino_id: inquilinoId },
+        contrato: { inquilino_id: inquilinoId, vinculado_en: { not: null } },
       },
       include: this.INCLUDE_PAGO,
       orderBy: { fecha_reportada: 'desc' },

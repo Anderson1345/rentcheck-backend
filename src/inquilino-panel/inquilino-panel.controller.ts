@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -15,6 +24,7 @@ import {
 } from '../auth/auth.module';
 import { AvisoNoRenovacionDto } from '../contrato/dto/aviso-no-renovacion.dto';
 import { SolicitarTerminacionAnticipadaDto } from './dto/solicitar-terminacion-anticipada.dto';
+import { VincularContratoDto } from './dto/vincular-contrato.dto';
 import { InquilinoPanelService } from './inquilino-panel.service';
 
 @ApiTags('Panel del Inquilino')
@@ -64,6 +74,26 @@ export class InquilinoPanelController {
   })
   obtenerEstadoCuenta(@InquilinoActual() inquilinoId: string) {
     return this.inquilinoPanelService.obtenerEstadoCuenta(inquilinoId);
+  }
+
+  @Post('contratos/vincular')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Agregar un contrato con su código de acceso',
+    description:
+      'La cuenta autenticada vincula el contrato del código. Un contrato solo aparece en el portal después de vincularlo. Un código inexistente, de otra cuenta o de un contrato cancelado recibe la misma respuesta (404). Idempotente para la misma cuenta. Un contrato PROGRAMADO vincula pero no muestra datos de recaudo hasta estar ACTIVO.',
+  })
+  @ApiOkResponse({
+    description:
+      'Resumen del contrato: id, estado, fechas, vinculado_en, datos_recaudo (solo si está ACTIVO), unidad e inmueble.',
+  })
+  @ApiNotFoundResponse({ description: 'Código de acceso no válido.' })
+  vincularContrato(
+    @Body() dto: VincularContratoDto,
+    @InquilinoActual() inquilinoId: string,
+  ) {
+    return this.inquilinoPanelService.vincularContrato(inquilinoId, dto.codigo);
   }
 
   @Post('mi-contrato/solicitar-terminacion-anticipada')

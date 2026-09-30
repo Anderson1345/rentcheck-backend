@@ -564,8 +564,9 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
       cedula,
       telefono: '3004',
     });
+    // Ningún contrato está vinculado: el correo no se muestra aunque exista.
     for (const item of listaA) {
-      expect(item).not.toHaveProperty('correo');
+      expect(item).toMatchObject({ correo: null, vinculado: false });
     }
 
     const listaB = (
@@ -581,7 +582,7 @@ describe('Identidad del inquilino: copia en el contrato e inquilino_nuevo (e2e)'
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(HttpStatus.OK);
     expect(propio.body).toMatchObject({ nombre: 'Con Contrato' });
-    expect(propio.body).not.toHaveProperty('correo');
+    expect(propio.body).toMatchObject({ correo: null, vinculado: false });
     await request(app.getHttpServer())
       .get(`/inquilinos/${conContrato.inquilino.id}`)
       .set('Authorization', `Bearer ${tokenB}`)

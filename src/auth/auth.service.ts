@@ -1,24 +1,32 @@
 import {
   ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { EstadoContrato } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  errorCodigoNoValido,
+  VinculacionContratoService,
+} from '../contrato/vinculacion-contrato.service';
 import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
 import { LoginArrendadorDto } from './dto/login-arrendador.dto';
 import { LoginInquilinoDto } from './dto/login-inquilino.dto';
 import { RegistroArrendadorDto } from './dto/registro-arrendador.dto';
+import { RespuestaValidarCodigoDto } from './dto/respuesta-validar-codigo.dto';
 import { ValidarCodigoAccesoDto } from './dto/validar-codigo-acceso.dto';
+
+const MENSAJE_INICIA_SESION =
+  'Inicia sesión y agrega este código desde la app.';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly vinculacion: VinculacionContratoService,
   ) {}
 
   async registrarArrendador(dto: RegistroArrendadorDto) {
@@ -65,102 +73,138 @@ export class AuthService {
   }
 
   /**
-   * Un contrato PROGRAMADO ya se puede vincular (para ver el contrato y el
-   * inventario); uno CANCELADO no.
+   * Código utilizable para vincular: existe, su contrato no está CANCELADO y
+   * todavía no se usó (`vinculado_en` nulo). Cualquier otro caso recibe la
+   * misma respuesta, sin distinguir causas. Un contrato PROGRAMADO sí vincula.
    */
-  private validarContratoNoCancelado(estado: EstadoContrato): void {
-    if (estado === EstadoContrato.CANCELADO) {
-      throw new ConflictException({
-        codigo: 'CONTRATO_CANCELADO',
-        mensaje:
-          'Este contrato fue cancelado; el código de acceso ya no es válido.',
-      });
-    }
+  private codigoUtilizable(
+    codigoAcceso: {
+      contrato: { estado: EstadoContrato; vinculado_en: Date | null };
+    } | null,
+  ): boolean {
+    return (
+      codigoAcceso !== null &&
+      codigoAcceso.contrato.estado !== EstadoContrato.CANCELADO &&
+      codigoAcceso.contrato.vinculado_en === null
+    );
   }
 
-  async validarCodigoAccesoInquilino(dto: ValidarCodigoAccesoDto) {
+  private tieneCuenta(inquilino: {
+    correo: string | null;
+    contrasena_hash: string | null;
+  }): boolean {
+    return inquilino.correo !== null && inquilino.contrasena_hash !== null;
+  }
+
+  async validarCodigoAccesoInquilino(
+    dto: ValidarCodigoAccesoDto,
+  ): Promise<RespuestaValidarCodigoDto> {
     const codigoAcceso = await this.prisma.codigoAcceso.findUnique({
       where: { codigo: dto.codigo },
-      include: {
-        inquilino: {
+      select: {
+        inquilino: { select: { correo: true, contrasena_hash: true } },
+        contrato: {
           select: {
-            id: true,
-            nombre: true,
-            correo: true,
-            contrasena_hash: true,
+            estado: true,
+            vinculado_en: true,
+            // Lo que escribió el arrendador, nunca el nombre global.
+            inquilino_nombre: true,
           },
         },
         unidad: {
           select: { nombre: true, inmueble: { select: { direccion: true } } },
         },
-        contrato: { select: { estado: true } },
       },
     });
 
-    if (!codigoAcceso) {
-      throw new NotFoundException('Código de acceso no válido');
+    if (!codigoAcceso || !this.codigoUtilizable(codigoAcceso)) {
+      throw errorCodigoNoValido();
     }
-    this.validarContratoNoCancelado(codigoAcceso.contrato.estado);
 
-    if (
-      codigoAcceso.inquilino.correo !== null &&
-      codigoAcceso.inquilino.contrasena_hash !== null
-    ) {
-      throw new ConflictException(
-        'Esta cuenta ya fue activada. Inicie sesión con correo y contraseña.',
-      );
+    if (this.tieneCuenta(codigoAcceso.inquilino)) {
+      return {
+        requiere_inicio_sesion: true,
+        mensaje: MENSAJE_INICIA_SESION,
+      };
     }
 
     return {
-      inquilinoId: codigoAcceso.inquilino.id,
-      nombreInquilino: codigoAcceso.inquilino.nombre,
+      requiere_inicio_sesion: false,
+      nombreInquilino: codigoAcceso.contrato.inquilino_nombre,
       nombreUnidad: codigoAcceso.unidad.nombre,
       direccionInmueble: codigoAcceso.unidad.inmueble.direccion,
       mensaje: 'Puede continuar completando su registro.',
     };
   }
 
+  /**
+   * Crea la cuenta y vincula el contrato en UNA transacción: si algo falla
+   * no queda cuenta ni vínculo. Un código no se puede usar dos veces.
+   */
   async completarRegistroInquilino(dto: CompletarRegistroInquilinoDto) {
-    const codigoAcceso = await this.prisma.codigoAcceso.findUnique({
-      where: { codigo: dto.codigo },
-      include: {
-        inquilino: {
-          select: { id: true, correo: true, contrasena_hash: true },
-        },
-        contrato: { select: { estado: true } },
-      },
-    });
-
-    if (!codigoAcceso) {
-      throw new NotFoundException('Código de acceso no válido');
-    }
-    this.validarContratoNoCancelado(codigoAcceso.contrato.estado);
-
-    if (
-      codigoAcceso.inquilino.correo !== null &&
-      codigoAcceso.inquilino.contrasena_hash !== null
-    ) {
-      throw new ConflictException('Esta cuenta ya fue activada.');
-    }
-
-    const inquilinoConCorreo = await this.prisma.inquilino.findUnique({
-      where: { correo: dto.correo },
-    });
-
-    if (
-      inquilinoConCorreo &&
-      inquilinoConCorreo.id !== codigoAcceso.inquilino.id
-    ) {
-      throw new ConflictException('El correo ya está en uso.');
-    }
-
     const contrasena_hash = await bcrypt.hash(dto.contrasena, 10);
-    const inquilino = await this.prisma.inquilino.update({
-      where: { id: codigoAcceso.inquilino.id },
-      data: {
-        correo: dto.correo,
-        contrasena_hash,
-      },
+
+    const inquilino = await this.prisma.$transaction(async (tx) => {
+      const codigoAcceso = await tx.codigoAcceso.findUnique({
+        where: { codigo: dto.codigo },
+        select: {
+          contrato_id: true,
+          inquilino: {
+            select: { id: true, correo: true, contrasena_hash: true },
+          },
+          contrato: { select: { estado: true, vinculado_en: true } },
+        },
+      });
+
+      if (!codigoAcceso || !this.codigoUtilizable(codigoAcceso)) {
+        throw errorCodigoNoValido();
+      }
+      if (this.tieneCuenta(codigoAcceso.inquilino)) {
+        throw new ConflictException({
+          codigo: 'REQUIERE_INICIO_SESION',
+          mensaje: MENSAJE_INICIA_SESION,
+        });
+      }
+
+      const inquilinoConCorreo = await tx.inquilino.findUnique({
+        where: { correo: dto.correo },
+        select: { id: true },
+      });
+      if (
+        inquilinoConCorreo &&
+        inquilinoConCorreo.id !== codigoAcceso.inquilino.id
+      ) {
+        throw new ConflictException('El correo ya está en uso.');
+      }
+
+      // Escritura condicionada: dos registros simultáneos con el mismo código
+      // no pueden crear la cuenta dos veces.
+      const cuenta = await tx.inquilino.updateMany({
+        where: {
+          id: codigoAcceso.inquilino.id,
+          correo: null,
+          contrasena_hash: null,
+        },
+        data: { correo: dto.correo, contrasena_hash },
+      });
+      if (cuenta.count === 0) {
+        throw new ConflictException({
+          codigo: 'REQUIERE_INICIO_SESION',
+          mensaje: MENSAJE_INICIA_SESION,
+        });
+      }
+
+      const vinculado = await this.vinculacion.vincularEnTransaccion(
+        tx,
+        codigoAcceso.contrato_id,
+      );
+      if (!vinculado) {
+        throw errorCodigoNoValido();
+      }
+
+      return tx.inquilino.findUniqueOrThrow({
+        where: { id: codigoAcceso.inquilino.id },
+      });
     });
 
     return this.crearRespuestaAutenticacionInquilino(inquilino);

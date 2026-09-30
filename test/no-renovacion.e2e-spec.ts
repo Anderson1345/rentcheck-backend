@@ -184,7 +184,12 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
     expect(documentos[1].prorroga_id).toBe(prorrogas[0].id);
     expect(contrato.estado_pago).not.toBe('AL_DIA');
     const alertas = await prisma.alerta.findMany({
-      where: { contrato_id: contratoId, arrendador_id: arrendadorId },
+      where: {
+        contrato_id: contratoId,
+        arrendador_id: arrendadorId,
+        // La alerta de vinculación del registro del inquilino es aparte.
+        tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+      },
     });
     expect(alertas.map((a) => a.tipo as string)).toEqual([
       'CONTRATO_PRORROGADO_AUTOMATICAMENTE',
@@ -293,7 +298,12 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
     expect(resultados.reduce((suma, r) => suma + r.prorrogados, 0)).toBe(1);
     expect(await prorrogasDe(contratoId)).toHaveLength(1);
     expect(
-      await prisma.alerta.count({ where: { contrato_id: contratoId } }),
+      await prisma.alerta.count({
+        where: {
+          contrato_id: contratoId,
+          tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+        },
+      }),
     ).toBe(1);
   }, 60000);
 
@@ -320,7 +330,12 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
     );
     // Una sola alerta por corrida y contrato.
     expect(
-      await prisma.alerta.count({ where: { contrato_id: contratoId } }),
+      await prisma.alerta.count({
+        where: {
+          contrato_id: contratoId,
+          tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+        },
+      }),
     ).toBe(1);
   }, 120000);
 
@@ -582,7 +597,10 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
       const tipos = async () =>
         (
           await prisma.alerta.findMany({
-            where: { contrato_id: contratoId },
+            where: {
+              contrato_id: contratoId,
+              tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+            },
             orderBy: { creado_en: 'asc' },
           })
         ).map((a) => a.tipo as string);

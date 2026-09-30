@@ -169,7 +169,15 @@ export class SolicitudMantenimientoService {
 
   async listarMias(inquilinoId: string) {
     const solicitudes = await this.prisma.solicitudMantenimiento.findMany({
-      where: { inquilino_id: inquilinoId },
+      where: {
+        inquilino_id: inquilinoId,
+        // Solo las de unidades con un contrato suyo ya vinculado.
+        unidad: {
+          contratos: {
+            some: { inquilino_id: inquilinoId, vinculado_en: { not: null } },
+          },
+        },
+      },
       orderBy: { creado_en: 'desc' },
     });
 

@@ -193,3 +193,20 @@ export async function reportarPago(
     .expect(HttpStatus.CREATED);
   return respuesta.body as PagoCreado;
 }
+
+/**
+ * Vincula a la cuenta del inquilino el contrato de un código (POST
+ * /inquilino/contratos/vincular). Devuelve la petición de supertest para
+ * poder encadenar `.expect(...)`. El primer contrato de una persona sin cuenta
+ * se vincula al registrarse (`autenticarInquilino`); los siguientes, con esto.
+ */
+export function vincularContrato(
+  app: INestApplication<App>,
+  inquilinoToken: string,
+  codigo: string,
+) {
+  return request(app.getHttpServer())
+    .post('/inquilino/contratos/vincular')
+    .set('Authorization', `Bearer ${inquilinoToken}`)
+    .send({ codigo });
+}

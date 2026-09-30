@@ -267,6 +267,8 @@ async function sembrar() {
       fecha_fin: sumarMeses(hoy, 6),
       estado: 'ACTIVO',
       estado_pago: 'AL_DIA',
+      // Inquilino A ya tiene cuenta: su contrato está vinculado (aparece en su portal).
+      vinculado_en: sumarMeses(hoy, -6),
     },
   });
 
@@ -435,10 +437,10 @@ function imprimirCredenciales(resultado) {
   console.log('Inquilinos con cuenta ya activada (login directo):');
   console.log(`  ${resultado.inquilinoA.correo} / ${CONTRASENA_PRUEBA}`);
   console.log(
-    `    (también tiene el código ya usado: ${resultado.codigoVinculado})`,
+    `    (su contrato Apto 101 está vinculado; código ya usado: ${resultado.codigoVinculado})`,
   );
   console.log('');
-  console.log('Códigos de acceso sin vincular (para probar validar-codigo / completar-registro):');
+  console.log('Contratos SIN vincular (no aparecen en el portal hasta usar su código; sirven para probar validar-codigo / completar-registro):');
   for (const item of resultado.codigosSinVincular) {
     console.log(`  ${item.codigo}  — unidad "${item.unidad}", contrato ${item.contrato}`);
   }

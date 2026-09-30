@@ -159,7 +159,10 @@ export class ContratoService {
     });
 
     return Promise.all(
-      contratos.map((c) => this.exponerUrlFirmada(conInquilinoResumido(c))),
+      contratos.map(async (c) => ({
+        ...(await this.exponerUrlFirmada(conInquilinoResumido(c))),
+        vinculado: c.vinculado_en !== null,
+      })),
     );
   }
 
@@ -186,6 +189,7 @@ export class ContratoService {
     }
     return {
       ...(await this.exponerUrlFirmada(conInquilinoDeLaCopia(contrato))),
+      vinculado: contrato.vinculado_en !== null,
       aviso_no_renovacion: resumenAvisoNoRenovacion(
         contrato.aviso_no_renovacion,
         contrato,
@@ -811,18 +815,18 @@ export class ContratoService {
     // y el original se puede generar luego con POST /contratos/:id/documentos/regenerar.
     await this.documentos.generarSinPropagarErrores(contratoConfirmado.id);
 
-    return this.exponerUrlFirmada(
-      conInquilinoDeLaCopia(
-        await this.prisma.contrato.findUniqueOrThrow({
-          where: { id: contratoConfirmado.id },
-          include: {
-            codigo_acceso: true,
-            unidad: {
-              include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
-            },
-          },
-        }),
-      ),
-    );
+    const creado = await this.prisma.contrato.findUniqueOrThrow({
+      where: { id: contratoConfirmado.id },
+      include: {
+        codigo_acceso: true,
+        unidad: {
+          include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
+        },
+      },
+    });
+    return {
+      ...(await this.exponerUrlFirmada(conInquilinoDeLaCopia(creado))),
+      vinculado: creado.vinculado_en !== null,
+    };
   }
 }

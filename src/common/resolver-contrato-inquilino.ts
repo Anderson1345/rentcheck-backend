@@ -1,7 +1,8 @@
 import { EstadoContrato, Prisma } from '@prisma/client';
 
 /**
- * Contrato "actual" de un inquilino: el ACTIVO; si no hay, el PROGRAMADO con
+ * Contrato "actual" de un inquilino (solo entre los VINCULADOS: el portal no
+ * ve contratos con `vinculado_en` nulo): el ACTIVO; si no hay, el PROGRAMADO con
  * la fecha de inicio más próxima; si no, el más reciente que no esté
  * CANCELADO. Devuelve solo el id (cada llamador carga lo que necesita).
  * `donde` limita la búsqueda (siempre incluye `inquilino_id`).
@@ -10,6 +11,7 @@ export async function resolverIdContratoDelInquilino(
   cliente: Pick<Prisma.TransactionClient, 'contrato'>,
   donde: Prisma.ContratoWhereInput,
 ): Promise<string | null> {
+  donde = { ...donde, vinculado_en: { not: null } };
   const activo = await cliente.contrato.findFirst({
     where: { ...donde, estado: EstadoContrato.ACTIVO },
     select: { id: true },

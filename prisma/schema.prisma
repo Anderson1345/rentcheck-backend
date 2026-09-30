@@ -157,6 +157,8 @@ model Contrato {
   terminacion_fecha_efectiva         DateTime?     @db.Date
   terminacion_confirmada_por         RolSolicitante?
   cancelado_en                       DateTime?
+  /// Cuándo el inquilino usó el código de acceso. Hasta entonces el contrato no aparece en su portal.
+  vinculado_en                       DateTime?
   aviso_no_renovacion                AvisoNoRenovacion?
   incrementos_ipc       IncrementoIPC[]
   prorrogas             Prorroga[]
@@ -331,6 +333,7 @@ enum TipoAlerta {
   AVISO_NO_RENOVACION_DADO
   AVISO_NO_RENOVACION_CANCELADO
   CONTRATO_PRORROGADO_AUTOMATICAMENTE
+  CONTRATO_VINCULADO_POR_INQUILINO
 }
 
 model Alerta {
