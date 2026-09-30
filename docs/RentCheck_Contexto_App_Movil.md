@@ -1,8 +1,12 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.5 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.6 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.6 frente a la 2.5** (entrega B0.3-A3-3):
+- **Ciclo de vida del contrato** (7.1): nuevos estados **Programado** (fecha de inicio futura; no cuenta como Activo ni bloquea la unidad) y **Cancelado** (un contrato Programado anulado por el arrendador; se conserva, no se borra).
+- **Sin traslape** (5.1): los contratos Activo y Programado de una misma unidad no pueden compartir ningún día; el siguiente empieza después del último día del anterior (fecha de fin, o la fecha efectiva si hay terminación anticipada confirmada).
 
 **Cambios de la versión 2.5 frente a la 2.4** (entrega B0.3-A3-2):
 - **Terminación anticipada** (regla 17): la fecha efectiva es obligatoria, de hoy en adelante y no posterior a la fecha de fin; el contrato sigue Activo y exigible hasta esa fecha; el estado de cuenta no genera períodos posteriores a ella; ninguna parte confirma su propia solicitud.
@@ -159,7 +163,7 @@ erDiagram
 ```
 
 Reglas de cardinalidad:
-- Una Unidad **nunca** tiene más de un Contrato Activo al mismo tiempo. La base de datos lo impide, no solo el código.
+- Una Unidad **nunca** tiene más de un Contrato Activo al mismo tiempo. La base de datos lo impide, no solo el código. Además, los contratos Activo y Programado de una Unidad no se traslapan en fechas (el servidor lo valida al crear).
 - Un Contrato vincula exactamente una Unidad y un Inquilino firmante (los co-arrendatarios quedan para la versión 3).
 - El Inquilino es una **identidad global**. Puede tener varios Contratos a la vez, con el mismo Arrendador o con Arrendadores distintos. Cada Arrendador solo ve sus propios Contratos, Pagos y Solicitudes con esa persona, y solo con los datos que él mismo registró.
 - Un Inmueble pertenece a un único Arrendador.
@@ -223,7 +227,7 @@ Lo que el Arrendador escribe sobre el inquilino (nombre, documento, teléfono) s
 | Garantías | Fiador, codeudor o póliza (texto), opcional en los tres tipos |
 | Condiciones particulares | Texto libre; si está vacío se usa un texto por defecto |
 | Fecha de inicio / fecha de fin | La fin debe ser posterior a la de inicio y posterior a hoy |
-| Estado (ciclo de vida) | Activo / Finalizado / Terminado anticipadamente (7.1) |
+| Estado (ciclo de vida) | Programado / Activo / Finalizado / Terminado anticipadamente / Cancelado (7.1) |
 | Estado de pago | Al día / Pendiente / En mora, **derivado de los períodos** (7.2) |
 | Aviso de no renovación | Quién, cuándo, motivo (7.1, D-1) |
 | Terminación anticipada | Quién la solicitó, cuándo, motivo, fecha efectiva de entrega, quién confirmó y cuándo |
@@ -337,7 +341,11 @@ Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso rela
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Activo: se confirma el contrato
+    [*] --> Activo: se confirma el contrato (inicio hoy o antes)
+    [*] --> Programado: se confirma el contrato (inicio futuro)
+    Programado --> Activo: llega la fecha de inicio
+    Programado --> Cancelado: el arrendador lo cancela antes de empezar
+    Cancelado --> [*]
     Activo --> Activo: incremento de IPC (solo canon)
     Activo --> Activo: prórroga manual o automática (extiende la fecha de fin)
     Activo --> Finalizado: termina el día de fin con aviso de no renovación
@@ -345,6 +353,8 @@ stateDiagram-v2
     Finalizado --> [*]
     TerminadoAnticipadamente --> [*]
 ```
+
+Un contrato **Programado** no bloquea la unidad ni genera períodos, pagos, mora, alertas ni solicitudes de mantenimiento; el inquilino puede vincularlo con el código (ve el contrato y el inventario) pero no ve datos de recaudo hasta que esté Activo (regla 11). Un contrato Cancelado no se puede vincular ni activar.
 
 "Próximo a vencer" **no** es un estado: es una condición calculada (30 días o menos para la fecha de fin) que dispara una alerta.
 
