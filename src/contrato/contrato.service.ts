@@ -27,6 +27,7 @@ import {
   sumarMesesUTC,
 } from '../common/fechas-contrato.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { buscarTraslape } from '../common/traslape.util';
 import {
   fechaFinParaEstadoCuenta,
   resumenTerminacion,
@@ -451,6 +452,46 @@ export class ContratoService {
     return resultado;
   }
 
+  /**
+   * Cancela un contrato PROGRAMADO (creado por error) sin borrar nada: el
+   * contrato, su código de acceso y sus documentos se conservan. Un contrato
+   * CANCELADO no cuenta para el traslape ni se activa.
+   */
+  async cancelarProgramado(id: string, arrendadorId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const existente = await tx.contrato.findFirst({
+        where: { id, unidad: { inmueble: { arrendador_id: arrendadorId } } },
+        select: { id: true },
+      });
+      if (!existente) {
+        throw new NotFoundException('Contrato no encontrado.');
+      }
+
+      const resultado = await tx.contrato.updateMany({
+        where: { id, estado: EstadoContrato.PROGRAMADO },
+        data: { estado: EstadoContrato.CANCELADO, cancelado_en: new Date() },
+      });
+      if (resultado.count === 0) {
+        const actual = await tx.contrato.findUniqueOrThrow({
+          where: { id },
+          select: { estado: true },
+        });
+        throw new ConflictException({
+          codigo: 'CONTRATO_NO_PROGRAMADO',
+          mensaje:
+            actual.estado === EstadoContrato.CANCELADO
+              ? 'El contrato ya está cancelado.'
+              : 'Solo un contrato programado se puede cancelar por aquí; un contrato activo termina por terminación anticipada o al vencer.',
+        });
+      }
+
+      return tx.contrato.findUniqueOrThrow({
+        where: { id },
+        omit: { pdf_contrato_ruta: true },
+      });
+    });
+  }
+
   async regenerarCodigo(id: string, arrendadorId: string) {
     const contrato = await this.prisma.contrato.findFirst({
       where: {
@@ -556,12 +597,72 @@ export class ContratoService {
       throw new NotFoundException('Inquilino no encontrado');
     }
 
+    // B-41: con fecha de inicio futura el contrato nace PROGRAMADO y no
+    // bloquea la unidad; el cron diario lo activa cuando llega su fecha.
+    const estadoInicial =
+      dto.fecha_inicio.getTime() > hoyEnBogota().getTime()
+        ? EstadoContrato.PROGRAMADO
+        : EstadoContrato.ACTIVO;
+
     let contratoCreado: Prisma.ContratoGetPayload<object> | undefined;
 
     try {
       for (let intento = 1; intento <= 5; intento += 1) {
         try {
           contratoCreado = await this.prisma.$transaction(async (tx) => {
+            // Bloquea la fila de la unidad: el índice único solo cubre los
+            // ACTIVO, así que dos creaciones simultáneas de contratos
+            // PROGRAMADO traslapados se serializan aquí.
+            await tx.$queryRaw`SELECT id FROM "Unidad" WHERE id = ${dto.unidad_id}::uuid FOR UPDATE`;
+            const existentes = await tx.contrato.findMany({
+              where: {
+                unidad_id: dto.unidad_id,
+                estado: {
+                  in: [EstadoContrato.ACTIVO, EstadoContrato.PROGRAMADO],
+                },
+              },
+              select: {
+                estado: true,
+                fecha_inicio: true,
+                fecha_fin: true,
+                terminacion_fecha_efectiva: true,
+                terminacionAnticipadaConfirmadaEn: true,
+              },
+            });
+            const choque = buscarTraslape(
+              { inicio: dto.fecha_inicio, fin: dto.fecha_fin },
+              existentes.map((existente) => ({
+                estado: existente.estado,
+                inicio: existente.fecha_inicio,
+                fin: existente.fecha_fin,
+                terminacion_fecha_efectiva:
+                  existente.terminacion_fecha_efectiva,
+                confirmada:
+                  existente.terminacionAnticipadaConfirmadaEn !== null,
+              })),
+            );
+            if (choque) {
+              // Compatibilidad: un contrato nuevo ACTIVO sobre uno ACTIVO
+              // conserva el error de siempre.
+              if (
+                estadoInicial === EstadoContrato.ACTIVO &&
+                choque.estado === EstadoContrato.ACTIVO
+              ) {
+                throw new ConflictException(
+                  'Esta unidad ya tiene un contrato activo',
+                );
+              }
+              throw new ConflictException({
+                codigo: 'TRASLAPE_DE_CONTRATOS',
+                mensaje:
+                  'Las fechas se traslapan con otro contrato de esta unidad. El siguiente contrato debe empezar después del último día del anterior.',
+                detalles: {
+                  fecha_inicio: choque.inicio.toISOString().slice(0, 10),
+                  fecha_fin: choque.fin.toISOString().slice(0, 10),
+                },
+              });
+            }
+
             const contrato = await tx.contrato.create({
               data: {
                 arrendador_id: arrendadorId,
@@ -577,7 +678,7 @@ export class ContratoService {
                 condicionesParticularesTexto: dto.condicionesParticularesTexto,
                 fecha_inicio: dto.fecha_inicio,
                 fecha_fin: dto.fecha_fin,
-                estado: EstadoContrato.ACTIVO,
+                estado: estadoInicial,
               },
             });
 

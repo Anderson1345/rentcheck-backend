@@ -14,6 +14,7 @@ import {
   construirRespuestaEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import {
   fechaFinParaEstadoCuenta,
   resumenTerminacion,
@@ -45,6 +46,18 @@ export class InquilinoPanelService {
       throw new NotFoundException(
         'El inquilino autenticado no tiene ningún contrato.',
       );
+    }
+
+    // Un contrato PROGRAMADO aún no empieza: no está finalizado ni muestra
+    // datos de recaudo.
+    if (contrato.estado === EstadoContrato.PROGRAMADO) {
+      return {
+        contratoFinalizado: false,
+        programado: true,
+        estado: contrato.estado,
+        fecha_inicio: contrato.fecha_inicio,
+        fecha_fin: contrato.fecha_fin,
+      };
     }
 
     if (contrato.estado !== EstadoContrato.ACTIVO) {
@@ -101,6 +114,8 @@ export class InquilinoPanelService {
 
     return {
       contratoId: contrato.id,
+      estado: contrato.estado,
+      programado: contrato.estado === EstadoContrato.PROGRAMADO,
       canon_centavos: contrato.canon_centavos,
       dia_pago: contrato.dia_pago,
       forma_pago: contrato.forma_pago,
@@ -206,18 +221,15 @@ export class InquilinoPanelService {
   private async resolverContrato(
     inquilinoId: string,
   ): Promise<ContratoPanel | null> {
-    const donde = { inquilino_id: inquilinoId };
-
-    return (
-      (await this.prisma.contrato.findFirst({
-        where: { ...donde, estado: EstadoContrato.ACTIVO },
-        include: INCLUDE_CONTRATO_PANEL,
-      })) ??
-      (await this.prisma.contrato.findFirst({
-        where: donde,
-        orderBy: { creado_en: 'desc' },
-        include: INCLUDE_CONTRATO_PANEL,
-      }))
-    );
+    const id = await resolverIdContratoDelInquilino(this.prisma, {
+      inquilino_id: inquilinoId,
+    });
+    if (!id) {
+      return null;
+    }
+    return this.prisma.contrato.findUnique({
+      where: { id },
+      include: INCLUDE_CONTRATO_PANEL,
+    });
   }
 }

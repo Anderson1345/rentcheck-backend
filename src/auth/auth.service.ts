@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { EstadoContrato } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CompletarRegistroInquilinoDto } from './dto/completar-registro-inquilino.dto';
@@ -63,6 +64,20 @@ export class AuthService {
     return this.crearRespuestaAutenticacion(arrendador);
   }
 
+  /**
+   * Un contrato PROGRAMADO ya se puede vincular (para ver el contrato y el
+   * inventario); uno CANCELADO no.
+   */
+  private validarContratoNoCancelado(estado: EstadoContrato): void {
+    if (estado === EstadoContrato.CANCELADO) {
+      throw new ConflictException({
+        codigo: 'CONTRATO_CANCELADO',
+        mensaje:
+          'Este contrato fue cancelado; el código de acceso ya no es válido.',
+      });
+    }
+  }
+
   async validarCodigoAccesoInquilino(dto: ValidarCodigoAccesoDto) {
     const codigoAcceso = await this.prisma.codigoAcceso.findUnique({
       where: { codigo: dto.codigo },
@@ -78,12 +93,14 @@ export class AuthService {
         unidad: {
           select: { nombre: true, inmueble: { select: { direccion: true } } },
         },
+        contrato: { select: { estado: true } },
       },
     });
 
     if (!codigoAcceso) {
       throw new NotFoundException('Código de acceso no válido');
     }
+    this.validarContratoNoCancelado(codigoAcceso.contrato.estado);
 
     if (
       codigoAcceso.inquilino.correo !== null &&
@@ -110,12 +127,14 @@ export class AuthService {
         inquilino: {
           select: { id: true, correo: true, contrasena_hash: true },
         },
+        contrato: { select: { estado: true } },
       },
     });
 
     if (!codigoAcceso) {
       throw new NotFoundException('Código de acceso no válido');
     }
+    this.validarContratoNoCancelado(codigoAcceso.contrato.estado);
 
     if (
       codigoAcceso.inquilino.correo !== null &&

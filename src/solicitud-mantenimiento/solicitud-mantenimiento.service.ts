@@ -12,6 +12,7 @@ import {
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { calcularHuellaSolicitud } from '../common/huella-idempotencia.util';
+import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import {
   IdempotenciaService,
   ParametrosClave,
@@ -65,16 +66,13 @@ export class SolicitudMantenimientoService {
       unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
     };
 
-    const contrato =
-      (await this.prisma.contrato.findFirst({
-        where: { ...donde, estado: EstadoContrato.ACTIVO },
-        include,
-      })) ??
-      (await this.prisma.contrato.findFirst({
-        where: donde,
-        orderBy: { creado_en: 'desc' },
-        include,
-      }));
+    const contratoId = await resolverIdContratoDelInquilino(this.prisma, donde);
+    const contrato = contratoId
+      ? await this.prisma.contrato.findUnique({
+          where: { id: contratoId },
+          include,
+        })
+      : null;
 
     if (!contrato) {
       throw new NotFoundException(
@@ -83,9 +81,13 @@ export class SolicitudMantenimientoService {
     }
 
     if (contrato.estado !== EstadoContrato.ACTIVO) {
-      throw new ConflictException(
-        'No puedes crear solicitudes de mantenimiento, tu contrato ya no está activo.',
-      );
+      throw new ConflictException({
+        codigo: 'CONTRATO_NO_ACTIVO',
+        mensaje:
+          contrato.estado === EstadoContrato.PROGRAMADO
+            ? 'No puedes crear solicitudes de mantenimiento todavía: tu contrato aún no está activo.'
+            : 'No puedes crear solicitudes de mantenimiento, tu contrato ya no está activo.',
+      });
     }
 
     let reclamoId: string | undefined;

@@ -323,7 +323,12 @@ export class InmuebleService {
 
       if (cambiaTipo || cambiaUso) {
         const contratosActivos = await tx.contrato.count({
-          where: { unidad_id: unidadId, estado: EstadoContrato.ACTIVO },
+          where: {
+            unidad_id: unidadId,
+            estado: {
+              in: [EstadoContrato.ACTIVO, EstadoContrato.PROGRAMADO],
+            },
+          },
         });
         if (contratosActivos > 0) {
           throw new ConflictException({

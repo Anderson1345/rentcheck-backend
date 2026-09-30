@@ -4,6 +4,7 @@ import {
   EstadoContrato,
   EstadoPagoContrato,
   EstadoSolicitudMantenimiento,
+  Prisma,
   TipoAlerta,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -40,7 +41,24 @@ export class AlertaSchedulerService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Único cron de estados del contrato. El orden importa: primero terminan
+   * las terminaciones anticipadas cuya fecha llegó, luego vencen los contratos
+   * cuya fecha de fin pasó y por último se activan los programados, de modo
+   * que un contrato pueda terminar y el siguiente activarse en la misma corrida.
+   */
   @Cron('55 23 * * *')
+  async ejecutarTransicionesDeEstado(hoy: Date = hoyEnBogota()): Promise<{
+    terminaciones: { aplicadas: number };
+    vencimientos: { actualizados: number };
+    activaciones: { activados: number; vencidos: number; pendientes: number };
+  }> {
+    const terminaciones = await this.ejecutarTerminacionesProgramadas(hoy);
+    const vencimientos = await this.ejecutarTransicionVencimiento();
+    const activaciones = await this.ejecutarActivacionContratosProgramados(hoy);
+    return { terminaciones, vencimientos, activaciones };
+  }
+
   async ejecutarTransicionVencimiento(): Promise<{ actualizados: number }> {
     const resultado = await this.prisma.contrato.updateMany({
       where: {
@@ -64,7 +82,6 @@ export class AlertaSchedulerService {
    * llegó: el contrato pasa a TERMINADO_ANTICIPADAMENTE y se recalcula su
    * estado de pago. Idempotente: la escritura es condicional al estado ACTIVO.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async ejecutarTerminacionesProgramadas(
     hoy: Date = hoyEnBogota(),
   ): Promise<{ aplicadas: number }> {
@@ -104,6 +121,83 @@ export class AlertaSchedulerService {
       `Cron de terminaciones programadas: ${aplicadas} contrato(s) pasado(s) a TERMINADO_ANTICIPADAMENTE.`,
     );
     return { aplicadas };
+  }
+
+  /**
+   * Activa los contratos PROGRAMADO cuya fecha de inicio llegó (escritura
+   * condicional al estado PROGRAMADO y recálculo del estado de pago). Si el
+   * contrato anterior de la unidad sigue ACTIVO el índice único lo impide: no
+   * falla, queda PROGRAMADO y se reintenta en la próxima corrida. Uno cuya
+   * fecha de fin ya pasó sin haberse activado pasa a VENCIDO. Idempotente.
+   */
+  async ejecutarActivacionContratosProgramados(
+    hoy: Date = hoyEnBogota(),
+  ): Promise<{ activados: number; vencidos: number; pendientes: number }> {
+    const candidatos = await this.prisma.contrato.findMany({
+      where: {
+        estado: EstadoContrato.PROGRAMADO,
+        fecha_inicio: { lte: hoy },
+      },
+      select: { id: true, fecha_fin: true },
+      orderBy: { fecha_inicio: 'asc' },
+    });
+
+    let activados = 0;
+    let vencidos = 0;
+    let pendientes = 0;
+    for (const { id, fecha_fin } of candidatos) {
+      if (fecha_fin.getTime() < hoy.getTime()) {
+        const vencido = await this.prisma.contrato.updateMany({
+          where: {
+            id,
+            estado: EstadoContrato.PROGRAMADO,
+            fecha_fin: { lt: hoy },
+          },
+          data: { estado: EstadoContrato.VENCIDO },
+        });
+        vencidos += vencido.count;
+        continue;
+      }
+
+      try {
+        const activado = await this.prisma.$transaction(async (tx) => {
+          const resultado = await tx.contrato.updateMany({
+            where: {
+              id,
+              estado: EstadoContrato.PROGRAMADO,
+              fecha_inicio: { lte: hoy },
+              fecha_fin: { gte: hoy },
+            },
+            data: { estado: EstadoContrato.ACTIVO },
+          });
+          if (resultado.count === 0) {
+            return false;
+          }
+          await recalcularEstadoPagoContrato(tx, id, hoy);
+          return true;
+        });
+        if (activado) {
+          activados += 1;
+        }
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          pendientes += 1;
+          this.logger.warn(
+            `El contrato programado ${id} no se activó: la unidad aún tiene un contrato ACTIVO. Se reintenta en la próxima corrida.`,
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    this.logger.log(
+      `Cron de activación: ${activados} contrato(s) activado(s), ${vencidos} vencido(s) sin activarse, ${pendientes} pendiente(s).`,
+    );
+    return { activados, vencidos, pendientes };
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)

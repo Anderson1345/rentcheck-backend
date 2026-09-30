@@ -118,6 +118,20 @@ export class PagoService {
       );
     }
 
+    // Un contrato PROGRAMADO (aún no empieza) o CANCELADO no admite pagos.
+    if (
+      contrato.estado === EstadoContrato.PROGRAMADO ||
+      contrato.estado === EstadoContrato.CANCELADO
+    ) {
+      throw new ConflictException({
+        codigo: 'CONTRATO_NO_ACTIVO',
+        mensaje:
+          contrato.estado === EstadoContrato.PROGRAMADO
+            ? `Tu contrato aún no está activo (empieza el ${contrato.fecha_inicio.toISOString().slice(0, 10)}); todavía no puedes reportar pagos.`
+            : 'Este contrato fue cancelado; no puedes reportar pagos.',
+      });
+    }
+
     // B-39: no se puede reportar un pago anterior al inicio del contrato.
     if (dto.fecha_reportada.getTime() < contrato.fecha_inicio.getTime()) {
       throw new BadRequestException({

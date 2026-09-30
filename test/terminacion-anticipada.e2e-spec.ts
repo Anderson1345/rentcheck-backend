@@ -400,10 +400,13 @@ describe('Terminación anticipada por mutuo acuerdo (e2e)', () => {
     expect(deInquilino.status).toBe(SOLICITUD_INVALIDA);
     expect(codigo(deInquilino)).toBe('FECHA_EFECTIVA_INVALIDA');
 
-    // Contrato que aún no empieza: la fecha no puede ser anterior al inicio.
-    const futuro = await preparar({
-      inicio: sumarDiasUTC(hoy, 30),
-      fin: sumarMesesUTC(hoy, 12),
+    // Un ACTIVO siempre empezó; si por datos su inicio fuera futuro, la fecha
+    // efectiva no puede ser anterior a él. (Un contrato con inicio futuro nace
+    // PROGRAMADO y no admite terminación: B-41.)
+    const futuro = await preparar();
+    await prisma.contrato.update({
+      where: { id: futuro.contratoId },
+      data: { fecha_inicio: sumarDiasUTC(hoy, 30) },
     });
     const antesDelInicio = await solicitarArr(
       futuro.arr,

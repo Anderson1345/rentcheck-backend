@@ -107,6 +107,8 @@ enum EstadoContrato {
   VENCIDO
   PROXIMO_A_VENCER
   TERMINADO_ANTICIPADAMENTE
+  PROGRAMADO
+  CANCELADO
 }
 
 enum RolSolicitante {
@@ -150,6 +152,7 @@ model Contrato {
   terminacionAnticipadaConfirmadaEn  DateTime?
   terminacion_fecha_efectiva         DateTime?     @db.Date
   terminacion_confirmada_por         RolSolicitante?
+  cancelado_en                       DateTime?
   incrementos_ipc       IncrementoIPC[]
   prorrogas             Prorroga[]
   documentos            DocumentoContrato[]

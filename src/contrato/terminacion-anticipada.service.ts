@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
+import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import { resumenTerminacion } from '../common/terminacion.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -62,23 +63,15 @@ export class TerminacionAnticipadaService {
 
   /** Contrato del inquilino autenticado: el activo o, si no hay, el último. */
   async resolverContratoDelInquilino(inquilinoId: string): Promise<string> {
-    const donde = { inquilino_id: inquilinoId };
-    const contrato =
-      (await this.prisma.contrato.findFirst({
-        where: { ...donde, estado: EstadoContrato.ACTIVO },
-        select: { id: true },
-      })) ??
-      (await this.prisma.contrato.findFirst({
-        where: donde,
-        orderBy: { creado_en: 'desc' },
-        select: { id: true },
-      }));
-    if (!contrato) {
+    const id = await resolverIdContratoDelInquilino(this.prisma, {
+      inquilino_id: inquilinoId,
+    });
+    if (!id) {
       throw new NotFoundException(
         'El inquilino autenticado no tiene ningún contrato.',
       );
     }
-    return contrato.id;
+    return id;
   }
 
   private async respuesta(

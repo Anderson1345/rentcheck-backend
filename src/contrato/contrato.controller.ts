@@ -187,6 +187,24 @@ export class ContratoController {
     return this.documentoContratoService.regenerar(id, arrendadorId);
   }
 
+  @Post(':id/cancelar-programado')
+  @ApiOperation({
+    summary: 'Cancelar un contrato programado',
+    description:
+      'Solo un contrato PROGRAMADO (fecha de inicio futura). No borra nada: pasa a CANCELADO y su rango queda libre para nuevos contratos.',
+  })
+  @ApiCreatedResponse({ description: 'Contrato con estado CANCELADO.' })
+  @ApiNotFoundResponse({
+    description: 'Contrato no encontrado o no pertenece al arrendador.',
+  })
+  @ApiConflictResponse({ description: 'CONTRATO_NO_PROGRAMADO.' })
+  cancelarProgramado(
+    @Param('id', ParseIdPipe) id: string,
+    @ArrendadorActual() arrendadorId: string,
+  ) {
+    return this.contratoService.cancelarProgramado(id, arrendadorId);
+  }
+
   @Post(':id/regenerar-codigo')
   @ApiOperation({ summary: 'Regenerar el código de acceso de un contrato' })
   @ApiOkResponse({ description: 'Código de acceso regenerado exitosamente.' })
