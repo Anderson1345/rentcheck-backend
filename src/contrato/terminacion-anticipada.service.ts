@@ -12,6 +12,7 @@ import {
   TipoAlerta,
 } from '@prisma/client';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { resolverIdContratoDelInquilino } from '../common/resolver-contrato-inquilino';
 import { resumenTerminacion } from '../common/terminacion.util';
@@ -81,7 +82,7 @@ export class TerminacionAnticipadaService {
   ) {
     const contrato = await tx.contrato.findUniqueOrThrow({
       where: { id },
-      omit: { pdf_contrato_ruta: true },
+      omit: { pdf_contrato_ruta: true, ...OMITIR_COPIA_INQUILINO },
     });
     return {
       ...contrato,

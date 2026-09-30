@@ -130,6 +130,10 @@ model Contrato {
   unidad                Unidad                 @relation(fields: [unidad_id], references: [id])
   inquilino_id          String                @db.Uuid
   inquilino             Inquilino             @relation(fields: [inquilino_id], references: [id])
+  /// Copia de lo que el arrendador escribió del inquilino (nunca se lee del perfil global).
+  inquilino_nombre      String
+  inquilino_cedula      String
+  inquilino_telefono    String
   tipo_plantilla        TipoPlantillaContrato
   canon_centavos        Int
   dia_pago              Int

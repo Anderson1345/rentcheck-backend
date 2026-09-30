@@ -32,14 +32,22 @@ export class InquilinoController {
   constructor(private readonly inquilinoService: InquilinoService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar inquilinos del arrendador autenticado' })
+  @ApiOperation({
+    summary: 'Listar los inquilinos del arrendador autenticado',
+    description:
+      'Personas con las que tiene contrato (datos de la copia del contrato, una fila por persona) más sus fichas sueltas de POST /inquilinos. Nunca incluye el correo.',
+  })
   @ApiOkResponse({ description: 'Lista de inquilinos del arrendador.' })
   listar(@ArrendadorActual() arrendadorId: string) {
     return this.inquilinoService.listar(arrendadorId);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener un inquilino por ID' })
+  @ApiOperation({
+    summary: 'Obtener un inquilino por ID',
+    description:
+      'Devuelve los datos que el arrendador escribió (copia del contrato); 404 si no tiene relación con esa persona.',
+  })
   @ApiOkResponse({ description: 'Inquilino encontrado.' })
   @ApiNotFoundResponse({
     description: 'Inquilino no encontrado o no pertenece al arrendador.',
@@ -59,7 +67,12 @@ export class InquilinoController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Crear la ficha básica de un inquilino' })
+  @ApiOperation({
+    summary: 'Crear la ficha básica de un inquilino',
+    deprecated: true,
+    description:
+      'OBSOLETO: usa inquilino_nuevo en POST /contratos, que busca o crea la identidad por cédula sin dejar fichas sueltas.',
+  })
   @ApiCreatedResponse({
     description: 'Ficha básica del inquilino creada exitosamente.',
   })

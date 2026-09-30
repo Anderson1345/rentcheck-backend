@@ -191,10 +191,59 @@ export class SolicitudMantenimientoService {
         },
       },
     },
-    inquilino: {
-      select: { id: true, nombre: true, cedula: true, telefono: true },
-    },
   } as const;
+
+  /**
+   * Nombre, cédula y teléfono del inquilino según lo que escribió el
+   * arrendador: la copia del contrato más reciente no cancelado de esa unidad
+   * con esa persona. La solicitud no tiene `contrato_id`; si no se encuentra
+   * ningún contrato, los tres datos van en null (nunca los del perfil global).
+   */
+  private async conInquilinoDeLaCopia<
+    T extends {
+      arrendador_id: string;
+      unidad_id: string;
+      inquilino_id: string;
+    },
+  >(solicitudes: T[]) {
+    if (solicitudes.length === 0) {
+      return [];
+    }
+    const contratos = await this.prisma.contrato.findMany({
+      where: {
+        arrendador_id: solicitudes[0].arrendador_id,
+        estado: { not: EstadoContrato.CANCELADO },
+        unidad_id: { in: [...new Set(solicitudes.map((s) => s.unidad_id))] },
+        inquilino_id: {
+          in: [...new Set(solicitudes.map((s) => s.inquilino_id))],
+        },
+      },
+      orderBy: { creado_en: 'desc' },
+      select: {
+        unidad_id: true,
+        inquilino_id: true,
+        inquilino_nombre: true,
+        inquilino_cedula: true,
+        inquilino_telefono: true,
+      },
+    });
+    return solicitudes.map((solicitud) => {
+      const copia = contratos.find(
+        (c) =>
+          c.unidad_id === solicitud.unidad_id &&
+          c.inquilino_id === solicitud.inquilino_id,
+      );
+      return {
+        ...solicitud,
+        inquilino: {
+          id: solicitud.inquilino_id,
+          nombre: copia?.inquilino_nombre ?? null,
+          cedula: copia?.inquilino_cedula ?? null,
+          telefono: copia?.inquilino_telefono ?? null,
+        },
+      };
+    });
+  }
 
   async listar(
     arrendadorId: string,
@@ -211,7 +260,11 @@ export class SolicitudMantenimientoService {
       orderBy: [{ urgencia: 'desc' }, { creado_en: 'desc' }],
     });
 
-    return Promise.all(solicitudes.map((s) => this.exponerUrlFirmada(s)));
+    return Promise.all(
+      (await this.conInquilinoDeLaCopia(solicitudes)).map((s) =>
+        this.exponerUrlFirmada(s),
+      ),
+    );
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
@@ -224,7 +277,8 @@ export class SolicitudMantenimientoService {
         'Solicitud de mantenimiento no encontrada o no pertenece al arrendador autenticado.',
       );
     }
-    return this.exponerUrlFirmada(solicitud);
+    const [conCopia] = await this.conInquilinoDeLaCopia([solicitud]);
+    return this.exponerUrlFirmada(conCopia);
   }
 
   async actualizarEstado(
@@ -276,7 +330,8 @@ export class SolicitudMantenimientoService {
       });
     });
 
-    return this.exponerUrlFirmada(actualizada);
+    const [conCopia] = await this.conInquilinoDeLaCopia([actualizada]);
+    return this.exponerUrlFirmada(conCopia);
   }
 
   private async exponerUrlFirmada<T extends { adjunto_ruta: string | null }>(

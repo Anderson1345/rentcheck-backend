@@ -24,6 +24,12 @@ import {
 import { sumarDiasUTC, sumarMesesUTC } from '../common/fechas-contrato.util';
 import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import {
+  conInquilinoDeLaCopia,
+  conInquilinoResumido,
+  OMITIR_COPIA_INQUILINO,
+} from '../common/inquilino-copia';
+import { normalizarYValidarCedula } from '../common/utils/normalizar-cedula';
 import { buscarTraslape } from '../common/traslape.util';
 import { aplicarProrroga, mesesDelTerminoInicial } from './aplicar-prorroga';
 import {
@@ -66,13 +72,6 @@ const SELECT_INMUEBLE_RESUMEN = {
   matricula_inmobiliaria: true,
   creado_en: true,
 } as const satisfies Prisma.InmuebleSelect;
-
-const SELECT_INQUILINO_RESUMEN = {
-  id: true,
-  nombre: true,
-  cedula: true,
-  telefono: true,
-} as const satisfies Prisma.InquilinoSelect;
 
 @Injectable()
 export class ContratoService {
@@ -142,12 +141,6 @@ export class ContratoService {
             tipo: true,
           },
         },
-        inquilino: {
-          select: {
-            id: true,
-            nombre: true,
-          },
-        },
         codigo_acceso: {
           select: { codigo: true },
         },
@@ -155,7 +148,9 @@ export class ContratoService {
       orderBy: { fecha_inicio: 'desc' },
     });
 
-    return Promise.all(contratos.map((c) => this.exponerUrlFirmada(c)));
+    return Promise.all(
+      contratos.map((c) => this.exponerUrlFirmada(conInquilinoResumido(c))),
+    );
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
@@ -168,7 +163,6 @@ export class ContratoService {
       },
       include: {
         unidad: true,
-        inquilino: { select: SELECT_INQUILINO_RESUMEN },
         incrementos_ipc: true,
         aviso_no_renovacion: true,
         codigo_acceso: {
@@ -181,7 +175,7 @@ export class ContratoService {
       return null;
     }
     return {
-      ...(await this.exponerUrlFirmada(contrato)),
+      ...(await this.exponerUrlFirmada(conInquilinoDeLaCopia(contrato))),
       aviso_no_renovacion: resumenAvisoNoRenovacion(
         contrato.aviso_no_renovacion,
         contrato,
@@ -344,7 +338,7 @@ export class ContratoService {
       return {
         contrato: await tx.contrato.findUniqueOrThrow({
           where: { id },
-          omit: { pdf_contrato_ruta: true },
+          omit: { pdf_contrato_ruta: true, ...OMITIR_COPIA_INQUILINO },
         }),
         incremento_ipc: incremento,
       };
@@ -434,7 +428,7 @@ export class ContratoService {
       return {
         contrato: await tx.contrato.findUniqueOrThrow({
           where: { id },
-          omit: { pdf_contrato_ruta: true },
+          omit: { pdf_contrato_ruta: true, ...OMITIR_COPIA_INQUILINO },
         }),
         prorroga,
       };
@@ -479,7 +473,7 @@ export class ContratoService {
 
       return tx.contrato.findUniqueOrThrow({
         where: { id },
-        omit: { pdf_contrato_ruta: true },
+        omit: { pdf_contrato_ruta: true, ...OMITIR_COPIA_INQUILINO },
       });
     });
   }
@@ -529,7 +523,55 @@ export class ContratoService {
     );
   }
 
+  /**
+   * Datos del inquilino que el arrendador escribió para `inquilino_id`: la
+   * copia de su contrato más reciente con esa persona o, si solo hay una ficha
+   * legada de `POST /inquilinos` (`arrendador_id` = él), los de la ficha.
+   * Cualquier otro caso es "no encontrado" (igual que un id inexistente).
+   */
+  private async resolverInquilinoPorId(
+    inquilinoId: string,
+    arrendadorId: string,
+  ) {
+    const anterior = await this.prisma.contrato.findFirst({
+      where: { arrendador_id: arrendadorId, inquilino_id: inquilinoId },
+      orderBy: { creado_en: 'desc' },
+      select: {
+        inquilino_nombre: true,
+        inquilino_cedula: true,
+        inquilino_telefono: true,
+      },
+    });
+    if (anterior) {
+      return {
+        nombre: anterior.inquilino_nombre,
+        cedula: anterior.inquilino_cedula,
+        telefono: anterior.inquilino_telefono,
+      };
+    }
+    const ficha = await this.prisma.inquilino.findFirst({
+      where: { id: inquilinoId, arrendador_id: arrendadorId },
+      select: { nombre: true, cedula: true, telefono: true },
+    });
+    if (!ficha) {
+      throw new NotFoundException('Inquilino no encontrado');
+    }
+    return ficha;
+  }
+
   async crear(dto: CrearContratoDto, arrendadorId: string) {
+    if (dto.inquilino_id && dto.inquilino_nuevo) {
+      throw new BadRequestException({
+        codigo: 'INQUILINO_AMBIGUO',
+        mensaje: 'Envía inquilino_id o inquilino_nuevo, no los dos.',
+      });
+    }
+    if (!dto.inquilino_id && !dto.inquilino_nuevo) {
+      throw new BadRequestException({
+        codigo: 'INQUILINO_REQUERIDO',
+        mensaje: 'Debes indicar inquilino_id o inquilino_nuevo.',
+      });
+    }
     const depositoCentavos = dto.deposito_centavos || null;
     if (
       dto.tipo_plantilla === TipoPlantillaContrato.VIVIENDA_URBANA_LEY_820 &&
@@ -582,11 +624,21 @@ export class ContratoService {
       });
     }
 
-    const inquilino = await this.prisma.inquilino.findFirst({
-      where: { id: dto.inquilino_id, arrendador_id: arrendadorId },
-    });
-    if (!inquilino) {
-      throw new NotFoundException('Inquilino no encontrado');
+    // Datos que escribió el arrendador: se guardan como copia en el contrato.
+    let datosInquilino: { nombre: string; cedula: string; telefono: string };
+    let cedulaNueva: string | null = null;
+    if (dto.inquilino_nuevo) {
+      cedulaNueva = normalizarYValidarCedula(dto.inquilino_nuevo.cedula);
+      datosInquilino = {
+        nombre: dto.inquilino_nuevo.nombre.trim(),
+        cedula: cedulaNueva,
+        telefono: dto.inquilino_nuevo.telefono.trim(),
+      };
+    } else {
+      datosInquilino = await this.resolverInquilinoPorId(
+        dto.inquilino_id ?? '',
+        arrendadorId,
+      );
     }
 
     // B-41: con fecha de inicio futura el contrato nace PROGRAMADO y no
@@ -655,11 +707,39 @@ export class ContratoService {
               });
             }
 
+            // Identidad global de la persona: con inquilino_nuevo se busca por
+            // cédula normalizada y, si no existe, se crea con skipDuplicates
+            // (un create directo con P2002 dejaría inservible la transacción).
+            // Si existe se reutiliza SIN modificar su nombre ni su teléfono.
+            let inquilinoId = dto.inquilino_id ?? '';
+            if (cedulaNueva !== null) {
+              await tx.inquilino.createMany({
+                data: [
+                  {
+                    nombre: datosInquilino.nombre,
+                    cedula: cedulaNueva,
+                    telefono: datosInquilino.telefono,
+                    arrendador_id: null,
+                  },
+                ],
+                skipDuplicates: true,
+              });
+              inquilinoId = (
+                await tx.inquilino.findUniqueOrThrow({
+                  where: { cedula: cedulaNueva },
+                  select: { id: true },
+                })
+              ).id;
+            }
+
             const contrato = await tx.contrato.create({
               data: {
                 arrendador_id: arrendadorId,
                 unidad_id: dto.unidad_id,
-                inquilino_id: dto.inquilino_id,
+                inquilino_id: inquilinoId,
+                inquilino_nombre: datosInquilino.nombre,
+                inquilino_cedula: datosInquilino.cedula,
+                inquilino_telefono: datosInquilino.telefono,
                 tipo_plantilla: dto.tipo_plantilla,
                 canon_centavos: dto.canon_centavos,
                 dia_pago: dto.dia_pago,
@@ -679,7 +759,7 @@ export class ContratoService {
                 codigo: this.generarCodigoAcceso(),
                 contrato_id: contrato.id,
                 unidad_id: dto.unidad_id,
-                inquilino_id: dto.inquilino_id,
+                inquilino_id: inquilinoId,
               },
             });
 
@@ -726,16 +806,17 @@ export class ContratoService {
     await this.documentos.generarSinPropagarErrores(contratoConfirmado.id);
 
     return this.exponerUrlFirmada(
-      await this.prisma.contrato.findUniqueOrThrow({
-        where: { id: contratoConfirmado.id },
-        include: {
-          codigo_acceso: true,
-          unidad: {
-            include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
+      conInquilinoDeLaCopia(
+        await this.prisma.contrato.findUniqueOrThrow({
+          where: { id: contratoConfirmado.id },
+          include: {
+            codigo_acceso: true,
+            unidad: {
+              include: { inmueble: { select: SELECT_INMUEBLE_RESUMEN } },
+            },
           },
-          inquilino: { select: SELECT_INQUILINO_RESUMEN },
-        },
-      }),
+        }),
+      ),
     );
   }
 }

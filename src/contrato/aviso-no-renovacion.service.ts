@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Cómo se localiza el contrato de quien actúa (pertenencia, nunca por rol). */
@@ -73,7 +74,7 @@ export class AvisoNoRenovacionService {
   ) {
     const contrato = await tx.contrato.findUniqueOrThrow({
       where: { id: contratoId },
-      omit: { pdf_contrato_ruta: true },
+      omit: { pdf_contrato_ruta: true, ...OMITIR_COPIA_INQUILINO },
     });
     const aviso = await tx.avisoNoRenovacion.findUnique({
       where: { contrato_id: contratoId },

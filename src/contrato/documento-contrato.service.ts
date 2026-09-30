@@ -32,7 +32,9 @@ const SELECT_CONTRATO_PARA_DOCUMENTOS = {
       inmueble: { select: { direccion: true, ciudad: true } },
     },
   },
-  inquilino: { select: { nombre: true, cedula: true } },
+  // El contrato se firma con lo que el arrendador escribió (la copia), no con el perfil global.
+  inquilino_nombre: true,
+  inquilino_cedula: true,
   arrendador: { select: { nombre: true, cedula: true } },
   incrementos_ipc: {
     select: {
@@ -287,9 +289,13 @@ export class DocumentoContratoService {
   private construirPendientes(
     contrato: ContratoParaDocumentos,
   ): DocumentoPendiente[] {
+    const inquilino = {
+      nombre: contrato.inquilino_nombre,
+      cedula: contrato.inquilino_cedula,
+    };
     const datosBase = {
       arrendador: contrato.arrendador,
-      inquilino: contrato.inquilino,
+      inquilino,
       unidad: contrato.unidad,
       fecha_inicio: contrato.fecha_inicio,
     };
@@ -306,7 +312,7 @@ export class DocumentoContratoService {
         vinculo: {},
         construirTexto: (ahora) =>
           construirTextoContrato(
-            contrato,
+            { ...contrato, inquilino },
             terminosOriginales(
               contrato,
               contrato.incrementos_ipc,

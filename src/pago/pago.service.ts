@@ -14,6 +14,11 @@ import {
   PeriodoEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import {
+  conInquilinoDeLaCopia,
+  CopiaInquilino,
+  SELECT_COPIA_INQUILINO,
+} from '../common/inquilino-copia';
 import { fechaFinParaEstadoCuenta } from '../common/terminacion.util';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { calcularHuellaPago } from '../common/huella-idempotencia.util';
@@ -33,7 +38,7 @@ function mismoMesUTC(a: Date, b: Date): boolean {
 @Injectable()
 export class PagoService {
   private readonly logger = new Logger(PagoService.name);
-  private readonly INCLUDE_PAGO: Prisma.PagoInclude = {
+  private readonly INCLUDE_PAGO = {
     contrato: {
       select: {
         id: true,
@@ -52,12 +57,20 @@ export class PagoService {
             },
           },
         },
-        inquilino: {
-          select: { id: true, nombre: true, cedula: true, telefono: true },
-        },
+        // Nombre, cédula y teléfono del inquilino: la copia del contrato.
+        ...SELECT_COPIA_INQUILINO,
       },
     },
-  };
+  } as const satisfies Prisma.PagoInclude;
+
+  /** Arma `contrato.inquilino` con la copia del contrato (sin `inquilino_id` suelto). */
+  private conInquilinoDeLaCopia<T extends { contrato: CopiaInquilino }>(
+    pago: T,
+  ) {
+    const { inquilino_id, ...contrato } = conInquilinoDeLaCopia(pago.contrato);
+    void inquilino_id;
+    return { ...pago, contrato };
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -311,7 +324,9 @@ export class PagoService {
       orderBy: { fecha_reportada: 'desc' },
     });
 
-    return Promise.all(pagos.map((p) => this.exponerUrlFirmada(p)));
+    return Promise.all(
+      pagos.map((p) => this.exponerUrlFirmada(this.conInquilinoDeLaCopia(p))),
+    );
   }
 
   async listarMios(inquilinoId: string) {
@@ -323,7 +338,9 @@ export class PagoService {
       orderBy: { fecha_reportada: 'desc' },
     });
 
-    return Promise.all(pagos.map((p) => this.exponerUrlFirmada(p)));
+    return Promise.all(
+      pagos.map((p) => this.exponerUrlFirmada(this.conInquilinoDeLaCopia(p))),
+    );
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
@@ -338,7 +355,7 @@ export class PagoService {
       );
     }
 
-    return this.exponerUrlFirmada(pago);
+    return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pago));
   }
 
   async aprobar(id: string, arrendadorId: string) {
@@ -347,7 +364,7 @@ export class PagoService {
       arrendadorId,
       EstadoPago.APROBADO,
     );
-    return this.exponerUrlFirmada(pagoActualizado);
+    return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pagoActualizado));
   }
 
   async rechazar(id: string, arrendadorId: string) {
@@ -356,7 +373,7 @@ export class PagoService {
       arrendadorId,
       EstadoPago.RECHAZADO,
     );
-    return this.exponerUrlFirmada(pagoActualizado);
+    return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pagoActualizado));
   }
 
   private async ejecutarTransicionPago(
