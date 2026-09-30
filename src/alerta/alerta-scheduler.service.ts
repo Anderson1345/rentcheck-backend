@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { calcularEstadoCuenta } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
+import { fechaFinParaEstadoCuenta } from '../common/terminacion.util';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
   fecha_aplicacion: true,
@@ -56,6 +57,53 @@ export class AlertaSchedulerService {
     );
 
     return { actualizados: resultado.count };
+  }
+
+  /**
+   * Aplica las terminaciones anticipadas ya confirmadas cuya fecha efectiva
+   * llegó: el contrato pasa a TERMINADO_ANTICIPADAMENTE y se recalcula su
+   * estado de pago. Idempotente: la escritura es condicional al estado ACTIVO.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async ejecutarTerminacionesProgramadas(
+    hoy: Date = hoyEnBogota(),
+  ): Promise<{ aplicadas: number }> {
+    const candidatos = await this.prisma.contrato.findMany({
+      where: {
+        estado: EstadoContrato.ACTIVO,
+        terminacionAnticipadaConfirmadaEn: { not: null },
+        terminacion_fecha_efectiva: { lte: hoy },
+      },
+      select: { id: true },
+    });
+
+    let aplicadas = 0;
+    for (const { id } of candidatos) {
+      const aplicada = await this.prisma.$transaction(async (tx) => {
+        const resultado = await tx.contrato.updateMany({
+          where: {
+            id,
+            estado: EstadoContrato.ACTIVO,
+            terminacionAnticipadaConfirmadaEn: { not: null },
+            terminacion_fecha_efectiva: { lte: hoy },
+          },
+          data: { estado: EstadoContrato.TERMINADO_ANTICIPADAMENTE },
+        });
+        if (resultado.count === 0) {
+          return false;
+        }
+        await recalcularEstadoPagoContrato(tx, id, hoy);
+        return true;
+      });
+      if (aplicada) {
+        aplicadas += 1;
+      }
+    }
+
+    this.logger.log(
+      `Cron de terminaciones programadas: ${aplicadas} contrato(s) pasado(s) a TERMINADO_ANTICIPADAMENTE.`,
+    );
+    return { aplicadas };
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -146,7 +194,7 @@ export class AlertaSchedulerService {
       const periodos = calcularEstadoCuenta(
         {
           fecha_inicio: contrato.fecha_inicio,
-          fecha_fin: contrato.fecha_fin,
+          fecha_fin: fechaFinParaEstadoCuenta(contrato),
           dia_pago: contrato.dia_pago,
           canon_centavos: contrato.canon_centavos,
         },

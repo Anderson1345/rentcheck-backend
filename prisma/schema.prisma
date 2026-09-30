@@ -148,6 +148,8 @@ model Contrato {
   terminacionAnticipadaSolicitadaEn  DateTime?
   terminacionAnticipadaMotivo        String?
   terminacionAnticipadaConfirmadaEn  DateTime?
+  terminacion_fecha_efectiva         DateTime?     @db.Date
+  terminacion_confirmada_por         RolSolicitante?
   incrementos_ipc       IncrementoIPC[]
   prorrogas             Prorroga[]
   documentos            DocumentoContrato[]
@@ -303,6 +305,9 @@ enum TipoAlerta {
   CONTRATO_PROXIMO_A_VENCER
   RECORDATORIO_PAGO_PROXIMO
   SOLICITUD_MANTENIMIENTO_SIN_ATENDER
+  TERMINACION_ANTICIPADA_SOLICITADA
+  TERMINACION_ANTICIPADA_CANCELADA
+  TERMINACION_ANTICIPADA_CONFIRMADA
 }
 
 model Alerta {

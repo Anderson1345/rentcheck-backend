@@ -1,7 +1,1 @@
-import { IsNotEmpty, IsString } from 'class-validator';
-
-export class SolicitarTerminacionAnticipadaDto {
-  @IsString()
-  @IsNotEmpty()
-  motivo!: string;
-}
+export { SolicitarTerminacionAnticipadaDto } from '../../contrato/dto/solicitar-terminacion-anticipada.dto';

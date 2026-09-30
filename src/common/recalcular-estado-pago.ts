@@ -6,8 +6,12 @@ import {
   PeriodoEstadoCuenta,
 } from './estado-cuenta.util';
 import { hoyEnBogota } from './hoy-bogota.util';
+import { fechaFinParaEstadoCuenta } from './terminacion.util';
 
 const SELECT_PARA_ESTADO_CUENTA = {
+  estado: true,
+  terminacionAnticipadaConfirmadaEn: true,
+  terminacion_fecha_efectiva: true,
   fecha_inicio: true,
   fecha_fin: true,
   dia_pago: true,
@@ -47,7 +51,7 @@ export async function recalcularEstadoPagoContrato(
   const periodos = calcularEstadoCuenta(
     {
       fecha_inicio: contrato.fecha_inicio,
-      fecha_fin: contrato.fecha_fin,
+      fecha_fin: fechaFinParaEstadoCuenta(contrato),
       dia_pago: contrato.dia_pago,
       canon_centavos: contrato.canon_centavos,
     },

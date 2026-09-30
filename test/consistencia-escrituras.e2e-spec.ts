@@ -4,6 +4,7 @@ import { EstadoContrato, EstadoSolicitudMantenimiento } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { hoyEnBogota } from '../src/common/hoy-bogota.util';
 import { configurarApp } from '../src/configurar-app';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
@@ -272,10 +273,19 @@ describe('Consistencia de escrituras (e2e)', () => {
         inquilino.id,
       );
 
+      // Mutuo acuerdo (B-13): solicita el inquilino y confirma el arrendador.
+      const inquilinoToken = await autenticarInquilino(
+        app,
+        contrato.codigo_acceso?.codigo ?? '',
+        `inq-term-${sufijo}@correo.com`,
+      );
       await request(app.getHttpServer())
-        .post(`/contratos/${contrato.id}/solicitar-terminacion-anticipada`)
-        .set('Authorization', `Bearer ${access_token}`)
-        .send({ motivo: 'El inquilino se muda de ciudad.' })
+        .post('/inquilino/mi-contrato/solicitar-terminacion-anticipada')
+        .set('Authorization', `Bearer ${inquilinoToken}`)
+        .send({
+          motivo: 'El inquilino se muda de ciudad.',
+          fecha_efectiva: hoyEnBogota().toISOString().slice(0, 10),
+        })
         .expect(HttpStatus.CREATED);
 
       return { access_token, contrato, inmueble };

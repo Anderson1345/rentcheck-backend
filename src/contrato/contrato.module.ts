@@ -5,10 +5,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ContratoController } from './contrato.controller';
 import { ContratoService } from './contrato.service';
 import { DocumentoContratoService } from './documento-contrato.service';
+import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
 
 @Module({
   imports: [AuthModule, AlmacenamientoModule],
   controllers: [ContratoController],
-  providers: [ContratoService, DocumentoContratoService, PrismaService],
+  providers: [
+    ContratoService,
+    DocumentoContratoService,
+    TerminacionAnticipadaService,
+    PrismaService,
+  ],
 })
 export class ContratoModule {}

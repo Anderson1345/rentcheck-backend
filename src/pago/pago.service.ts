@@ -14,6 +14,7 @@ import {
   PeriodoEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import { fechaFinParaEstadoCuenta } from '../common/terminacion.util';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { calcularHuellaPago } from '../common/huella-idempotencia.util';
 import {
@@ -129,7 +130,7 @@ export class PagoService {
     const periodos = calcularEstadoCuenta(
       {
         fecha_inicio: contrato.fecha_inicio,
-        fecha_fin: contrato.fecha_fin,
+        fecha_fin: fechaFinParaEstadoCuenta(contrato),
         dia_pago: contrato.dia_pago,
         canon_centavos: contrato.canon_centavos,
       },

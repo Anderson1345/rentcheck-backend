@@ -343,10 +343,14 @@ describe('Pagos por período (e2e)', () => {
       .periodos[0];
     expect(periodoVencido.estado).toBe('VENCIDO');
 
+    // Mutuo acuerdo (B-13): solicita el inquilino y confirma el arrendador.
     await request(app.getHttpServer())
-      .post(`/contratos/${contrato.id}/solicitar-terminacion-anticipada`)
-      .set('Authorization', `Bearer ${access_token}`)
-      .send({ motivo: 'El inquilino se muda.' })
+      .post('/inquilino/mi-contrato/solicitar-terminacion-anticipada')
+      .set('Authorization', `Bearer ${inquilinoToken}`)
+      .send({
+        motivo: 'El inquilino se muda.',
+        fecha_efectiva: formatearFechaLocal(hoy),
+      })
       .expect(HttpStatus.CREATED);
     await request(app.getHttpServer())
       .post(`/contratos/${contrato.id}/confirmar-terminacion-anticipada`)

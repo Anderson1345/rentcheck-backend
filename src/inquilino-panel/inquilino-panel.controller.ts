@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -66,17 +67,18 @@ export class InquilinoPanelController {
 
   @Post('mi-contrato/solicitar-terminacion-anticipada')
   @ApiOperation({
-    summary: 'Solicitar la terminación anticipada del contrato del inquilino',
+    summary: 'Solicitar la terminación anticipada (mutuo acuerdo)',
+    description:
+      'Requiere motivo y fecha efectiva (entre hoy y la fecha de fin, sin ser anterior al inicio). La confirma el arrendador; el inquilino puede cancelar mientras no esté confirmada.',
   })
-  @ApiOkResponse({
-    description: 'Solicitud de terminación anticipada registrada.',
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `terminacion_anticipada`.',
   })
   @ApiNotFoundResponse({
     description: 'El inquilino autenticado no tiene ningún contrato.',
   })
   @ApiConflictResponse({
-    description:
-      'El contrato no está activo o ya tiene una solicitud de terminación anticipada pendiente.',
+    description: 'CONTRATO_NO_ACTIVO o TERMINACION_YA_SOLICITADA.',
   })
   solicitarTerminacionAnticipada(
     @Body() dto: SolicitarTerminacionAnticipadaDto,
@@ -85,6 +87,47 @@ export class InquilinoPanelController {
     return this.inquilinoPanelService.solicitarTerminacionAnticipada(
       inquilinoId,
       dto.motivo,
+      dto.fecha_efectiva,
+    );
+  }
+
+  @Post('mi-contrato/confirmar-terminacion-anticipada')
+  @ApiOperation({
+    summary: 'Confirmar la terminación anticipada solicitada por el arrendador',
+  })
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `terminacion_anticipada`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El inquilino autenticado no tiene ningún contrato.',
+  })
+  @ApiConflictResponse({
+    description:
+      'CONTRATO_NO_ACTIVO, TERMINACION_NO_SOLICITADA o TERMINACION_YA_CONFIRMADA.',
+  })
+  confirmarTerminacionAnticipada(@InquilinoActual() inquilinoId: string) {
+    return this.inquilinoPanelService.confirmarTerminacionAnticipada(
+      inquilinoId,
+    );
+  }
+
+  @Post('mi-contrato/cancelar-terminacion-anticipada')
+  @ApiOperation({
+    summary: 'Cancelar la solicitud de terminación anticipada propia',
+  })
+  @ApiCreatedResponse({
+    description: 'Contrato con el resumen `terminacion_anticipada`.',
+  })
+  @ApiNotFoundResponse({
+    description: 'El inquilino autenticado no tiene ningún contrato.',
+  })
+  @ApiConflictResponse({
+    description:
+      'CONTRATO_NO_ACTIVO, TERMINACION_NO_SOLICITADA o TERMINACION_YA_CONFIRMADA.',
+  })
+  cancelarTerminacionAnticipada(@InquilinoActual() inquilinoId: string) {
+    return this.inquilinoPanelService.cancelarTerminacionAnticipada(
+      inquilinoId,
     );
   }
 }

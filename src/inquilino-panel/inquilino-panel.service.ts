@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   EstadoContrato,
   EstadoPagoContrato,
@@ -18,6 +14,11 @@ import {
   construirRespuestaEstadoCuenta,
 } from '../common/estado-cuenta.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
+import {
+  fechaFinParaEstadoCuenta,
+  resumenTerminacion,
+} from '../common/terminacion.util';
+import { TerminacionAnticipadaService } from '../contrato/terminacion-anticipada.service';
 
 const INCLUDE_CONTRATO_PANEL = {
   incrementos_ipc: { orderBy: { fecha_aplicacion: 'asc' } },
@@ -34,6 +35,7 @@ export class InquilinoPanelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly almacenamiento: AlmacenamientoService,
+    private readonly terminacion: TerminacionAnticipadaService,
   ) {}
 
   async obtenerMiPanel(inquilinoId: string) {
@@ -115,6 +117,10 @@ export class InquilinoPanelService {
           )
         : null,
       incrementos_ipc: contrato.incrementos_ipc,
+      terminacion_anticipada: resumenTerminacion(
+        contrato,
+        RolSolicitante.INQUILINO,
+      ),
       fotos_entrega: await Promise.all(
         fotosEntrega.map((f) => this.exponerUrlFirmada(f)),
       ),
@@ -136,7 +142,7 @@ export class InquilinoPanelService {
     const periodos = calcularEstadoCuenta(
       {
         fecha_inicio: contrato.fecha_inicio,
-        fecha_fin: contrato.fecha_fin,
+        fecha_fin: fechaFinParaEstadoCuenta(contrato),
         dia_pago: contrato.dia_pago,
         canon_centavos: contrato.canon_centavos,
       },
@@ -148,36 +154,40 @@ export class InquilinoPanelService {
     return construirRespuestaEstadoCuenta(periodos);
   }
 
-  async solicitarTerminacionAnticipada(inquilinoId: string, motivo: string) {
-    const contrato = await this.resolverContrato(inquilinoId);
+  async solicitarTerminacionAnticipada(
+    inquilinoId: string,
+    motivo: string,
+    fechaEfectiva: Date,
+  ) {
+    const contratoId =
+      await this.terminacion.resolverContratoDelInquilino(inquilinoId);
+    return this.terminacion.solicitar(
+      contratoId,
+      { inquilino_id: inquilinoId },
+      RolSolicitante.INQUILINO,
+      motivo,
+      fechaEfectiva,
+    );
+  }
 
-    if (!contrato) {
-      throw new NotFoundException(
-        'El inquilino autenticado no tiene ningún contrato.',
-      );
-    }
+  async confirmarTerminacionAnticipada(inquilinoId: string) {
+    const contratoId =
+      await this.terminacion.resolverContratoDelInquilino(inquilinoId);
+    return this.terminacion.confirmar(
+      contratoId,
+      { inquilino_id: inquilinoId },
+      RolSolicitante.INQUILINO,
+    );
+  }
 
-    if (contrato.estado !== EstadoContrato.ACTIVO) {
-      throw new ConflictException(
-        'Solo un contrato activo puede solicitar terminación anticipada.',
-      );
-    }
-
-    if (contrato.terminacionAnticipadaSolicitada) {
-      throw new ConflictException(
-        'Este contrato ya tiene una solicitud de terminación anticipada pendiente.',
-      );
-    }
-
-    return this.prisma.contrato.update({
-      where: { id: contrato.id },
-      data: {
-        terminacionAnticipadaSolicitada: true,
-        terminacionAnticipadaSolicitadaPor: RolSolicitante.INQUILINO,
-        terminacionAnticipadaSolicitadaEn: new Date(),
-        terminacionAnticipadaMotivo: motivo,
-      },
-    });
+  async cancelarTerminacionAnticipada(inquilinoId: string) {
+    const contratoId =
+      await this.terminacion.resolverContratoDelInquilino(inquilinoId);
+    return this.terminacion.cancelar(
+      contratoId,
+      { inquilino_id: inquilinoId },
+      RolSolicitante.INQUILINO,
+    );
   }
 
   private async exponerUrlFirmada<T extends { foto_ruta: string | null }>(
