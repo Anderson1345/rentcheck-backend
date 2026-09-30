@@ -1,8 +1,11 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.3 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.4 — 29 de septiembre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.4 frente a la 2.3** (entrega B0.3-A3-1):
+- **Plantilla legal y unidad** (5.6): la plantilla del contrato debe corresponder a la unidad. Parqueadero → plantilla Parqueadero; en otro caso, uso Residencial → Vivienda Urbana y uso Comercial → Local Comercial. Cualquier otra combinación se rechaza al crear el contrato.
 
 **Cambios de la versión 2.3 frente a la 2.2** (resultado de construir el incremento y la prórroga, entrega B0.3-A2):
 - **Incremento** (regla 14, 5.7): aclara desde cuándo rige el canon nuevo y que el canon del contrato es siempre el vigente hoy; el canon de un período pasado sale del historial.
@@ -208,7 +211,7 @@ Lo que el Arrendador escribe sobre el inquilino (nombre, documento, teléfono) s
 | Unidad, Inquilino, Arrendador | Relaciones obligatorias |
 | Datos del inquilino en el contrato | Nombre, documento y teléfono tal como los escribió el Arrendador. Editables solo mientras el contrato esté **sin vincular**. |
 | Vinculado en | Fecha en que el inquilino usó el código. Hasta entonces el contrato no aparece en su portal. |
-| Tipo de plantilla legal | Vivienda Urbana (Ley 820) / Local Comercial / Parqueadero |
+| Tipo de plantilla legal | Vivienda Urbana (Ley 820) / Local Comercial / Parqueadero. Debe corresponder a la unidad: Parqueadero → plantilla Parqueadero; en otro caso, uso Residencial → Vivienda y uso Comercial → Local Comercial. |
 | Canon | **Único** valor vigente del canon; cambia solo por incremento |
 | Día de pago | Día del mes que es la **fecha límite** de cada período (si el mes tiene menos días, el último día del mes) |
 | Forma de pago, datos de recaudo | Los datos de recaudo se muestran al inquilino solo con contrato Activo |

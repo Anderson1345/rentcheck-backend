@@ -1,8 +1,17 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 2.6 — 29 de septiembre de 2026.** Reemplaza a la versión 2.5.
+> **Versión 2.8 — 29 de septiembre de 2026.** Reemplaza a la versión 2.7.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 2.8:**
+- **0.3-A3-1 cerrada el 29/09/2026:** B-50 y B-47 corregidos. El Bloque 0.3-A3 se divide en cuatro entregas: **A3-1** (B-50 + B-47, sin migración), **A3-2** (B-13: terminación con contraparte, cancelación, `fecha_efectiva` y tope del estado de cuenta), **A3-3** (B-41: estado `PROGRAMADO`, traslape, un solo cron de estados) y **A3-4** (B-12: aviso de no renovación y prórroga automática; incluye zona horaria del cron de vencimiento y sus pruebas).
+- El punto (a) de B-13 ("no verifica ACTIVO") ya estaba resuelto desde B0.1-B (B-36).
+- Nuevo **B-52** (menor): un LOCAL de uso Residencial usa plantilla de Vivienda por la regla de B-47; conviene rechazar esa unidad como incoherente al crear o editar unidades (0.5, junto con B-48).
+
+**Qué cambió en la versión 2.7:**
+- **0.3-B cerrada el 29/09/2026:** B-10, B-11, B-23 y B-34 corregidos. Nuevo **B-51** (corregido en la misma entrega): en el ZIP de documentos dos archivos con el mismo nombre se pisaban porque se usaba solo `basename`.
+- `POST /contratos/:id/aplicar-incremento` y `POST /contratos/:id/prorrogar` ahora generan un otrosí después de confirmarse (esto reemplaza la nota de 2.6 de que no tocaban el PDF).
 
 **Qué cambió en la versión 2.6:**
 - **0.3-A2 cerrada el 29/09/2026:** B-09 corregido (incremento y prórroga separados) y **B-49** (nuevo, crítico, corregido en la misma entrega): tras un incremento, el estado de cuenta calculaba los períodos anteriores con el canon nuevo, porque `renovar()` sobrescribía `Contrato.canon_centavos` y `calcularEstadoCuenta` lo trataba como canon base. Un inquilino que había pagado bien el canon viejo aparecía en `PARCIAL` y el contrato `EN_MORA`. Las pruebas unitarias no lo detectaban porque le pasaban el canon base a mano y ninguna prueba e2e combinaba incremento con estado de cuenta.
@@ -126,6 +135,21 @@ Los tres errores siguientes tienen la misma causa: el sistema **no sabe a qué m
 - **Limitación heredada:** las renovaciones hechas con el `renovar()` anterior no dejaron fila en `Prorroga`; el "término inicial" de esos contratos se calcula desde su `fecha_fin` actual.
 - Migración `20260929222435_b03a2_incremento_prorroga` (2 columnas nulas, enum `TipoProrroga` y tabla `Prorroga`; 0 registros afectados).
 
+**Estado (29/09/2026) — Bloque 0.3-B cerrado (B-10 ✅, B-11 ✅, B-23 ✅, B-34 ✅, B-51 ✅):**
+- **`DocumentoContrato`:** historial inmutable por contrato: `CONTRATO_ORIGINAL` (v1), `OTROSI_INCREMENTO` y `OTROSI_PRORROGA`, cada uno con `version` consecutiva, ruta `contratos/{id}/v{n}-{tipo}.pdf` (subida con `upsert=false`), hash SHA-256 y vínculo opcional al incremento o la prórroga (único por vínculo: un hecho no genera dos otrosíes). Nunca se sobrescribe ni se borra.
+- **Generación:** `crear`, `aplicar-incremento` y `prorrogar` generan su documento después de confirmarse, fuera de transacción; si falla, el hecho (contrato, incremento, prórroga) queda registrado y el documento queda pendiente. El original se genera primero y los otrosíes en orden cronológico; la generación se detiene en el primer fallo para no romper el orden de versiones.
+- **`POST /contratos/:id/documentos/regenerar`** (arrendador; idempotente): genera solo lo que falta. El original faltante se reconstruye con los términos ORIGINALES (`terminosOriginales`: canon = `canon_anterior_centavos` del primer incremento; fecha de fin = `fecha_fin_anterior` de la primera prórroga). **`GET /contratos/:id/documentos`**: lista con hash y URL firmada.
+- **ZIP del inmueble:** todas las versiones por contrato y solo comprobantes `APROBADO`; nombres únicos (`contratos/{id8}/v{n}-{tipo}.pdf`, `comprobantes/{periodo}-{pago8}-{nombre}`).
+- **B-10:** la duración del contrato sale de las fechas y el pago dice "a más tardar el día N de cada mes".
+- Migración `20260929232736_b03b_documentos_contrato` (tabla, enum, únicos y backfill de v1 con hash NULL; verificación de conteos dentro del SQL).
+- **Límites conocidos:** los documentos heredados tienen hash NULL; el PDF heredado de un contrato renovado con el `renovar()` anterior pudo haber sido sobrescrito; el original regenerado lleva la fecha de regeneración; `Contrato.pdf_contrato_ruta` queda deprecada hasta B0.4-B. **Pendiente humano:** revisión de un abogado de los otrosíes y de la cláusula de garantías antes de usar contratos reales.
+
+**Estado (29/09/2026) — Bloque 0.3-A3-1 cerrado (B-50 ✅, B-47 ✅):**
+- **B-50:** `recalcularEstadoPagoContrato(tx, contratoId, hoy?)` vive en `src/common/recalcular-estado-pago.ts` y es la única implementación (antes había tres copias). La usan `PagoService`, el cron de mora y las transacciones de `aplicar-incremento` y `prorrogar`, que recalculan `estado_pago` antes de leer el contrato para la respuesta.
+- **B-47:** `POST /contratos` responde 400 `PLANTILLA_NO_CORRESPONDE_A_UNIDAD` antes de escribir nada si la plantilla no corresponde (`src/contrato/plantilla-unidad.ts`: parqueadero → Parqueadero; si no, Residencial → Vivienda, Comercial → Local Comercial). Los contratos existentes no se revalidan.
+- Sin migración.
+- **Límite conocido:** el recálculo del cron lee y luego escribe sin condición sobre el estado leído (igual que antes); una carrera con una aprobación de pago simultánea podría dejar `estado_pago` desactualizado hasta el siguiente recálculo. Se revisa en B0.5 con el control de versión de B-36.
+
 ### 3.4 Identidad del inquilino y contratos múltiples
 
 | ID | Sev. | Problema | Corrección esperada |
@@ -166,13 +190,13 @@ Objetivo: una sola cuenta por persona, sin que un arrendador pueda "pegarle" con
 
 ### 3.7 Hallazgos adicionales — auditoría de escenarios operativos (26-27/09/2026)
 
-Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 a B-50 salieron después, del diagnóstico y la revisión de 0.3-A1 y del diseño de 0.3-A2:
+Revisión complementaria hecha sobre 30 escenarios operativos concretos (documento completo: `RentCheck_Escenarios_Operativos.md`, en `docs/` del repositorio). De ahí salieron 15 IDs nuevos (B-32 a B-46), ya repartidos entre los bloques de la sección 4; B-47 a B-52 salieron después, del diagnóstico y la revisión de 0.3-A1, del diseño de 0.3-A2 y de la revisión de 0.3-B:
 
 | ID | Sev. | Resumen | Bloque | Estado |
 |---|---|---|---|---|
 | B-32 | Crítico (privacidad) | `mi-contrato` exponía `datos_recaudo` con el contrato ya terminado (viola la regla 11 del contexto) | 0.1 | ✅ Corregido |
 | B-33 | Importante | Eliminar un inmueble con documentos cargados responde 500 por llave foránea en vez de 409 con mensaje | 0.1-B | ✅ Corregido |
-| B-34 | Importante | No existe forma de regenerar el PDF de un contrato si su generación falló al crearlo | 0.3-B | ⬜ |
+| B-34 | Importante | No existe forma de regenerar el PDF de un contrato si su generación falló al crearlo | 0.3-B | ✅ Corregido |
 | B-35 | Importante | No existe `PATCH` de contrato: un dato mal escrito es imposible de corregir sin terminar el contrato | 0.4 (después de 0.4-A: necesita "sin vincular") | ⬜ |
 | B-36 | Importante | Transiciones de estado sin escritura condicional (doble aprobación de pago, doble confirmación de terminación, doble cambio de estado de mantenimiento); además, ediciones concurrentes sin control de versión | 0.1-B (transiciones) / 0.5 (control de versión) | 🔶 Transiciones corregidas en B0.1-B; control de versión pendiente en 0.5 |
 | B-37 | Importante | Un fallo al firmar la URL de un solo archivo tumba con 500 el listado completo (`Promise.all` sin tolerancia a fallos) | 0.5 | ⬜ |
@@ -185,10 +209,12 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-44 | Importante | El ZIP de documentos descarga todo a memoria en una sola petición: riesgo de tiempo agotado con historiales grandes | 0.5 | ⬜ |
 | B-45 | Importante | No se puede anular una aprobación de pago hecha por error | 0.6 | ⬜ |
 | B-46 | Importante | No existe baja de cuenta del inquilino (Ley 1581 de 2012 y requisito de Google Play para publicar) | Antes de usuarios reales | ⬜ |
-| B-47 | Importante | `ContratoService.crear()` no valida que `tipo_plantilla` corresponda al tipo o uso de la unidad (por ejemplo, plantilla de vivienda sobre un parqueadero o un local). Detectado en el diagnóstico de 0.3-A (29/09/2026) | 0.3-A3 | ⬜ |
+| B-47 | Importante | `ContratoService.crear()` no valida que `tipo_plantilla` corresponda al tipo o uso de la unidad (por ejemplo, plantilla de vivienda sobre un parqueadero o un local). Detectado en el diagnóstico de 0.3-A (29/09/2026) | 0.3-A3-1 | ✅ Corregido |
 | B-48 | Menor | `InmuebleService.actualizarUnidad()` cuenta los contratos ACTIVO y después escribe; un contrato creado justo entre ambos pasos permitiría cambiar el tipo o uso. Probabilidad muy baja. Detectado en la revisión de 0.3-A1 | 0.5 (junto con el control de versión de B-36) | ⬜ |
 | B-49 | Crítico | `renovar()` dejaba `Contrato.canon_centavos` con el canon nuevo mientras `calcularEstadoCuenta` lo trataba como canon base: los períodos anteriores a un incremento se calculaban con el canon nuevo (falsa mora y `PARCIAL`). Detectado al diseñar 0.3-A2 (29/09/2026) | 0.3-A2 | ✅ Corregido |
-| B-50 | Menor | `estado_pago` del contrato no se recalcula al aplicar un incremento ni una prórroga; queda desactualizado hasta el siguiente pago o el cron diario. No afecta la mora real (los períodos vencidos no cambian de canon) | 0.3-A3 | ⬜ |
+| B-50 | Menor | `estado_pago` del contrato no se recalcula al aplicar un incremento ni una prórroga; queda desactualizado hasta el siguiente pago o el cron diario. No afecta la mora real (los períodos vencidos no cambian de canon) | 0.3-A3-1 | ✅ Corregido |
+| B-51 | Menor | El ZIP de documentos nombraba los archivos solo con `basename`: dos comprobantes con el mismo nombre se pisaban dentro del ZIP. Detectado al diseñar 0.3-B (29/09/2026) | 0.3-B | ✅ Corregido |
+| B-52 | Menor | Un LOCAL de uso Residencial exige plantilla de Vivienda (regla de B-47); la unidad es incoherente y debería rechazarse al crearla o editarla. Detectado en la revisión de 0.3-A3-1 | 0.5 (junto con B-48) | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
@@ -204,7 +230,7 @@ Cada bloque es **una entrega**: una rama, uno o dos prompts, una verificación c
 | **0.1 Seguridad inmediata** | Selects explícitos, quitar rutas escritas por el cliente, `trust proxy`, `ParseIdPipe`, límite de intentos en activación, filtro global de errores, tipar el callback de CORS, datos de recaudo por estado, fotos de entrega/devolución separadas | B-01, B-03 (quitar campos), B-04, B-22, B-31, límite de B-02, formato de error, B-32, B-40 | 1 | 0.0 |
 | **0.1-B Consistencia de escrituras** | Eliminar inmueble con documentos (409 en vez de 500), escrituras condicionales en transiciones de estado (pago, terminación, mantenimiento) | B-33, B-36 (transiciones) | 1 | 0.1 |
 | **0.2 Motor de pagos por período** | `Pago.periodo`, `calcularEstadoCuenta` con pruebas unitarias, estado de pago derivado, reemplazo por período, endpoint de estado de cuenta, `Idempotency-Key`, `hoyEnBogota()`, pagos de contrato terminado, validación de fecha reportada | B-05, B-06 (cálculo), B-07, B-19 (parcial), B-38, B-39 | 3 (A: función pura + pruebas ✅; B: integración + migración + e2e ✅; C: `Idempotency-Key` ✅) | D-3 confirmada |
-| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47, B-49, B-50 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga ✅; B: PDF y versiones; A3: ciclo de vida) | D-1 y D-2 confirmadas |
+| **0.3 Contrato legal** | Depósito condicional, plantillas corregidas, incremento y prórroga separados, versiones de PDF (otrosí), terminación con contraparte, cédula del arrendador obligatoria, corrección de datos de IPC, PATCH de contrato sin vincular, fecha de inicio futura, unidad principal válida, regenerar PDF | B-08, B-09, B-10, B-11, B-12, B-13, B-16, B-26, B-41, B-43, B-34, B-47, B-49, B-50, B-51 (B-35 pasa a 0.4) | 4 (A1: reglas de creación ✅; A2: incremento y prórroga ✅; B: PDF y versiones ✅; A3: ciclo de vida, en cuatro partes: A3-1 ✅ B-50 y B-47; A3-2 B-13; A3-3 B-41; A3-4 B-12) | D-1 y D-2 confirmadas |
 | **0.4 Identidad y multi-contrato** | Diseño de la sección 3.5, correo normalizado y mensajes genéricos, código nuevo con expiración, rutas del inquilino por contrato, subidas reales de fotos de cédula y foto de unidad | B-02, B-03 (subidas), B-14, B-15, B-17, B-21, B-29, B-35 (después de 0.4-A) | 2 (A: modelo + migración + auth; B: rutas del inquilino + subidas) | 0.1 |
 | **0.5 Infraestructura** | Endpoint de tareas diarias + cron-job.org, zona horaria en tareas, paginación, firma de URLs en lote, ZIP solo aprobados, tolerancia a fallos al firmar, política de retención del bucket, ZIP sin memoria, control de versión en ediciones, limpieza de claves de idempotencia antiguas | B-19 (tareas), B-20, B-23, B-27, B-37, B-42, B-44, B-36 (control de versión) | 1 | 0.2 |
 | **0.6 Para la app (en paralelo con móvil)** | Alertas del inquilino, tokens de notificación y envío, sesiones con token de renovación, anular aprobación de pago | B-18, B-25, push, B-45 | 2 | 0.4 |
