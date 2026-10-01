@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.12 — 30 de septiembre de 2026.** Reemplaza a la versión 3.11.
+> **Versión 3.13 — 30 de septiembre de 2026.** Reemplaza a la versión 3.12.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.13:**
+
+- **E1 (app) cerrada** (repositorio `rentcheck-mobile`, commit `9dbc794`). Aparece **B-57** (menor, sección 3.7): el OpenAPI no describe la respuesta de `GET /auth/capacidades`, `GET /` devuelve "Hello World!" como `text/html` aunque se declara JSON y no existe un endpoint de estado (`/health`); se corrige dentro de 0.6. Sin cambios de reglas de negocio.
 
 **Qué cambió en la versión 3.12:**
 
@@ -355,6 +359,7 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-54 | Importante | Con el adaptador de pg, `esColisionDeCodigoAcceso` nunca detectaba la colisión de código de acceso (el P2002 no trae `meta.target`): una colisión real se reportaba como "unidad ocupada" (409) sin reintentar. Detectado al escribir la prueba de reversión de 0.4-A1 | 0.4-A1 | ✅ Corregido |
 | B-55 | Menor (nuevo) | Ni `crear()` ni `PATCH /contratos/:id` exigen que `fecha_fin` sea posterior a hoy (Contexto §5.6); un contrato con fin pasado se vence o se prorroga solo en el siguiente cron | 0.5-D | ✅ |
 | B-56 | Importante (nuevo) | Con verificación de correo activa, un registro sin verificar puede ocupar el correo de otra persona y dejarla fuera (409 genérico) | 0.4-D2 | ✅ (30/09/2026) |
+| B-57 | Menor (nuevo) | Contrato OpenAPI incompleto: `GET /auth/capacidades` sin schema de respuesta; `GET /` devuelve texto `text/html` ("Hello World!") pero se declara JSON; no hay endpoint de estado (`/health`) para la pantalla Diagnóstico ni para despertar Render. Detectado en E1 | 0.6 | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
