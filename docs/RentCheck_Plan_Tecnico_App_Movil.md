@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.13 — 30 de septiembre de 2026.** Reemplaza a la versión 3.12.
+> **Versión 3.14 — 30 de septiembre de 2026.** Reemplaza a la versión 3.13.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.14:**
+
+- **Dirección visual elegida (D1-a): "Medianoche".** Al contrastar las pantallas con el backend aparecen dos huecos nuevos, sección 3.7: **B-58** (no existe un endpoint del Panel del arrendador: ingresos, recaudo esperado vs. real, ocupación, mora, tendencia, pendientes) y **B-59** (`PATCH /pagos/:id/rechazar` no recibe motivo ni mensaje; el inquilino no sabe por qué se rechazó). Ambos van a la nueva entrega **B0.6-A**, antes de E7 y E9. B0.6 se divide en B0.6-A (B-58, B-59) y B0.6-B (alertas del inquilino B-18, push, refresh/logout B-25, anular aprobación B-45, B-57).
 
 **Qué cambió en la versión 3.13:**
 
@@ -360,6 +364,8 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-55 | Menor (nuevo) | Ni `crear()` ni `PATCH /contratos/:id` exigen que `fecha_fin` sea posterior a hoy (Contexto §5.6); un contrato con fin pasado se vence o se prorroga solo en el siguiente cron | 0.5-D | ✅ |
 | B-56 | Importante (nuevo) | Con verificación de correo activa, un registro sin verificar puede ocupar el correo de otra persona y dejarla fuera (409 genérico) | 0.4-D2 | ✅ (30/09/2026) |
 | B-57 | Menor (nuevo) | Contrato OpenAPI incompleto: `GET /auth/capacidades` sin schema de respuesta; `GET /` devuelve texto `text/html` ("Hello World!") pero se declara JSON; no hay endpoint de estado (`/health`) para la pantalla Diagnóstico ni para despertar Render. Detectado en E1 | 0.6 | ⬜ |
+| B-58 | Importante (nuevo) | No existe un endpoint del Panel del arrendador (Contexto §9: ingresos del mes, recaudo esperado vs. real con su desglose aprobado / en revisión / sin reportar, ocupación, cartera en mora, tendencia de ingresos de 6 meses y centro de pendientes). La app no debe calcular reglas de negocio ni recorrer todas las listas. Detectado al contrastar el diseño D1-a | 0.6-A | ⬜ |
+| B-59 | Menor (nuevo, requiere confirmar) | `PATCH /pagos/:id/rechazar` no recibe ni guarda un motivo: el inquilino ve el pago Rechazado sin saber por qué. Propuesta: motivo de una lista fija (monto no coincide / no se ve el pago / comprobante ilegible / otro) y mensaje opcional de hasta 200 caracteres; una columna nullable (migración aditiva); se muestra al inquilino en el pago rechazado y en su alerta. Cambia Contexto §5.10 | 0.6-A | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
