@@ -1,8 +1,11 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.13 — 1 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.14 — 1 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.14 frente a la 2.13** (entrega E7-A, B-64, solo precisión de 5.10):
+- **Monto reportado y pago parcial (5.10):** el servidor no compara el monto reportado con el canon ni rechaza un monto distinto. El que queda **Parcial** es el **período**: si, una vez aprobados los pagos, lo aprobado es menor que el canon vigente del período. La aplicación móvil avisa al Inquilino antes de enviar un monto menor al saldo del período ("quedará como pago parcial") o mayor ("no cubre otros períodos"), sin impedir el envío. Un monto mayor no se reparte entre períodos: cada período se reporta por separado. Si esto debe cambiar (por ejemplo, repartir el excedente), es una decisión de producto aparte.
 
 **Cambios de la versión 2.13 frente a la 2.12** (entrega B0.6-A1, B-59):
 - **Motivo del rechazo de un pago (5.10 y 7.3):** al rechazar un pago el Arrendador puede indicar un **motivo de una lista fija** (el monto no coincide, no se ve el pago, el comprobante es ilegible u otro) y un **mensaje opcional de hasta 200 caracteres**; el Inquilino los ve en su pago rechazado. Con el motivo "otro" el mensaje es obligatorio, y un mensaje exige motivo. El servidor acepta el rechazo sin motivo (compatibilidad con la web provisional); la aplicación móvil lo pide siempre. Los rechazos anteriores a este cambio no tienen motivo. La alerta al Inquilino con el motivo llega con las alertas del Inquilino (B-18).
@@ -293,7 +296,7 @@ Código (`RC-XXXX-XXXX`, único), enlace/QR equivalente, contrato asociado, fech
 |---|---|
 | Contrato | — |
 | Período que cubre | Mes al que corresponde (5.15). El sistema propone el período vencido más antiguo sin pagar; el inquilino puede elegir otro período pendiente. |
-| Monto | Lo escribe el inquilino. Si es menor que el canon del período, el pago se marca como **parcial**. |
+| Monto | Lo escribe el inquilino. El servidor no lo compara con el canon: lo que queda **parcial** es el período, cuando lo aprobado es menor que el canon. La app avisa si el monto es menor o mayor al saldo del período, sin bloquear el envío. |
 | Fecha en que pagó | No puede ser futura ni anterior al inicio del contrato |
 | Comprobante | Foto o PDF, obligatorio |
 | Estado | Pendiente / Aprobado / Rechazado / Reemplazado (7.3) |

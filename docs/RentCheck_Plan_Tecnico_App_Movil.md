@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.16 — 1 de octubre de 2026.** Reemplaza a la versión 3.15.
+> **Versión 3.17 — 1 de octubre de 2026.** Reemplaza a la versión 3.16.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.17:**
+
+- **E7-A (app, pagos del inquilino) cerrada**; sin cambios de reglas de negocio más allá de la precisión de Contexto 2.14 (B-64). El diagnóstico de E7 encontró cinco huecos del backend: **B-61 a B-65** (sección 3.7). **Se crea B0.6-A3** (pagos para la app: B-61, B-63 y los esquemas de respuesta de pagos, parte de B-57), que debe estar hecha antes de E7-B. B-62 y B-65 quedan para después.
 
 **Qué cambió en la versión 3.16:**
 
@@ -377,6 +381,11 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-58 | Importante (nuevo) | No existe un endpoint del Panel del arrendador (Contexto §9: ingresos del mes, recaudo esperado vs. real con su desglose aprobado / en revisión / sin reportar, ocupación, cartera en mora, tendencia de ingresos de 6 meses y centro de pendientes). La app no debe calcular reglas de negocio ni recorrer todas las listas. Detectado al contrastar el diseño D1-a | 0.6-A2 | ⬜ |
 | B-59 | Menor (nuevo; **decidido sí el 01/10/2026**) | `PATCH /pagos/:id/rechazar` no recibe ni guarda un motivo: el inquilino ve el pago Rechazado sin saber por qué. Propuesta: motivo de una lista fija (monto no coincide / no se ve el pago / comprobante ilegible / otro) y mensaje opcional de hasta 200 caracteres; una columna nullable (migración aditiva); se muestra al inquilino en el pago rechazado y en su alerta. Cambia Contexto §5.10 | 0.6-A1 | ✅ Corregido el 01/10/2026 (cuerpo opcional en el servidor; la alerta al inquilino va con B-18) |
 | B-60 | Menor (nuevo) | `POST /contratos` no acepta `Idempotency-Key`: si la respuesta se pierde (timeout o corte de red) el arrendador no sabe si el contrato se creó, y un reintento podría duplicarlo (el 409 por traslape de fechas frena casi todos los casos, pero no un cambio de fechas entre intentos). La app lo mitiga bloqueando el botón y verificando con `GET /contratos` (E4-A). Corrección esperada: aceptar el encabezado con el mismo patrón de `ClaveIdempotencia` (por arrendador y endpoint, misma clave y mismo contenido devuelve el mismo contrato; el PDF se genera una sola vez) | Sin bloque asignado (baja prioridad; 0.6 si hay hueco) | ⬜ |
+| B-61 | Importante (nuevo) | Las respuestas de pago (`GET /pagos`, `GET /pagos/:id`, `GET /pagos/mios`, `PATCH aprobar/rechazar`) no traen el monto esperado del período, su fecha límite ni lo aprobado hasta ahora: la cola del arrendador ("esperado vs. reportado") no puede armarse con `/pagos` solo, y pedir el estado de cuenta de cada contrato sería N peticiones. Propuesta: un bloque por pago con `monto_esperado_centavos` (canon vigente del período), `fecha_limite`, `monto_aprobado_periodo_centavos` y `estado_periodo`. Detectado en el diagnóstico de E7 (01/10/2026) | 0.6-A3 | ⬜ |
+| B-62 | Menor (nuevo) | `GET /pagos` y `GET /pagos/mios` no tienen paginación ni filtros por contrato, período o fechas (el de `/pagos/mios` solo por `contratoId`), y firman dos URLs por pago (comprobante y foto de la unidad) en cada lista. Con pocos pagos no molesta; antes de usuarios reales con historial largo hay que paginar | después de E7 | ⬜ |
+| B-63 | Importante (nuevo) | El pago no dice si el comprobante es imagen o PDF: la app no puede decidir cómo mostrarlo sin inferirlo de la URL firmada (frágil). Propuesta: `comprobante_tipo` (`IMAGEN` o `PDF`) derivado del archivo guardado | 0.6-A3 | ⬜ |
+| B-64 | Menor (nuevo) | El Contexto §5.10 decía que un monto menor al canon "marca el pago como parcial", pero el servidor no valida el monto: el estado Parcial es del período, tras aprobar. **Decidido el 01/10/2026: se corrige el Contexto (2.14), no el backend.** Pendiente de producto, aparte: qué hacer con un monto mayor al canon (hoy no cubre otros períodos) | — | ✅ (documentación) |
+| B-65 | Menor (nuevo) | No hay `GET /pagos/mios/:id` (detalle del pago para el inquilino) ni una fecha de rechazo propia (solo `actualizado_en`) para mostrarle cuándo se rechazó | después de E7 | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
