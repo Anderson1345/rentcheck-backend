@@ -28,13 +28,21 @@ import {
   SELECT_COPIA_INQUILINO,
 } from '../common/inquilino-copia';
 import { fechaFinParaEstadoCuenta } from '../common/terminacion.util';
-import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
+import {
+  periodosPorContrato,
+  recalcularEstadoPagoContrato,
+} from '../common/recalcular-estado-pago';
+import {
+  extensionDeComprobante,
+  tipoDeComprobante,
+} from '../common/comprobante-tipo.util';
 import { calcularHuellaPago } from '../common/huella-idempotencia.util';
 import {
   IdempotenciaService,
   ParametrosClave,
 } from '../idempotencia/idempotencia.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
+import { PeriodoCuentaPago, periodoCuentaDelPago } from './periodo-cuenta.util';
 import {
   RechazarPagoDto,
   validarReglasMotivoRechazo,
@@ -239,7 +247,7 @@ export class PagoService {
       reclamoId = reclamo.reclamoId;
     }
 
-    const rutaDestino = `pagos/${contrato.id}/${Date.now()}-${this.sanitizarNombreArchivo(comprobante.originalname)}`;
+    const rutaDestino = `pagos/${contrato.id}/${Date.now()}-${this.nombreDeComprobante(comprobante.originalname, comprobante.mimetype)}`;
     let archivoSubido = false;
     let nuevoPago: Awaited<ReturnType<PagoService['crearRegistroPago']>>;
 
@@ -269,8 +277,15 @@ export class PagoService {
       throw error;
     }
 
+    // Los períodos salen del recálculo de la propia transacción: ya incluyen el pago nuevo.
     return {
-      pago: await this.exponerUrlFirmada(nuevoPago),
+      pago: await this.exponerUrlFirmada({
+        ...nuevoPago.pago,
+        periodo_cuenta: periodoCuentaDelPago(
+          nuevoPago.periodos,
+          nuevoPago.pago.periodo,
+        ),
+      }),
       reproducido: false,
     };
   }
@@ -315,9 +330,12 @@ export class PagoService {
         await this.idempotencia.asociarRecurso(tx, datos.reclamoId, creado.id);
       }
 
-      await recalcularEstadoPagoContrato(tx, datos.contratoId);
+      const { periodos } = await recalcularEstadoPagoContrato(
+        tx,
+        datos.contratoId,
+      );
 
-      return creado;
+      return { pago: creado, periodos };
     });
   }
 
@@ -325,7 +343,11 @@ export class PagoService {
     const pago = await this.prisma.pago.findUniqueOrThrow({
       where: { id: pagoId },
     });
-    return { pago: await this.exponerUrlFirmada(pago), reproducido: true };
+    const [conPeriodo] = await this.conPeriodoCuenta([pago]);
+    return {
+      pago: await this.exponerUrlFirmada(conPeriodo),
+      reproducido: true,
+    };
   }
 
   async listar(arrendadorId: string, estado?: EstadoPago) {
@@ -338,9 +360,7 @@ export class PagoService {
       orderBy: { fecha_reportada: 'desc' },
     });
 
-    return Promise.all(
-      pagos.map((p) => this.exponerUrlFirmada(this.conInquilinoDeLaCopia(p))),
-    );
+    return this.responder(pagos);
   }
 
   /** Con `contratoId`, solo los pagos de ese contrato (debe ser suyo, vinculado y no cancelado). */
@@ -364,9 +384,7 @@ export class PagoService {
       orderBy: { fecha_reportada: 'desc' },
     });
 
-    return Promise.all(
-      pagos.map((p) => this.exponerUrlFirmada(this.conInquilinoDeLaCopia(p))),
-    );
+    return this.responder(pagos);
   }
 
   async encontrarUno(id: string, arrendadorId: string) {
@@ -381,16 +399,17 @@ export class PagoService {
       );
     }
 
-    return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pago));
+    const [respuesta] = await this.responder([pago]);
+    return respuesta;
   }
 
   async aprobar(id: string, arrendadorId: string) {
-    const pagoActualizado = await this.ejecutarTransicionPago(
+    const transicion = await this.ejecutarTransicionPago(
       id,
       arrendadorId,
       EstadoPago.APROBADO,
     );
-    return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pagoActualizado));
+    return this.responderTransicion(transicion);
   }
 
   /**
@@ -401,13 +420,13 @@ export class PagoService {
   async rechazar(id: string, arrendadorId: string, dto: RechazarPagoDto) {
     // Reglas entre campos: antes de tocar la base, para no escribir nada si fallan.
     validarReglasMotivoRechazo(dto);
-    const pagoActualizado = await this.ejecutarTransicionPago(
+    const transicion = await this.ejecutarTransicionPago(
       id,
       arrendadorId,
       EstadoPago.RECHAZADO,
       { motivo: dto.motivo ?? null, mensaje: dto.mensaje ?? null },
     );
-    return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pagoActualizado));
+    return this.responderTransicion(transicion);
   }
 
   private async ejecutarTransicionPago(
@@ -454,12 +473,18 @@ export class PagoService {
         });
       }
 
-      await recalcularEstadoPagoContrato(tx, pagoExistente.contrato_id);
+      // El recálculo ya devuelve los períodos con el pago actualizado: de ahí sale `periodo_cuenta`
+      // (mismo cálculo, sin otra lectura y sin alargar la transacción).
+      const { periodos } = await recalcularEstadoPagoContrato(
+        tx,
+        pagoExistente.contrato_id,
+      );
 
-      return tx.pago.findUniqueOrThrow({
+      const pago = await tx.pago.findUniqueOrThrow({
         where: { id },
         include: this.INCLUDE_PAGO,
       });
+      return { pago, periodos };
     });
   }
 
@@ -467,7 +492,12 @@ export class PagoService {
     T extends { id: string; comprobante_ruta: string | null },
   >(
     pago: T,
-  ): Promise<Omit<T, 'comprobante_ruta'> & { comprobante_url: string | null }> {
+  ): Promise<
+    Omit<T, 'comprobante_ruta'> & {
+      comprobante_url: string | null;
+      comprobante_tipo: 'IMAGEN' | 'PDF' | null;
+    }
+  > {
     const { comprobante_ruta, ...sinRuta } = pago;
     // La unidad del contrato trae `foto_principal_url`: siempre firmada, nunca la ruta.
     const contrato = (sinRuta as { contrato?: object }).contrato;
@@ -483,6 +513,7 @@ export class PagoService {
       : sinRuta;
     return {
       ...resto,
+      comprobante_tipo: tipoDeComprobante(comprobante_ruta),
       comprobante_url: await firmarTolerante(
         this.almacenamiento,
         comprobante_ruta,
@@ -492,12 +523,73 @@ export class PagoService {
     };
   }
 
-  private sanitizarNombreArchivo(nombre: string): string {
-    const extension = extname(nombre);
-    const base = basename(nombre, extension);
+  /**
+   * Nombre del archivo guardado: el nombre base del cliente, saneado, y una extensión que sale del
+   * mimetype ya validado por el contenido real (el validador de B0.5-C comprueba los bytes antes de
+   * llegar aquí), nunca de la extensión que mande el cliente.
+   */
+  private nombreDeComprobante(nombre: string, mimetype: string): string {
+    const base = basename(nombre, extname(nombre));
     const baseLimpia = base.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const extensionLimpia = extension.replace(/[^a-zA-Z0-9.]/g, '');
-    return `${baseLimpia}${extensionLimpia}`;
+    return `${baseLimpia}${extensionDeComprobante(mimetype) ?? ''}`;
+  }
+
+  /**
+   * Agrega `periodo_cuenta` a cada pago con UNA lectura para todos (contratos, sus incrementos y sus
+   * pagos, por lote): el costo no crece con el número de pagos, solo con el de contratos distintos.
+   */
+  private async conPeriodoCuenta<
+    T extends { contrato_id: string; periodo: Date },
+  >(pagos: T[]): Promise<(T & { periodo_cuenta: PeriodoCuentaPago | null })[]> {
+    const periodos = await periodosPorContrato(
+      this.prisma,
+      [...new Set(pagos.map((p) => p.contrato_id))],
+      hoyEnBogota(),
+    );
+    return pagos.map((pago) => ({
+      ...pago,
+      periodo_cuenta: periodoCuentaDelPago(
+        periodos.get(pago.contrato_id) ?? [],
+        pago.periodo,
+      ),
+    }));
+  }
+
+  /** Forma final de una lista de pagos con INCLUDE_PAGO. */
+  private async responder<
+    T extends {
+      id: string;
+      contrato_id: string;
+      periodo: Date;
+      comprobante_ruta: string | null;
+      contrato: CopiaInquilino;
+    },
+  >(pagos: T[]) {
+    const conPeriodo = await this.conPeriodoCuenta(pagos);
+    return Promise.all(
+      conPeriodo.map((p) =>
+        this.exponerUrlFirmada(this.conInquilinoDeLaCopia(p)),
+      ),
+    );
+  }
+
+  private responderTransicion<
+    T extends {
+      id: string;
+      periodo: Date;
+      comprobante_ruta: string | null;
+      contrato: CopiaInquilino;
+    },
+  >(transicion: { pago: T; periodos: PeriodoEstadoCuenta[] }) {
+    return this.exponerUrlFirmada(
+      this.conInquilinoDeLaCopia({
+        ...transicion.pago,
+        periodo_cuenta: periodoCuentaDelPago(
+          transicion.periodos,
+          transicion.pago.periodo,
+        ),
+      }),
+    );
   }
 
   private async eliminarArchivoHuérfano(ruta: string): Promise<void> {

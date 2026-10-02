@@ -26,7 +26,9 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiTags,
+  ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -47,8 +49,12 @@ import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ClaveIdempotencia } from '../idempotencia/clave-idempotencia.decorator';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 import { ListarPagosQueryDto } from './dto/listar-pagos-query.dto';
+import { PagoCreadoDto, PagoRespuestaDto } from './dto/pago-respuesta.dto';
 import { RechazarPagoDto } from './dto/rechazar-pago.dto';
 import { PagoService } from './pago.service';
+
+const DESCRIPCION_CAMPOS_DE_PAGO =
+  ' Cada pago trae `motivo_rechazo` y `mensaje_rechazo` (solo los RECHAZADO traen valor), `comprobante_url` firmada, `comprobante_tipo` (IMAGEN, PDF o null) y `periodo_cuenta` (canon vigente, fecha límite, monto aprobado y estado del período, o null si el cálculo no genera ese período).';
 
 @ApiTags('Pagos')
 @Controller('pagos')
@@ -63,8 +69,11 @@ export class PagoController {
     summary: 'Listar pagos del arrendador autenticado (cola de validación)',
   })
   @ApiOkResponse({
+    type: PagoRespuestaDto,
+    isArray: true,
     description:
-      'Lista de pagos con el contrato, la unidad y el inquilino relacionados. Cada pago trae `motivo_rechazo` (enum o null) y `mensaje_rechazo` (texto o null); solo los pagos RECHAZADO traen valor.',
+      'Lista de pagos con el contrato, la unidad y el inquilino relacionados.' +
+      DESCRIPCION_CAMPOS_DE_PAGO,
   })
   listar(
     @ArrendadorActual() arrendadorId: string,
@@ -81,8 +90,11 @@ export class PagoController {
       'Con `?contratoId=` solo los pagos de ese contrato (404 si no es suyo, no está vinculado o está cancelado).',
   })
   @ApiOkResponse({
+    type: PagoRespuestaDto,
+    isArray: true,
     description:
-      'Lista de pagos del inquilino con sus datos de contrato. Cada pago trae `motivo_rechazo` (enum o null) y `mensaje_rechazo` (texto o null); solo los pagos RECHAZADO traen valor.',
+      'Lista de pagos del inquilino con sus datos de contrato.' +
+      DESCRIPCION_CAMPOS_DE_PAGO,
   })
   listarMios(
     @InquilinoActual() inquilinoId: string,
@@ -97,8 +109,10 @@ export class PagoController {
     summary: 'Obtener el detalle de un pago por ID (arrendador)',
   })
   @ApiOkResponse({
+    type: PagoRespuestaDto,
     description:
-      'Detalle del pago con los datos relacionados. Cada pago trae `motivo_rechazo` (enum o null) y `mensaje_rechazo` (texto o null); solo los pagos RECHAZADO traen valor.',
+      'Detalle del pago con los datos relacionados.' +
+      DESCRIPCION_CAMPOS_DE_PAGO,
   })
   @ApiNotFoundResponse({
     description: 'Pago no encontrado o no pertenece al arrendador.',
@@ -114,8 +128,9 @@ export class PagoController {
   @UseGuards(ArrendadorGuard)
   @ApiOperation({ summary: 'Aprobar un pago pendiente del arrendador' })
   @ApiOkResponse({
+    type: PagoRespuestaDto,
     description:
-      'Pago aprobado; el estado de pago del contrato se recalcula a partir de sus períodos.',
+      'Pago aprobado; el estado de pago del contrato se recalcula a partir de sus períodos. `periodo_cuenta` ya refleja el estado nuevo del período.',
   })
   @ApiNotFoundResponse({
     description: 'Pago no encontrado o no pertenece al arrendador.',
@@ -139,8 +154,9 @@ export class PagoController {
   })
   @ApiBody({ type: RechazarPagoDto, required: false })
   @ApiOkResponse({
+    type: PagoRespuestaDto,
     description:
-      'Pago rechazado correctamente, con `motivo_rechazo` y `mensaje_rechazo` (null si no se indicaron). Solo los pagos RECHAZADO traen valor en esos campos.',
+      'Pago rechazado correctamente, con `motivo_rechazo` y `mensaje_rechazo` (null si no se indicaron). Solo los pagos RECHAZADO traen valor en esos campos. `periodo_cuenta` ya refleja el estado nuevo del período.',
   })
   @ApiBadRequestResponse({
     description:
@@ -226,10 +242,14 @@ export class PagoController {
     description:
       'Clave de idempotencia (8 a 128 caracteres [A-Za-z0-9_-]). La misma clave con el mismo contenido devuelve el mismo pago con el encabezado Idempotent-Replayed: true; con distinto contenido responde 422 IDEMPOTENCY_KEY_REUTILIZADA.',
   })
-  @ApiCreatedResponse({ description: 'Pago creado exitosamente.' })
+  @ApiCreatedResponse({
+    type: PagoCreadoDto,
+    description:
+      'Pago creado exitosamente (la misma respuesta, con `Idempotent-Replayed: true`, si se repite la clave con el mismo contenido). No trae el bloque `contrato`; `periodo_cuenta` ya incluye este pago (el período queda EN_REVISION).',
+  })
   @ApiBadRequestResponse({
     description:
-      'Datos del formulario inválidos, fecha_reportada anterior al inicio del contrato (FECHA_REPORTADA_ANTERIOR_A_INICIO) o periodo que no corresponde a ningún período del contrato (PERIODO_INVALIDO).',
+      'Datos del formulario inválidos, fecha_reportada anterior al inicio del contrato (FECHA_REPORTADA_ANTERIOR_A_INICIO), periodo que no corresponde a ningún período del contrato (PERIODO_INVALIDO) o Idempotency-Key con formato inválido (IDEMPOTENCY_KEY_INVALIDA).',
   })
   @ApiNotFoundResponse({
     description: 'Contrato no encontrado o no pertenece al inquilino.',
@@ -239,7 +259,15 @@ export class PagoController {
       'El contrato ya no está activo y el período indicado no quedó pendiente al cierre (CONTRATO_NO_ACTIVO), no hay períodos pendientes (SIN_PERIODOS_PENDIENTES), o el período indicado ya está pagado (PERIODO_YA_PAGADO).',
   })
   @ApiUnsupportedMediaTypeResponse({
-    description: 'El tipo de archivo del comprobante no está permitido.',
+    description:
+      'El tipo de archivo del comprobante no está permitido, o su contenido real no coincide con el tipo declarado (ARCHIVO_CONTENIDO_INVALIDO).',
+  })
+  @ApiPayloadTooLargeResponse({
+    description: 'El comprobante pesa más de 10 MB (CARGA_DEMASIADO_GRANDE).',
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'La misma Idempotency-Key ya se usó con un contenido distinto (IDEMPOTENCY_KEY_REUTILIZADA).',
   })
   async crear(
     @UploadedFile() comprobante: Express.Multer.File,
