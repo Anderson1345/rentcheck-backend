@@ -8,7 +8,7 @@ import {
 import { hoyEnBogota } from './hoy-bogota.util';
 import { fechaFinParaEstadoCuenta } from './terminacion.util';
 
-const SELECT_PARA_ESTADO_CUENTA = {
+export const SELECT_PARA_ESTADO_CUENTA = {
   estado: true,
   terminacionAnticipadaConfirmadaEn: true,
   terminacion_fecha_efectiva: true,
@@ -26,6 +26,55 @@ const SELECT_PARA_ESTADO_CUENTA = {
   },
   pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
 } as const satisfies Prisma.ContratoSelect;
+
+type ContratoParaEstadoCuenta = Prisma.ContratoGetPayload<{
+  select: typeof SELECT_PARA_ESTADO_CUENTA;
+}>;
+
+/**
+ * Períodos de un contrato con `calcularEstadoCuenta` y la fecha_fin efectiva de la terminación
+ * (`fechaFinParaEstadoCuenta`): todo llamador del cálculo debe pasar por aquí o replicar eso.
+ */
+export function periodosDelContrato(
+  contrato: ContratoParaEstadoCuenta,
+  hoy: Date = hoyEnBogota(),
+): PeriodoEstadoCuenta[] {
+  return calcularEstadoCuenta(
+    {
+      fecha_inicio: contrato.fecha_inicio,
+      fecha_fin: fechaFinParaEstadoCuenta(contrato),
+      dia_pago: contrato.dia_pago,
+      canon_centavos: contrato.canon_centavos,
+    },
+    contrato.incrementos_ipc,
+    contrato.pagos,
+    hoy,
+  );
+}
+
+/**
+ * Los períodos de VARIOS contratos con una sola lectura (no una por contrato ni por pago): la
+ * consulta de contratos, y la de sus incrementos y la de sus pagos (en lote). Los contratos que no
+ * existan simplemente no aparecen en el mapa.
+ */
+export async function periodosPorContrato(
+  cliente: Prisma.TransactionClient,
+  contratoIds: string[],
+  hoy: Date = hoyEnBogota(),
+): Promise<Map<string, PeriodoEstadoCuenta[]>> {
+  const mapa = new Map<string, PeriodoEstadoCuenta[]>();
+  if (contratoIds.length === 0) {
+    return mapa;
+  }
+  const contratos = await cliente.contrato.findMany({
+    where: { id: { in: contratoIds } },
+    select: { id: true, ...SELECT_PARA_ESTADO_CUENTA },
+  });
+  for (const contrato of contratos) {
+    mapa.set(contrato.id, periodosDelContrato(contrato, hoy));
+  }
+  return mapa;
+}
 
 /**
  * Única implementación del recálculo de `Contrato.estado_pago`: lee el
@@ -48,17 +97,7 @@ export async function recalcularEstadoPagoContrato(
     select: SELECT_PARA_ESTADO_CUENTA,
   });
 
-  const periodos = calcularEstadoCuenta(
-    {
-      fecha_inicio: contrato.fecha_inicio,
-      fecha_fin: fechaFinParaEstadoCuenta(contrato),
-      dia_pago: contrato.dia_pago,
-      canon_centavos: contrato.canon_centavos,
-    },
-    contrato.incrementos_ipc,
-    contrato.pagos,
-    hoy,
-  );
+  const periodos = periodosDelContrato(contrato, hoy);
 
   const estadoPago = derivarEstadoPagoContrato(periodos);
 
