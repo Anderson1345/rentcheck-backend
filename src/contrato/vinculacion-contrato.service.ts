@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EstadoContrato, Prisma, TipoAlerta } from '@prisma/client';
+import { alertarAlArrendadorDelContrato } from '../alerta/crear-alerta';
 import { PrismaService } from '../prisma/prisma.service';
 import { errorCodigoNoValido } from './codigo-no-valido.exception';
 import { IntentosCodigoService } from './intentos-codigo.service';
@@ -47,18 +48,12 @@ export class VinculacionContratoService {
       return false;
     }
 
-    const contrato = await tx.contrato.findUniqueOrThrow({
-      where: { id: contratoId },
-      select: { arrendador_id: true, unidad: { select: { nombre: true } } },
-    });
-    await tx.alerta.create({
-      data: {
-        arrendador_id: contrato.arrendador_id,
-        tipo: TipoAlerta.CONTRATO_VINCULADO_POR_INQUILINO,
-        contrato_id: contratoId,
-        mensaje: `El inquilino de la unidad ${contrato.unidad.nombre} vinculó el contrato con su código de acceso.`,
-      },
-    });
+    await alertarAlArrendadorDelContrato(
+      tx,
+      contratoId,
+      TipoAlerta.CONTRATO_VINCULADO_POR_INQUILINO,
+      'El inquilino de la unidad {unidad} vinculó el contrato con su código de acceso.',
+    );
     return true;
   }
 

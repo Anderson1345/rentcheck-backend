@@ -15,6 +15,7 @@ import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { resumenTerminacion } from '../common/terminacion.util';
+import { alertarAlArrendadorDelContrato } from '../alerta/crear-alerta';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Cómo se localiza el contrato de quien actúa (pertenencia, nunca por rol). */
@@ -88,18 +89,7 @@ export class TerminacionAnticipadaService {
     if (rol !== RolSolicitante.INQUILINO) {
       return;
     }
-    const contrato = await tx.contrato.findUniqueOrThrow({
-      where: { id: contratoId },
-      select: { arrendador_id: true, unidad: { select: { nombre: true } } },
-    });
-    await tx.alerta.create({
-      data: {
-        arrendador_id: contrato.arrendador_id,
-        tipo,
-        contrato_id: contratoId,
-        mensaje: mensaje.replace('{unidad}', contrato.unidad.nombre),
-      },
-    });
+    await alertarAlArrendadorDelContrato(tx, contratoId, tipo, mensaje);
   }
 
   private async estadoActual(tx: Prisma.TransactionClient, id: string) {
