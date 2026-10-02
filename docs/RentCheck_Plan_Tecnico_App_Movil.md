@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.20 — 2 de octubre de 2026.** Reemplaza a la versión 3.19.
+> **Versión 3.21 — 2 de octubre de 2026.** Reemplaza a la versión 3.20.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.21:**
+
+- **Diagnóstico de B0.6-A2 (Panel del arrendador, B-58) hecho el 02/10/2026** (solo lectura): se puede construir sin migración con `GET /arrendadores/panel` (~8 consultas por lote, sin N+1), reutilizando `calcularEstadoCuenta` y `periodosPorContrato`. Hallazgos nuevos: **B-75** (faltan índices), **B-76** (el pago no guarda fecha de aprobación), **B-77** (`Contrato.estado_pago` guardado puede estar atrasado en contratos cerrados) y **B-78** (la alerta de incremento nunca avisa si el incremento ya venció). Decisiones D1 a D8 tomadas por el líder técnico (ver el registro del documento de instrucciones); al cerrar B0.6-A2 se corrigen el Contexto §7.2, la regla 21 y §9 (la mora incluye PARCIAL y quedan definidos los indicadores del Panel).
 
 **Qué cambió en la versión 3.20:**
 
@@ -408,6 +412,10 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-72 | Menor (nuevo) | Las listas de mantenimiento no tienen paginación (como B-62) y la del arrendador no filtra por contrato | después de E8 | ⬜ |
 | B-73 | Menor (nuevo) | La validación de MP4 acepta cualquier marca `ftyp` que no sea de imagen: pasarían un `.mov` o un audio M4A declarados como `video/mp4`; no hay límite de duración ni de solicitudes abiertas | después de E8 | ⬜ |
 | B-74 | Menor (nuevo) | La solicitud no guarda `contrato_id`: el nombre del inquilino que ve el arrendador se reconstruye por unidad y persona, lo que sería ambiguo si esa persona tuviera dos contratos no cancelados en la misma unidad | después de E8 | ⬜ |
+| B-75 | Menor (nuevo) | Faltan índices para consultas por arrendador: `Contrato(arrendador_id)`, `Pago(arrendador_id, estado)`, `Pago(contrato_id)`, `Unidad(inmueble_id)`, `Inmueble(arrendador_id)`, `IncrementoIPC(contrato_id)` y `SolicitudMantenimiento(arrendador_id, estado)`; solo se revisaron las migraciones, no la base real. No duele a escala piloto | migración aparte, antes de usuarios reales | ⬜ |
+| B-76 | Menor (nuevo) | El pago no guarda la fecha de aprobación (solo `fecha_reportada`, `periodo` y `actualizado_en`, que cambia con cualquier escritura). El Panel usa `fecha_reportada` para "ingresos del mes" (decisión D1) | con B-45 (anular aprobación) | ⬜ |
+| B-77 | Menor (nuevo) | `Contrato.estado_pago` guardado puede estar atrasado en contratos VENCIDO o TERMINADO_ANTICIPADAMENTE: el cron solo recalcula los ACTIVO. El Panel recalcula desde los períodos y no lo usa | B0.6-B | ⬜ |
+| B-78 | Menor (nuevo) | La alerta `ejecutarAjusteIpcPendiente` salta los contratos cuyo próximo ajuste ya pasó (`proximoAjuste < hoy`): un incremento vencido nunca avisa. El Panel lo muestra como "incremento disponible" | B0.6-B | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
