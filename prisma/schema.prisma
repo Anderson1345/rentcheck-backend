@@ -289,6 +289,14 @@ enum EstadoPago {
   REEMPLAZADO
 }
 
+/// Motivo (lista fija) con el que el arrendador rechaza un pago (B-59).
+enum MotivoRechazoPago {
+  MONTO_NO_COINCIDE
+  PAGO_NO_VISIBLE
+  COMPROBANTE_ILEGIBLE
+  OTRO
+}
+
 model Pago {
   id              String      @id @default(uuid()) @db.Uuid
   arrendador_id   String      @db.Uuid
@@ -300,6 +308,10 @@ model Pago {
   periodo         DateTime    @db.Date
   comprobante_ruta String?
   estado          EstadoPago  @default(PENDIENTE)
+  /// Solo en pagos RECHAZADO y solo si el arrendador lo indicó; los rechazos anteriores a B-59 quedan en null.
+  motivo_rechazo  MotivoRechazoPago?
+  /// Mensaje opcional del rechazo (hasta 200 caracteres; el tope se valida en el DTO).
+  mensaje_rechazo String?
   creado_en       DateTime    @default(now())
   actualizado_en  DateTime    @updatedAt
 }

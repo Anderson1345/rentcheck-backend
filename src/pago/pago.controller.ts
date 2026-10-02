@@ -47,6 +47,7 @@ import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ClaveIdempotencia } from '../idempotencia/clave-idempotencia.decorator';
 import { CrearPagoDto } from './dto/crear-pago.dto';
 import { ListarPagosQueryDto } from './dto/listar-pagos-query.dto';
+import { RechazarPagoDto } from './dto/rechazar-pago.dto';
 import { PagoService } from './pago.service';
 
 @ApiTags('Pagos')
@@ -63,7 +64,7 @@ export class PagoController {
   })
   @ApiOkResponse({
     description:
-      'Lista de pagos con el contrato, la unidad y el inquilino relacionados.',
+      'Lista de pagos con el contrato, la unidad y el inquilino relacionados. Cada pago trae `motivo_rechazo` (enum o null) y `mensaje_rechazo` (texto o null); solo los pagos RECHAZADO traen valor.',
   })
   listar(
     @ArrendadorActual() arrendadorId: string,
@@ -80,7 +81,8 @@ export class PagoController {
       'Con `?contratoId=` solo los pagos de ese contrato (404 si no es suyo, no está vinculado o está cancelado).',
   })
   @ApiOkResponse({
-    description: 'Lista de pagos del inquilino con sus datos de contrato.',
+    description:
+      'Lista de pagos del inquilino con sus datos de contrato. Cada pago trae `motivo_rechazo` (enum o null) y `mensaje_rechazo` (texto o null); solo los pagos RECHAZADO traen valor.',
   })
   listarMios(
     @InquilinoActual() inquilinoId: string,
@@ -95,7 +97,8 @@ export class PagoController {
     summary: 'Obtener el detalle de un pago por ID (arrendador)',
   })
   @ApiOkResponse({
-    description: 'Detalle del pago con los datos relacionados.',
+    description:
+      'Detalle del pago con los datos relacionados. Cada pago trae `motivo_rechazo` (enum o null) y `mensaje_rechazo` (texto o null); solo los pagos RECHAZADO traen valor.',
   })
   @ApiNotFoundResponse({
     description: 'Pago no encontrado o no pertenece al arrendador.',
@@ -129,8 +132,20 @@ export class PagoController {
 
   @Patch(':id/rechazar')
   @UseGuards(ArrendadorGuard)
-  @ApiOperation({ summary: 'Rechazar un pago pendiente del arrendador' })
-  @ApiOkResponse({ description: 'Pago rechazado correctamente.' })
+  @ApiOperation({
+    summary: 'Rechazar un pago pendiente del arrendador',
+    description:
+      'El cuerpo es OPCIONAL: sin cuerpo el pago queda RECHAZADO sin motivo. Con `motivo` (MONTO_NO_COINCIDE, PAGO_NO_VISIBLE, COMPROBANTE_ILEGIBLE u OTRO) y `mensaje` (1 a 200 caracteres tras recortar espacios) el inquilino los ve en su pago rechazado. `motivo = OTRO` exige mensaje (400 MENSAJE_REQUERIDO) y un mensaje exige motivo (400 MOTIVO_REQUERIDO). Se escriben en la misma escritura condicionada a PENDIENTE: si dos rechazos coinciden, gana uno y el otro recibe 409.',
+  })
+  @ApiBody({ type: RechazarPagoDto, required: false })
+  @ApiOkResponse({
+    description:
+      'Pago rechazado correctamente, con `motivo_rechazo` y `mensaje_rechazo` (null si no se indicaron). Solo los pagos RECHAZADO traen valor en esos campos.',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'VALIDACION (motivo fuera de la lista o mensaje de más de 200 caracteres), MOTIVO_REQUERIDO (mensaje sin motivo) o MENSAJE_REQUERIDO (motivo OTRO sin mensaje).',
+  })
   @ApiNotFoundResponse({
     description: 'Pago no encontrado o no pertenece al arrendador.',
   })
@@ -139,9 +154,10 @@ export class PagoController {
   })
   rechazar(
     @Param('id', ParseIdPipe) id: string,
+    @Body() dto: RechazarPagoDto,
     @ArrendadorActual() arrendadorId: string,
   ) {
-    return this.pagoService.rechazar(id, arrendadorId);
+    return this.pagoService.rechazar(id, arrendadorId, dto);
   }
 
   @Post()
