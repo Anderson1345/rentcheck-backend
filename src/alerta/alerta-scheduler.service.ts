@@ -43,6 +43,12 @@ export interface ResultadoTarea {
 }
 
 /** Máximo de prórrogas automáticas por contrato y por corrida (recuperación). */
+/** B-78: cada cuántos días vuelve a avisar un ajuste de IPC vencido que el arrendador ya leyó. */
+const DIAS_ENTRE_AVISOS_IPC_VENCIDO = 7;
+
+/** B-77: un contrato cerrado se recalcula si su estado guardado no es AL_DIA o si cerró hace menos de esto. */
+const DIAS_RECALCULO_CONTRATOS_CERRADOS = 90;
+
 const MAX_PRORROGAS_POR_CORRIDA = 12;
 
 function restarDiasUTC(fecha: Date, dias: number): Date {
@@ -182,15 +188,88 @@ export class AlertaSchedulerService {
   private async yaHayAlerta(
     evento: Prisma.AlertaWhereInput,
     inicioDia: Date,
+    diasRecientes = 0,
   ): Promise<boolean> {
+    // Con `diasRecientes`, una alerta ya leída también cuenta mientras tenga menos de esos días.
+    const desde = new Date(inicioDia.getTime() - diasRecientes * 86_400_000);
     const existente = await this.prisma.alerta.findFirst({
       where: {
         ...evento,
-        OR: [{ leida: false }, { creado_en: { gte: inicioDia } }],
+        OR: [{ leida: false }, { creado_en: { gte: desde } }],
       },
       select: { id: true },
     });
     return existente !== null;
+  }
+
+  /**
+   * Alerta de cron para un contrato, una fila por destinatario: el arrendador siempre y el inquilino
+   * solo si ya vinculó su cuenta (sin cuenta no hay a quién). Cada destinatario tiene su propia
+   * deduplicación (`yaHayAlerta` sobre SU fila), así que leer una no afecta a la otra. Devuelve
+   * cuántas filas creó.
+   */
+  private async alertarContratoAmbosRoles(
+    contrato: {
+      id: string;
+      inquilino_id: string;
+      vinculado_en: Date | null;
+      unidad: { inmueble: { arrendador_id: string } };
+    },
+    datos: {
+      tipo: TipoAlerta;
+      inicioDia: Date;
+      creadoEn: Date;
+      periodo?: Date | null;
+      mensajeArrendador: string;
+      mensajeInquilino: string;
+    },
+  ): Promise<number> {
+    const arrendadorId = contrato.unidad.inmueble.arrendador_id;
+    let creadas = 0;
+
+    if (
+      !(await this.yaHayAlerta(
+        {
+          tipo: datos.tipo,
+          contrato_id: contrato.id,
+          arrendador_id: arrendadorId,
+        },
+        datos.inicioDia,
+      ))
+    ) {
+      await crearAlerta(this.prisma, {
+        arrendador_id: arrendadorId,
+        tipo: datos.tipo,
+        contrato_id: contrato.id,
+        periodo: datos.periodo ?? null,
+        mensaje: datos.mensajeArrendador,
+        creado_en: datos.creadoEn,
+      });
+      creadas += 1;
+    }
+
+    if (
+      contrato.vinculado_en !== null &&
+      !(await this.yaHayAlerta(
+        {
+          tipo: datos.tipo,
+          contrato_id: contrato.id,
+          inquilino_id: contrato.inquilino_id,
+        },
+        datos.inicioDia,
+      ))
+    ) {
+      await crearAlerta(this.prisma, {
+        inquilino_id: contrato.inquilino_id,
+        tipo: datos.tipo,
+        contrato_id: contrato.id,
+        periodo: datos.periodo ?? null,
+        mensaje: datos.mensajeInquilino,
+        creado_en: datos.creadoEn,
+      });
+      creadas += 1;
+    }
+    return creadas;
   }
 
   /**
@@ -521,33 +600,16 @@ export class AlertaSchedulerService {
 
     let creadas = 0;
     for (const contrato of contratos) {
-      if (
-        await this.yaHayAlerta(
-          {
-            tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
-            contrato_id: contrato.id,
-          },
-          inicioDia,
-        )
-      ) {
-        continue;
-      }
-
-      const arrendadorId = contrato.unidad.inmueble.arrendador_id;
       const fechaVencimiento = contrato.fecha_fin.toLocaleDateString('es-CO', {
         timeZone: 'UTC',
       });
-
-      await this.prisma.alerta.create({
-        data: {
-          arrendador_id: arrendadorId,
-          tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
-          contrato_id: contrato.id,
-          mensaje: `El contrato de la unidad ${contrato.unidad.nombre} vence el ${fechaVencimiento}.`,
-          creado_en: ahora,
-        },
+      creadas += await this.alertarContratoAmbosRoles(contrato, {
+        tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
+        inicioDia,
+        creadoEn: ahora,
+        mensajeArrendador: `El contrato de la unidad ${contrato.unidad.nombre} vence el ${fechaVencimiento}.`,
+        mensajeInquilino: `Tu contrato de la unidad ${contrato.unidad.nombre} vence el ${fechaVencimiento}.`,
       });
-      creadas += 1;
     }
 
     this.logger.log(
@@ -581,6 +643,10 @@ export class AlertaSchedulerService {
 
     let creadas = 0;
     for (const contrato of contratos) {
+      // El recordatorio es para el inquilino: sin cuenta vinculada no hay a quién avisar.
+      if (contrato.vinculado_en === null) {
+        continue;
+      }
       const periodos = calcularEstadoCuenta(
         {
           fecha_inicio: contrato.fecha_inicio,
@@ -608,18 +674,21 @@ export class AlertaSchedulerService {
         continue;
       }
 
+      // Deduplicación por el INQUILINO: una alerta de recordatorio que antes se mandó al arrendador no
+      // cuenta, así que quien nunca recibió el aviso lo recibe.
       const yaExiste = await this.prisma.alerta.findFirst({
         where: {
           tipo: TipoAlerta.RECORDATORIO_PAGO_PROXIMO,
           contrato_id: contrato.id,
+          inquilino_id: contrato.inquilino_id,
           creado_en: { gte: limiteReciente },
         },
+        select: { id: true },
       });
       if (yaExiste) {
         continue;
       }
 
-      const arrendadorId = contrato.unidad.inmueble.arrendador_id;
       const fechaPago = periodoProximo.fecha_limite.toLocaleDateString(
         'es-CO',
         {
@@ -627,13 +696,15 @@ export class AlertaSchedulerService {
         },
       );
 
-      await this.prisma.alerta.create({
-        data: {
-          arrendador_id: arrendadorId,
-          tipo: TipoAlerta.RECORDATORIO_PAGO_PROXIMO,
-          contrato_id: contrato.id,
-          mensaje: `Recuerda que el pago de la unidad ${contrato.unidad.nombre} vence el ${fechaPago}.`,
-        },
+      await crearAlerta(this.prisma, {
+        inquilino_id: contrato.inquilino_id,
+        tipo: TipoAlerta.RECORDATORIO_PAGO_PROXIMO,
+        contrato_id: contrato.id,
+        periodo: periodoProximo.periodo,
+        mensaje: `Recuerda que tu pago de la unidad ${contrato.unidad.nombre} vence el ${fechaPago}.`,
+        // Desde el día que se calcula (no del reloj de la base): la ventana de 20 días y las pruebas con
+        // reloj simulado usan la misma fecha.
+        creado_en: inicioDelDiaBogota(hoy),
       });
       creadas += 1;
     }
@@ -689,14 +760,12 @@ export class AlertaSchedulerService {
           (1000 * 60 * 60 * 24),
       );
 
-      await this.prisma.alerta.create({
-        data: {
-          arrendador_id: arrendadorId,
-          tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
-          solicitud_mantenimiento_id: solicitud.id,
-          mensaje: `La solicitud de mantenimiento de la unidad ${solicitud.unidad.nombre} lleva ${diasSinAtender} día(s) sin atenderse.`,
-          creado_en: ahora,
-        },
+      await crearAlerta(this.prisma, {
+        arrendador_id: arrendadorId,
+        tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_SIN_ATENDER,
+        solicitud_mantenimiento_id: solicitud.id,
+        mensaje: `La solicitud de mantenimiento de la unidad ${solicitud.unidad.nombre} lleva ${diasSinAtender} día(s) sin atenderse.`,
+        creado_en: ahora,
       });
       creadas += 1;
     }
@@ -741,20 +810,25 @@ export class AlertaSchedulerService {
 
       const proximoAjuste = sumarMesesUTC(referencia, 12);
 
-      if (
-        proximoAjuste.getTime() < hoy.getTime() ||
-        proximoAjuste.getTime() > limite.getTime()
-      ) {
+      // B-78: un ajuste cuya fecha ya pasó TAMBIÉN avisa (antes se saltaba y un incremento vencido
+      // nunca avisaba). Solo se descarta el que aún está a más de 30 días.
+      if (proximoAjuste.getTime() > limite.getTime()) {
         continue;
       }
+      const vencido = proximoAjuste.getTime() < hoy.getTime();
 
+      // Dos formas de no repetir: una alerta sin leer, o una creada hoy (como las demás del cron). Un
+      // ajuste VENCIDO seguiría avisando a diario hasta que se aplique, así que además cuenta una ya leída
+      // de los últimos ${DIAS_ENTRE_AVISOS_IPC_VENCIDO} días: avisa a lo sumo una vez por semana.
       if (
         await this.yaHayAlerta(
           {
             tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
             contrato_id: contrato.id,
+            arrendador_id: contrato.unidad.inmueble.arrendador_id,
           },
           inicioDia,
+          vencido ? DIAS_ENTRE_AVISOS_IPC_VENCIDO : 0,
         )
       ) {
         continue;
@@ -765,14 +839,14 @@ export class AlertaSchedulerService {
         timeZone: 'UTC',
       });
 
-      await this.prisma.alerta.create({
-        data: {
-          arrendador_id: arrendadorId,
-          tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
-          contrato_id: contrato.id,
-          mensaje: `El ajuste de IPC de la unidad ${contrato.unidad.nombre} debe realizarse el ${fechaAjuste}.`,
-          creado_en: ahora,
-        },
+      await crearAlerta(this.prisma, {
+        arrendador_id: arrendadorId,
+        tipo: TipoAlerta.AJUSTE_IPC_PENDIENTE,
+        contrato_id: contrato.id,
+        mensaje: vencido
+          ? `El ajuste de IPC de la unidad ${contrato.unidad.nombre} debía realizarse el ${fechaAjuste} y aún no se aplica.`
+          : `El ajuste de IPC de la unidad ${contrato.unidad.nombre} debe realizarse el ${fechaAjuste}.`,
+        creado_en: ahora,
       });
       creadas += 1;
     }
@@ -788,6 +862,8 @@ export class AlertaSchedulerService {
     revisados: number;
     enMora: number;
     creadas: number;
+    cerradosRecalculados: number;
+    errores: number;
   }> {
     const hoy = hoyEnBogota(ahora);
     const inicioDia = inicioDelDiaBogota(hoy);
@@ -827,40 +903,68 @@ export class AlertaSchedulerService {
         continue;
       }
 
-      if (
-        await this.yaHayAlerta(
-          {
-            tipo: TipoAlerta.INQUILINO_EN_MORA,
-            contrato_id: contrato.id,
-          },
-          inicioDia,
-        )
-      ) {
-        continue;
-      }
-
-      const arrendadorId = contrato.unidad.inmueble.arrendador_id;
       const fechaVencimientoStr =
         periodoEnMoraMasAntiguo.fecha_limite.toLocaleDateString('es-CO', {
           timeZone: 'UTC',
         });
 
-      await this.prisma.alerta.create({
-        data: {
-          arrendador_id: arrendadorId,
-          tipo: TipoAlerta.INQUILINO_EN_MORA,
-          contrato_id: contrato.id,
-          mensaje: `El pago de la unidad ${contrato.unidad.nombre} correspondiente a ${fechaVencimientoStr} está vencido.`,
-          creado_en: ahora,
-        },
+      creadas += await this.alertarContratoAmbosRoles(contrato, {
+        tipo: TipoAlerta.INQUILINO_EN_MORA,
+        inicioDia,
+        creadoEn: ahora,
+        periodo: periodoEnMoraMasAntiguo.periodo,
+        mensajeArrendador: `El pago de la unidad ${contrato.unidad.nombre} correspondiente a ${fechaVencimientoStr} está vencido.`,
+        mensajeInquilino: `Tu pago de la unidad ${contrato.unidad.nombre} correspondiente a ${fechaVencimientoStr} está vencido.`,
       });
-      creadas += 1;
+    }
+
+    // B-77: el estado de pago de los contratos CERRADOS también se recalcula (el cron solo miraba los
+    // ACTIVO), sin alertas de mora: la mora de un contrato cerrado se ve en el Panel. Solo los que pueden
+    // haber cambiado: con estado guardado distinto de AL_DIA o cerrados hace poco. Es una lectura de
+    // contratos y un recálculo por contrato (N+1, acotado por ese filtro).
+    const cerrados = await this.prisma.contrato.findMany({
+      where: {
+        estado: {
+          in: [
+            EstadoContrato.VENCIDO,
+            EstadoContrato.TERMINADO_ANTICIPADAMENTE,
+          ],
+        },
+        OR: [
+          { estado_pago: { not: EstadoPagoContrato.AL_DIA } },
+          {
+            fecha_fin: {
+              gte: sumarDiasUTC(hoy, -DIAS_RECALCULO_CONTRATOS_CERRADOS),
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    let cerradosRecalculados = 0;
+    let errores = 0;
+    for (const cerrado of cerrados) {
+      try {
+        await recalcularEstadoPagoContrato(this.prisma, cerrado.id, hoy);
+        cerradosRecalculados += 1;
+      } catch (error) {
+        errores += 1;
+        this.logger.warn(
+          `No se pudo recalcular el estado de pago del contrato cerrado ${cerrado.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     this.logger.log(
-      `Cron de mora: ${contratos.length} contrato(s) revisado(s), ${enMora} en mora, ${creadas} alerta(s) nueva(s) creada(s).`,
+      `Cron de mora: ${contratos.length} contrato(s) revisado(s), ${enMora} en mora, ${creadas} alerta(s) nueva(s) creada(s); ${cerradosRecalculados} contrato(s) cerrado(s) recalculado(s)${errores ? `, ${errores} con error` : ''}.`,
     );
 
-    return { revisados: contratos.length, enMora, creadas };
+    return {
+      revisados: contratos.length,
+      enMora,
+      creadas,
+      cerradosRecalculados,
+      errores,
+    };
   }
 }

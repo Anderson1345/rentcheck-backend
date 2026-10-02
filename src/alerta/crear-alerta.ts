@@ -15,6 +15,8 @@ export interface DatosAlerta {
   pago_id?: string | null;
   /** Primer día del mes que cubre el período (`@db.Date`). */
   periodo?: Date | null;
+  /** Solo el cron la escribe desde JS (la hora simulada y la deduplicación usan el mismo día); el resto usa el valor por defecto. */
+  creado_en?: Date;
 }
 
 /**

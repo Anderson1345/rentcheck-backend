@@ -481,7 +481,12 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
     const alertas = await prisma.alerta.findMany({
       where: { tipo: 'CONTRATO_PROXIMO_A_VENCER' },
     });
-    expect(alertas.map((a) => a.contrato_id)).toEqual([dentro.contratoId]);
+    // Solo el contrato de dentro de 30 días, con una alerta por destinatario (arrendador e inquilino
+    // vinculado, B0.6-B2).
+    expect([...new Set(alertas.map((a) => a.contrato_id))]).toEqual([
+      dentro.contratoId,
+    ]);
+    expect(alertas).toHaveLength(2);
     expect(fuera.contratoId).not.toBe(dentro.contratoId);
   }, 60000);
 
