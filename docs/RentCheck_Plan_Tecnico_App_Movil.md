@@ -1,8 +1,18 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.14 — 30 de septiembre de 2026.** Reemplaza a la versión 3.13.
+> **Versión 3.16 — 1 de octubre de 2026.** Reemplaza a la versión 3.15.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.16:**
+
+- **B0.6-A se divide en A1 y A2.** **B0.6-A1 cerrada: B-59 ✅** (motivo del rechazo de un pago). Migración aditiva `20261001120000_b06a1_motivo_rechazo_pago` (enum `MotivoRechazoPago` y columnas nulas `motivo_rechazo` y `mensaje_rechazo` en `Pago`; sin backfill). `PATCH /pagos/:id/rechazar` acepta un cuerpo **opcional** `{ motivo?, mensaje? }` (400 `MOTIVO_REQUERIDO`, 400 `MENSAJE_REQUERIDO`, 400 `VALIDACION`); se escribe en el mismo `updateMany` condicionado a `PENDIENTE`; los tres listados exponen los campos. **B-58 (Panel del arrendador) pasa a B0.6-A2**, que ya no bloquea a E7: solo bloquea a E9.
+- Límites de A1: la alerta al inquilino con el motivo llega con B-18 (B0.6-B); un mensaje en blanco cuenta como no enviado (con "otro" da `MENSAJE_REQUERIDO`); un cuerpo inválido sobre un pago ajeno responde 400 antes que 404; los pagos rechazados antes de A1 quedan con motivo null.
+
+**Qué cambió en la versión 3.15:**
+
+- **Nuevo B-60 (menor, sección 3.7):** `POST /contratos` no acepta el encabezado `Idempotency-Key` (sí lo aceptan `POST /pagos` y `POST /solicitudes-mantenimiento`). Detectado en E4-A (01/10/2026) al leer el código real; el Plan de Entregas lo daba por hecho. Mitigación ya aplicada en la app: botón bloqueado y verificación con `GET /contratos` si no hay respuesta; los contratos no se encolan sin conexión.
+- E4-A, E4-B y E5-A (app) cerradas; sin cambios de reglas de negocio ni de contrato del backend.
 
 **Qué cambió en la versión 3.14:**
 
@@ -364,8 +374,9 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-55 | Menor (nuevo) | Ni `crear()` ni `PATCH /contratos/:id` exigen que `fecha_fin` sea posterior a hoy (Contexto §5.6); un contrato con fin pasado se vence o se prorroga solo en el siguiente cron | 0.5-D | ✅ |
 | B-56 | Importante (nuevo) | Con verificación de correo activa, un registro sin verificar puede ocupar el correo de otra persona y dejarla fuera (409 genérico) | 0.4-D2 | ✅ (30/09/2026) |
 | B-57 | Menor (nuevo) | Contrato OpenAPI incompleto: `GET /auth/capacidades` sin schema de respuesta; `GET /` devuelve texto `text/html` ("Hello World!") pero se declara JSON; no hay endpoint de estado (`/health`) para la pantalla Diagnóstico ni para despertar Render; las respuestas de login, registro y completar-registro tampoco tienen schema (`access_token` y `arrendador`/`inquilino`), así que la app las tipa a mano. Detectado en E1 y E2-A | 0.6 | ⬜ |
-| B-58 | Importante (nuevo) | No existe un endpoint del Panel del arrendador (Contexto §9: ingresos del mes, recaudo esperado vs. real con su desglose aprobado / en revisión / sin reportar, ocupación, cartera en mora, tendencia de ingresos de 6 meses y centro de pendientes). La app no debe calcular reglas de negocio ni recorrer todas las listas. Detectado al contrastar el diseño D1-a | 0.6-A | ⬜ |
-| B-59 | Menor (nuevo; **decidido sí el 01/10/2026**) | `PATCH /pagos/:id/rechazar` no recibe ni guarda un motivo: el inquilino ve el pago Rechazado sin saber por qué. Propuesta: motivo de una lista fija (monto no coincide / no se ve el pago / comprobante ilegible / otro) y mensaje opcional de hasta 200 caracteres; una columna nullable (migración aditiva); se muestra al inquilino en el pago rechazado y en su alerta. Cambia Contexto §5.10 | 0.6-A | ⬜ |
+| B-58 | Importante (nuevo) | No existe un endpoint del Panel del arrendador (Contexto §9: ingresos del mes, recaudo esperado vs. real con su desglose aprobado / en revisión / sin reportar, ocupación, cartera en mora, tendencia de ingresos de 6 meses y centro de pendientes). La app no debe calcular reglas de negocio ni recorrer todas las listas. Detectado al contrastar el diseño D1-a | 0.6-A2 | ⬜ |
+| B-59 | Menor (nuevo; **decidido sí el 01/10/2026**) | `PATCH /pagos/:id/rechazar` no recibe ni guarda un motivo: el inquilino ve el pago Rechazado sin saber por qué. Propuesta: motivo de una lista fija (monto no coincide / no se ve el pago / comprobante ilegible / otro) y mensaje opcional de hasta 200 caracteres; una columna nullable (migración aditiva); se muestra al inquilino en el pago rechazado y en su alerta. Cambia Contexto §5.10 | 0.6-A1 | ✅ Corregido el 01/10/2026 (cuerpo opcional en el servidor; la alerta al inquilino va con B-18) |
+| B-60 | Menor (nuevo) | `POST /contratos` no acepta `Idempotency-Key`: si la respuesta se pierde (timeout o corte de red) el arrendador no sabe si el contrato se creó, y un reintento podría duplicarlo (el 409 por traslape de fechas frena casi todos los casos, pero no un cambio de fechas entre intentos). La app lo mitiga bloqueando el botón y verificando con `GET /contratos` (E4-A). Corrección esperada: aceptar el encabezado con el mismo patrón de `ClaveIdempotencia` (por arrendador y endpoint, misma clave y mismo contenido devuelve el mismo contrato; el PDF se genera una sola vez) | Sin bloque asignado (baja prioridad; 0.6 si hay hueco) | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 

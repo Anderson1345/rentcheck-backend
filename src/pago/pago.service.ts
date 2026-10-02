@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { firmarTolerante } from '../common/firma-tolerante';
-import { EstadoContrato, EstadoPago, Prisma } from '@prisma/client';
+import {
+  EstadoContrato,
+  EstadoPago,
+  MotivoRechazoPago,
+  Prisma,
+} from '@prisma/client';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -30,6 +35,10 @@ import {
   ParametrosClave,
 } from '../idempotencia/idempotencia.service';
 import { CrearPagoDto } from './dto/crear-pago.dto';
+import {
+  RechazarPagoDto,
+  validarReglasMotivoRechazo,
+} from './dto/rechazar-pago.dto';
 
 function mismoMesUTC(a: Date, b: Date): boolean {
   return (
@@ -384,11 +393,19 @@ export class PagoService {
     return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pagoActualizado));
   }
 
-  async rechazar(id: string, arrendadorId: string) {
+  /**
+   * Rechaza un pago PENDIENTE. El motivo y el mensaje (opcionales) se escriben en el MISMO
+   * `updateMany` condicionado a PENDIENTE: nunca se lee y luego se escribe, así dos rechazos
+   * simultáneos dejan un solo ganador con su propio motivo.
+   */
+  async rechazar(id: string, arrendadorId: string, dto: RechazarPagoDto) {
+    // Reglas entre campos: antes de tocar la base, para no escribir nada si fallan.
+    validarReglasMotivoRechazo(dto);
     const pagoActualizado = await this.ejecutarTransicionPago(
       id,
       arrendadorId,
       EstadoPago.RECHAZADO,
+      { motivo: dto.motivo ?? null, mensaje: dto.mensaje ?? null },
     );
     return this.exponerUrlFirmada(this.conInquilinoDeLaCopia(pagoActualizado));
   }
@@ -397,6 +414,7 @@ export class PagoService {
     id: string,
     arrendadorId: string,
     nuevoEstado: Extract<EstadoPago, 'APROBADO' | 'RECHAZADO'>,
+    rechazo?: { motivo: MotivoRechazoPago | null; mensaje: string | null },
   ) {
     return this.prisma.$transaction(async (tx) => {
       const pagoExistente = await tx.pago.findFirst({
@@ -416,7 +434,16 @@ export class PagoService {
           arrendador_id: arrendadorId,
           estado: EstadoPago.PENDIENTE,
         },
-        data: { estado: nuevoEstado },
+        data: {
+          estado: nuevoEstado,
+          // Solo el rechazo escribe el motivo; aprobar nunca toca estos campos.
+          ...(rechazo
+            ? {
+                motivo_rechazo: rechazo.motivo,
+                mensaje_rechazo: rechazo.mensaje,
+              }
+            : {}),
+        },
       });
 
       if (resultado.count === 0) {
