@@ -15,7 +15,7 @@ import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { resumenTerminacion } from '../common/terminacion.util';
-import { alertarAlArrendadorDelContrato } from '../alerta/crear-alerta';
+import { alertarALaContraparte } from '../alerta/crear-alerta';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Cómo se localiza el contrato de quien actúa (pertenencia, nunca por rol). */
@@ -75,21 +75,6 @@ export class TerminacionAnticipadaService {
       ...contrato,
       terminacion_anticipada: resumenTerminacion(contrato, rol),
     };
-  }
-
-  private async alertarAlArrendador(
-    tx: Prisma.TransactionClient,
-    contratoId: string,
-    rol: RolSolicitante,
-    tipo: TipoAlerta,
-    mensaje: string,
-  ): Promise<void> {
-    // Solo hay alertas cuando actúa el inquilino. Las alertas para el
-    // inquilino como destinatario llegan en B0.6.
-    if (rol !== RolSolicitante.INQUILINO) {
-      return;
-    }
-    await alertarAlArrendadorDelContrato(tx, contratoId, tipo, mensaje);
   }
 
   private async estadoActual(tx: Prisma.TransactionClient, id: string) {
@@ -186,12 +171,16 @@ export class TerminacionAnticipadaService {
         });
       }
 
-      await this.alertarAlArrendador(
+      const fechaEfectiva = efectiva.toISOString().slice(0, 10);
+      await alertarALaContraparte(
         tx,
         contratoId,
         rol,
         TipoAlerta.TERMINACION_ANTICIPADA_SOLICITADA,
-        `El inquilino de la unidad {unidad} solicitó la terminación anticipada del contrato (fecha efectiva ${efectiva.toISOString().slice(0, 10)}).`,
+        {
+          [RolSolicitante.INQUILINO]: `El inquilino de la unidad {unidad} solicitó la terminación anticipada del contrato (fecha efectiva ${fechaEfectiva}).`,
+          [RolSolicitante.ARRENDADOR]: `El arrendador solicitó la terminación anticipada de tu contrato de la unidad {unidad} (fecha efectiva ${fechaEfectiva}).`,
+        },
       );
       return this.respuesta(tx, contratoId, rol);
     });
@@ -269,12 +258,17 @@ export class TerminacionAnticipadaService {
         await recalcularEstadoPagoContrato(tx, contratoId, hoy);
       }
 
-      await this.alertarAlArrendador(
+      await alertarALaContraparte(
         tx,
         contratoId,
         rol,
         TipoAlerta.TERMINACION_ANTICIPADA_CONFIRMADA,
-        'El inquilino de la unidad {unidad} confirmó la terminación anticipada del contrato.',
+        {
+          [RolSolicitante.INQUILINO]:
+            'El inquilino de la unidad {unidad} confirmó la terminación anticipada del contrato.',
+          [RolSolicitante.ARRENDADOR]:
+            'El arrendador confirmó la terminación anticipada de tu contrato de la unidad {unidad}.',
+        },
       );
       return this.respuesta(tx, contratoId, rol);
     });
@@ -329,12 +323,17 @@ export class TerminacionAnticipadaService {
         });
       }
 
-      await this.alertarAlArrendador(
+      await alertarALaContraparte(
         tx,
         contratoId,
         rol,
         TipoAlerta.TERMINACION_ANTICIPADA_CANCELADA,
-        'El inquilino de la unidad {unidad} canceló su solicitud de terminación anticipada.',
+        {
+          [RolSolicitante.INQUILINO]:
+            'El inquilino de la unidad {unidad} canceló su solicitud de terminación anticipada.',
+          [RolSolicitante.ARRENDADOR]:
+            'El arrendador canceló su solicitud de terminación anticipada de tu contrato de la unidad {unidad}.',
+        },
       );
       return this.respuesta(tx, contratoId, rol);
     });

@@ -14,7 +14,10 @@ import {
   EstadoContrato,
   EstadoSolicitudMantenimiento,
   Prisma,
+  TipoAlerta,
+  UrgenciaMantenimiento,
 } from '@prisma/client';
+import { crearAlerta } from '../alerta/crear-alerta';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { contratoVinculadoDelInquilino } from '../common/contrato-vinculado-inquilino';
@@ -29,6 +32,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ActualizarEstadoSolicitudMantenimientoDto } from './dto/actualizar-estado-solicitud-mantenimiento.dto';
 import { CrearSolicitudMantenimientoDto } from './dto/crear-solicitud-mantenimiento.dto';
 import { ListarSolicitudesMantenimientoQueryDto } from './dto/listar-solicitudes-mantenimiento-query.dto';
+
+const URGENCIA_EN_TEXTO: Record<UrgenciaMantenimiento, string> = {
+  [UrgenciaMantenimiento.BAJO]: 'baja',
+  [UrgenciaMantenimiento.MEDIO]: 'media',
+  [UrgenciaMantenimiento.ALTO]: 'alta',
+};
 
 @Injectable()
 export class SolicitudMantenimientoService {
@@ -71,7 +80,12 @@ export class SolicitudMantenimientoService {
       inquilino_id: inquilinoId,
     };
     const include = {
-      unidad: { select: { inmueble: { select: { arrendador_id: true } } } },
+      unidad: {
+        select: {
+          nombre: true,
+          inmueble: { select: { arrendador_id: true } },
+        },
+      },
     };
 
     const contratoId = await resolverIdContratoDelInquilino(this.prisma, donde);
@@ -134,9 +148,10 @@ export class SolicitudMantenimientoService {
         estado: EstadoSolicitudMantenimiento.PENDIENTE,
       };
 
-      solicitud = reclamoId
-        ? await this.crearYAsociarReclamo(datos, reclamoId)
-        : await this.prisma.solicitudMantenimiento.create({ data: datos });
+      solicitud = await this.crearConAlerta(datos, reclamoId, {
+        contratoId: contrato.id,
+        unidad: contrato.unidad.nombre,
+      });
     } catch (error) {
       if (reclamoId) {
         await this.idempotencia.liberarReclamo(reclamoId);
@@ -153,13 +168,28 @@ export class SolicitudMantenimientoService {
     };
   }
 
-  private crearYAsociarReclamo(
+  /**
+   * Crea la solicitud y la alerta al ARRENDADOR (B-69) en la misma transacción; con clave de
+   * idempotencia también asocia el reclamo. Una repetición con la misma clave nunca llega aquí (devuelve
+   * la solicitud existente), así que no crea otra alerta.
+   */
+  private crearConAlerta(
     datos: Prisma.SolicitudMantenimientoUncheckedCreateInput,
-    reclamoId: string,
+    reclamoId: string | undefined,
+    contexto: { contratoId: string; unidad: string },
   ) {
     return this.prisma.$transaction(async (tx) => {
       const creada = await tx.solicitudMantenimiento.create({ data: datos });
-      await this.idempotencia.asociarRecurso(tx, reclamoId, creada.id);
+      await crearAlerta(tx, {
+        arrendador_id: datos.arrendador_id,
+        tipo: TipoAlerta.SOLICITUD_MANTENIMIENTO_CREADA,
+        solicitud_mantenimiento_id: creada.id,
+        contrato_id: contexto.contratoId,
+        mensaje: `Nueva solicitud de mantenimiento en la unidad ${contexto.unidad} (urgencia ${URGENCIA_EN_TEXTO[datos.urgencia]}).`,
+      });
+      if (reclamoId) {
+        await this.idempotencia.asociarRecurso(tx, reclamoId, creada.id);
+      }
       return creada;
     });
   }
@@ -339,7 +369,11 @@ export class SolicitudMantenimientoService {
     const actualizada = await this.prisma.$transaction(async (tx) => {
       const solicitudExistente = await tx.solicitudMantenimiento.findFirst({
         where: { id, arrendador_id: arrendadorId },
-        select: { id: true },
+        select: {
+          id: true,
+          inquilino_id: true,
+          unidad: { select: { nombre: true } },
+        },
       });
       if (!solicitudExistente) {
         throw new NotFoundException(
@@ -373,6 +407,17 @@ export class SolicitudMantenimientoService {
             'La transición de estado no es válida para el estado actual de la solicitud.',
         });
       }
+
+      // Alerta al inquilino de la solicitud, solo porque la transición se aplicó (count 0 lanzó 409).
+      await crearAlerta(tx, {
+        inquilino_id: solicitudExistente.inquilino_id,
+        tipo: TipoAlerta.MANTENIMIENTO_CAMBIO_ESTADO,
+        solicitud_mantenimiento_id: id,
+        mensaje:
+          dto.estado === EstadoSolicitudMantenimiento.RESUELTO
+            ? `Tu solicitud de mantenimiento en la unidad ${solicitudExistente.unidad.nombre} fue resuelta.`
+            : `Tu solicitud de mantenimiento en la unidad ${solicitudExistente.unidad.nombre} está en proceso.`,
+      });
 
       return tx.solicitudMantenimiento.findUniqueOrThrow({
         where: { id },

@@ -13,7 +13,7 @@ import {
 import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
 import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
-import { alertarAlArrendadorDelContrato } from '../alerta/crear-alerta';
+import { alertarALaContraparte } from '../alerta/crear-alerta';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Cómo se localiza el contrato de quien actúa (pertenencia, nunca por rol). */
@@ -86,21 +86,6 @@ export class AvisoNoRenovacionService {
     };
   }
 
-  private async alertarAlArrendador(
-    tx: Prisma.TransactionClient,
-    contratoId: string,
-    rol: RolSolicitante,
-    tipo: TipoAlerta,
-    mensaje: string,
-  ): Promise<void> {
-    // Solo hay alertas cuando actúa el inquilino. Las alertas para el
-    // inquilino como destinatario llegan en B0.6.
-    if (rol !== RolSolicitante.INQUILINO) {
-      return;
-    }
-    await alertarAlArrendadorDelContrato(tx, contratoId, tipo, mensaje);
-  }
-
   async dar(
     contratoId: string,
     alcance: Alcance,
@@ -138,12 +123,17 @@ export class AvisoNoRenovacionService {
         }
       }
 
-      await this.alertarAlArrendador(
+      await alertarALaContraparte(
         tx,
         contratoId,
         rol,
         TipoAlerta.AVISO_NO_RENOVACION_DADO,
-        'El inquilino de la unidad {unidad} dio aviso de no renovación del contrato.',
+        {
+          [RolSolicitante.INQUILINO]:
+            'El inquilino de la unidad {unidad} dio aviso de no renovación del contrato.',
+          [RolSolicitante.ARRENDADOR]:
+            'El arrendador dio aviso de no renovación de tu contrato de la unidad {unidad}.',
+        },
       );
       return this.respuesta(tx, contratoId, rol, hoy);
     });
@@ -172,12 +162,17 @@ export class AvisoNoRenovacionService {
         });
       }
 
-      await this.alertarAlArrendador(
+      await alertarALaContraparte(
         tx,
         contratoId,
         rol,
         TipoAlerta.AVISO_NO_RENOVACION_CANCELADO,
-        'El inquilino de la unidad {unidad} canceló su aviso de no renovación.',
+        {
+          [RolSolicitante.INQUILINO]:
+            'El inquilino de la unidad {unidad} canceló su aviso de no renovación.',
+          [RolSolicitante.ARRENDADOR]:
+            'El arrendador canceló su aviso de no renovación de tu contrato de la unidad {unidad}.',
+        },
       );
       return this.respuesta(tx, contratoId, rol, hoy);
     });

@@ -1,5 +1,10 @@
-import { TipoAlerta } from '@prisma/client';
-import { alertarAlArrendadorDelContrato, crearAlerta } from './crear-alerta';
+import { RolSolicitante, TipoAlerta } from '@prisma/client';
+import {
+  alertarAlArrendadorDelContrato,
+  alertarAlInquilinoDelContrato,
+  alertarALaContraparte,
+  crearAlerta,
+} from './crear-alerta';
 
 const ARRENDADOR = '55555555-5555-4555-8555-555555555555';
 const INQUILINO = '66666666-6666-4666-8666-666666666666';
@@ -116,6 +121,111 @@ describe('alertarAlArrendadorDelContrato', () => {
         tipo: TipoAlerta.AVISO_NO_RENOVACION_DADO,
         contrato_id: CONTRATO,
         mensaje: 'Unidad Apto $& 2.',
+      },
+    });
+  });
+});
+
+describe('alertarAlInquilinoDelContrato', () => {
+  function dbFalso(contrato: { vinculado_en: Date | null; nombre?: string }) {
+    const create = jest.fn().mockResolvedValue({ id: 'nueva' });
+    const findUniqueOrThrow = jest.fn().mockResolvedValue({
+      inquilino_id: INQUILINO,
+      vinculado_en: contrato.vinculado_en,
+      unidad: { nombre: contrato.nombre ?? 'Apto 101' },
+    });
+    return {
+      db: { alerta: { create }, contrato: { findUniqueOrThrow } },
+      create,
+    };
+  }
+
+  it('crea la alerta del inquilino del contrato con {unidad} reemplazado y los datos extra', async () => {
+    const { db, create } = dbFalso({ vinculado_en: new Date() });
+    const periodo = new Date('2031-04-01T00:00:00.000Z');
+    await alertarAlInquilinoDelContrato(db as never, CONTRATO, {
+      tipo: TipoAlerta.PAGO_APROBADO,
+      mensaje: 'Pago de la unidad {unidad}.',
+      pago_id: 'pago-1',
+      periodo,
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        inquilino_id: INQUILINO,
+        tipo: TipoAlerta.PAGO_APROBADO,
+        contrato_id: CONTRATO,
+        mensaje: 'Pago de la unidad Apto 101.',
+        pago_id: 'pago-1',
+        periodo,
+      },
+    });
+  });
+
+  it('sin cuenta vinculada (vinculado_en nulo) no hay a quién alertar: no escribe y devuelve null', async () => {
+    const { db, create } = dbFalso({ vinculado_en: null });
+    const resultado = await alertarAlInquilinoDelContrato(
+      db as never,
+      CONTRATO,
+      { tipo: TipoAlerta.PRORROGA_APLICADA, mensaje: 'x' },
+    );
+    expect(resultado).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('alertarALaContraparte', () => {
+  function dbFalso() {
+    const create = jest.fn().mockResolvedValue({ id: 'nueva' });
+    const findUniqueOrThrow = jest.fn().mockResolvedValue({
+      arrendador_id: ARRENDADOR,
+      inquilino_id: INQUILINO,
+      vinculado_en: new Date(),
+      unidad: { nombre: 'Apto 101' },
+    });
+    return {
+      db: { alerta: { create }, contrato: { findUniqueOrThrow } },
+      create,
+    };
+  }
+  const textos = {
+    [RolSolicitante.INQUILINO]: 'Lo hizo el inquilino de {unidad}.',
+    [RolSolicitante.ARRENDADOR]: 'Lo hizo el arrendador de {unidad}.',
+  };
+
+  it('si actúa el inquilino avisa al arrendador con el texto del inquilino', async () => {
+    const { db, create } = dbFalso();
+    await alertarALaContraparte(
+      db as never,
+      CONTRATO,
+      RolSolicitante.INQUILINO,
+      TipoAlerta.AVISO_NO_RENOVACION_DADO,
+      textos,
+    );
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        arrendador_id: ARRENDADOR,
+        tipo: TipoAlerta.AVISO_NO_RENOVACION_DADO,
+        contrato_id: CONTRATO,
+        mensaje: 'Lo hizo el inquilino de Apto 101.',
+      },
+    });
+  });
+
+  it('si actúa el arrendador avisa al inquilino con el texto del arrendador', async () => {
+    const { db, create } = dbFalso();
+    await alertarALaContraparte(
+      db as never,
+      CONTRATO,
+      RolSolicitante.ARRENDADOR,
+      TipoAlerta.AVISO_NO_RENOVACION_DADO,
+      textos,
+    );
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        inquilino_id: INQUILINO,
+        tipo: TipoAlerta.AVISO_NO_RENOVACION_DADO,
+        contrato_id: CONTRATO,
+        mensaje: 'Lo hizo el arrendador de Apto 101.',
       },
     });
   });
