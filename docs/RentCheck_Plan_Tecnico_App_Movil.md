@@ -1,8 +1,13 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.18 — 2 de octubre de 2026.** Reemplaza a la versión 3.17.
+> **Versión 3.19 — 2 de octubre de 2026.** Reemplaza a la versión 3.18.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.19:**
+
+- **E7-B (app, pagos del arrendador) cerrada; E7 completa.** Sin cambios de reglas de negocio ni de B-xx. Los tipos de pagos de la app salen ya de `tipos.gen.ts` (B-57 aplicado a pagos).
+- **Diagnóstico de E8 (mantenimiento), 02/10/2026:** el backend ya cubre crear (multipart con un adjunto opcional JPEG, PNG o MP4 de hasta 20 MB y `Idempotency-Key`), listar, ver y cambiar de estado (PENDIENTE → EN_PROCESO → RESUELTO o PENDIENTE → RESUELTO). Nuevos **B-66 a B-74** (sección 3.7). **Se crea B0.6-A4** (mantenimiento para la app: B-66, B-67, B-68 y la parte documental de B-70), que debe estar hecha antes de E8-A. Se aplaza B-69 (alerta al arrendador al crear una solicitud) a B0.6-B, con las demás alertas; B-71, B-72, B-73 y B-74 quedan abiertos.
 
 **Qué cambió en la versión 3.18:**
 
@@ -390,6 +395,15 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-63 | Importante (nuevo) | El pago no dice si el comprobante es imagen o PDF: la app no puede decidir cómo mostrarlo sin inferirlo de la URL firmada (frágil). Propuesta: `comprobante_tipo` (`IMAGEN` o `PDF`) derivado del archivo guardado | 0.6-A3 | ✅ Corregido el 02/10/2026 |
 | B-64 | Menor (nuevo) | El Contexto §5.10 decía que un monto menor al canon "marca el pago como parcial", pero el servidor no valida el monto: el estado Parcial es del período, tras aprobar. **Decidido el 01/10/2026: se corrige el Contexto (2.14), no el backend.** Pendiente de producto, aparte: qué hacer con un monto mayor al canon (hoy no cubre otros períodos) | — | ✅ (documentación) |
 | B-65 | Menor (nuevo) | No hay `GET /pagos/mios/:id` (detalle del pago para el inquilino) ni una fecha de rechazo propia (solo `actualizado_en`) para mostrarle cuándo se rechazó | después de E7 | ⬜ |
+| B-66 | Importante (nuevo) | El inquilino no puede saber el `unidadId` de su contrato: ni `GET /inquilino/contratos` ni `GET /inquilino/contratos/:id` devuelven `unidad.id`, y `POST /solicitudes-mantenimiento` lo exige. Sin esto la app no puede crear solicitudes. Propuesta: devolver `unidad.id` en ambos. Detectado en el diagnóstico de E8 (02/10/2026) | 0.6-A4 | ⬜ |
+| B-67 | Importante (nuevo) | Ningún endpoint de mantenimiento publica esquema de respuesta en OpenAPI (misma familia de B-57): faltan DTOs de la solicitud del inquilino, la del arrendador (con unidad, inmueble e inquilino) y la creada (201) | 0.6-A4 | ⬜ |
+| B-68 | Importante (nuevo) | La solicitud no dice si el adjunto es foto o video (`adjunto_tipo`), como se resolvió con `comprobante_tipo` en B-63. Propuesta: `adjunto_tipo` (`IMAGEN` o `VIDEO`) derivado del archivo guardado; los nuevos guardan la extensión según el mimetype validado | 0.6-A4 | ⬜ |
+| B-69 | Menor (decisión de producto) | Crear una solicitud de mantenimiento no genera alerta al arrendador; solo el cron diario `SOLICITUD_MANTENIMIENTO_SIN_ATENDER` a los 5 días en PENDIENTE (Contexto §11 solo pide esa). Propuesta: alerta al crear, junto con las alertas de B0.6-B (requiere un valor nuevo del enum `TipoAlerta`) | 0.6-B | ⬜ |
+| B-70 | Menor (nuevo) | OpenAPI no documenta los límites del adjunto (20 MB; JPEG, PNG y MP4) ni los errores 409 `CONTRATO_NO_ACTIVO`, 413 y 422; el 413 sale con mensaje en inglés (`File too large`). La parte documental va en 0.6-A4; el mensaje en español queda abierto | 0.6-A4 (parcial) | ⬜ |
+| B-71 | Menor (decisión de producto) | Sin nota o comentario del arrendador al cambiar el estado, sin historial de estados y sin fecha de resolución (solo `actualizado_en`); el inquilino no puede cancelar, comentar ni agregar fotos después de crear | después de E8 | ⬜ |
+| B-72 | Menor (nuevo) | Las listas de mantenimiento no tienen paginación (como B-62) y la del arrendador no filtra por contrato | después de E8 | ⬜ |
+| B-73 | Menor (nuevo) | La validación de MP4 acepta cualquier marca `ftyp` que no sea de imagen: pasarían un `.mov` o un audio M4A declarados como `video/mp4`; no hay límite de duración ni de solicitudes abiertas | después de E8 | ⬜ |
+| B-74 | Menor (nuevo) | La solicitud no guarda `contrato_id`: el nombre del inquilino que ve el arrendador se reconstruye por unidad y persona, lo que sería ambiguo si esa persona tuviera dos contratos no cancelados en la misma unidad | después de E8 | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
