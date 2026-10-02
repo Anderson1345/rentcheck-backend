@@ -310,14 +310,21 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
 
     expect(resultados.reduce((suma, r) => suma + r.prorrogados, 0)).toBe(1);
     expect(await prorrogasDe(contratoId)).toHaveLength(1);
-    expect(
-      await prisma.alerta.count({
-        where: {
-          contrato_id: contratoId,
-          tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
-        },
-      }),
-    ).toBe(1);
+    // Una alerta por destinatario (arrendador e inquilino vinculado, B0.6-B2) y no más.
+    for (const destinatario of [
+      { arrendador_id: { not: null } },
+      { inquilino_id: { not: null } },
+    ]) {
+      expect(
+        await prisma.alerta.count({
+          where: {
+            contrato_id: contratoId,
+            tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+            ...destinatario,
+          },
+        }),
+      ).toBe(1);
+    }
   }, 60000);
 
   it('recuperación: si el cron perdió días aplica las prórrogas necesarias, cada una con su otrosí', async () => {
@@ -342,14 +349,21 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
       3,
     );
     // Una sola alerta por corrida y contrato.
-    expect(
-      await prisma.alerta.count({
-        where: {
-          contrato_id: contratoId,
-          tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
-        },
-      }),
-    ).toBe(1);
+    // Una alerta por destinatario (arrendador e inquilino vinculado, B0.6-B2) y no más.
+    for (const destinatario of [
+      { arrendador_id: { not: null } },
+      { inquilino_id: { not: null } },
+    ]) {
+      expect(
+        await prisma.alerta.count({
+          where: {
+            contrato_id: contratoId,
+            tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+            ...destinatario,
+          },
+        }),
+      ).toBe(1);
+    }
   }, 120000);
 
   it('tope de 12 prórrogas por contrato y corrida; la siguiente corrida continúa', async () => {
@@ -605,29 +619,41 @@ describe('Aviso de no renovación y prórroga automática (e2e)', () => {
       }
     }, 60000);
 
-    it('crea alertas al arrendador solo cuando el inquilino da o cancela el aviso', async () => {
+    it('avisa a la contraparte: al inquilino cuando actúa el arrendador y al arrendador cuando actúa el inquilino', async () => {
       const { arr, inq, contratoId } = await vigente();
-      const tipos = async () =>
+      const tipos = async (
+        destinatario:
+          { arrendador_id: { not: null } } | { inquilino_id: { not: null } },
+      ) =>
         (
           await prisma.alerta.findMany({
             where: {
               contrato_id: contratoId,
               tipo: { not: 'CONTRATO_VINCULADO_POR_INQUILINO' },
+              ...destinatario,
             },
             orderBy: { creado_en: 'asc' },
           })
         ).map((a) => a.tipo as string);
+      const alArrendador = () => tipos({ arrendador_id: { not: null } });
+      const alInquilino = () => tipos({ inquilino_id: { not: null } });
 
       await darArr(arr, contratoId).expect(CREADO);
       await cancelarArr(arr, contratoId).expect(CREADO);
-      expect(await tipos()).toEqual([]);
-
-      await darInq(inq).expect(CREADO);
-      await cancelarInq(inq).expect(CREADO);
-      expect(await tipos()).toEqual([
+      expect(await alArrendador()).toEqual([]);
+      expect(await alInquilino()).toEqual([
         'AVISO_NO_RENOVACION_DADO',
         'AVISO_NO_RENOVACION_CANCELADO',
       ]);
+
+      await darInq(inq).expect(CREADO);
+      await cancelarInq(inq).expect(CREADO);
+      expect(await alArrendador()).toEqual([
+        'AVISO_NO_RENOVACION_DADO',
+        'AVISO_NO_RENOVACION_CANCELADO',
+      ]);
+      // Lo que hace el propio inquilino no le genera alertas a él.
+      expect(await alInquilino()).toHaveLength(2);
     }, 60000);
 
     it('el resumen aparece en el detalle del arrendador y en mi-contrato', async () => {

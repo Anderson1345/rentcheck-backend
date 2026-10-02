@@ -11,7 +11,10 @@ import {
   EstadoPago,
   MotivoRechazoPago,
   Prisma,
+  TipoAlerta,
 } from '@prisma/client';
+import { alertarAlInquilinoDelContrato } from '../alerta/crear-alerta';
+import { textoPagoAprobado, textoPagoRechazado } from '../alerta/textos-alerta';
 import { basename, extname } from 'path';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -438,7 +441,7 @@ export class PagoService {
     return this.prisma.$transaction(async (tx) => {
       const pagoExistente = await tx.pago.findFirst({
         where: { id, arrendador_id: arrendadorId },
-        select: { contrato_id: true },
+        select: { contrato_id: true, periodo: true },
       });
 
       if (!pagoExistente) {
@@ -479,6 +482,21 @@ export class PagoService {
         tx,
         pagoExistente.contrato_id,
       );
+
+      // Alerta al inquilino: dentro de la transacción y solo porque el `updateMany` condicionado aplicó
+      // (count 0 ya lanzó 409 arriba).
+      await alertarAlInquilinoDelContrato(tx, pagoExistente.contrato_id, {
+        tipo: rechazo ? TipoAlerta.PAGO_RECHAZADO : TipoAlerta.PAGO_APROBADO,
+        mensaje: rechazo
+          ? textoPagoRechazado(
+              pagoExistente.periodo,
+              rechazo.motivo,
+              rechazo.mensaje,
+            )
+          : textoPagoAprobado(pagoExistente.periodo),
+        pago_id: id,
+        periodo: pagoExistente.periodo,
+      });
 
       const pago = await tx.pago.findUniqueOrThrow({
         where: { id },

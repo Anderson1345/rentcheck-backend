@@ -11,9 +11,11 @@ import {
   EstadoContrato,
   Prisma,
   RolSolicitante,
+  TipoAlerta,
   TipoPlantillaContrato,
   TipoProrroga,
 } from '@prisma/client';
+import { alertarAlInquilinoDelContrato } from '../alerta/crear-alerta';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularCanonNuevo } from '../common/canon-incremento.util';
@@ -40,6 +42,7 @@ import {
 } from '../common/utils/codigo-acceso';
 import { normalizarYValidarDatosInquilino } from '../common/utils/normalizar-cedula';
 import { aplicarProrroga, mesesDelTerminoInicial } from './aplicar-prorroga';
+import { formatearCentavosAPesos } from './plantillas-contrato';
 import {
   fechaFinParaEstadoCuenta,
   resumenTerminacion,
@@ -345,6 +348,12 @@ export class ContratoService {
       // transacción y antes de leer el contrato para la respuesta.
       await recalcularEstadoPagoContrato(tx, id, hoy);
 
+      // Alerta al inquilino (omitida si aún no vinculó su cuenta), dentro de la transacción.
+      await alertarAlInquilinoDelContrato(tx, id, {
+        tipo: TipoAlerta.INCREMENTO_APLICADO,
+        mensaje: `El canon de tu contrato de la unidad {unidad} se incrementó a ${formatearCentavosAPesos(canonNuevo)} mensuales.`,
+      });
+
       return {
         contrato: await tx.contrato.findUniqueOrThrow({
           where: { id },
@@ -434,6 +443,12 @@ export class ContratoService {
           mensaje: 'Otra petición ya prorrogó este contrato.',
         });
       }
+
+      // Alerta al inquilino (omitida si aún no vinculó su cuenta), dentro de la transacción.
+      await alertarAlInquilinoDelContrato(tx, id, {
+        tipo: TipoAlerta.PRORROGA_APLICADA,
+        mensaje: `Tu contrato de la unidad {unidad} fue prorrogado hasta el ${prorroga.fecha_fin_nueva.toISOString().slice(0, 10)}.`,
+      });
 
       return {
         contrato: await tx.contrato.findUniqueOrThrow({

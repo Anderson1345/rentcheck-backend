@@ -1,4 +1,4 @@
-import { Prisma, TipoAlerta } from '@prisma/client';
+import { Prisma, RolSolicitante, TipoAlerta } from '@prisma/client';
 
 /** Lo único que necesita el helper: el cliente de Prisma o el `tx` de una transacción. */
 export type ClienteAlerta = Pick<Prisma.TransactionClient, 'alerta'>;
@@ -54,7 +54,69 @@ export async function alertarAlArrendadorDelContrato(
     arrendador_id: contrato.arrendador_id,
     tipo,
     contrato_id: contratoId,
-    // Con función: un nombre de unidad con mensaje: mensaje.replace('{unidad}', contrato.unidad.nombre), u otro patrón de reemplazo se escribe tal cual.
+    // Con función: un nombre de unidad con "$&" u otro patrón de reemplazo se escribe tal cual.
     mensaje: mensaje.replace('{unidad}', () => contrato.unidad.nombre),
+  });
+}
+
+/**
+ * Alerta al INQUILINO de un contrato. Solo hay a quién alertar si el contrato ya está vinculado a su
+ * cuenta (`vinculado_en` no nulo: el portal solo ve contratos vinculados); si no, no escribe nada y
+ * devuelve null, sin error: la persona verá todo al vincular su cuenta. Reemplaza `{unidad}` en el
+ * mensaje; la creación pasa por `crearAlerta`.
+ */
+export async function alertarAlInquilinoDelContrato(
+  db: Pick<Prisma.TransactionClient, 'alerta' | 'contrato'>,
+  contratoId: string,
+  datos: {
+    tipo: TipoAlerta;
+    mensaje: string;
+    pago_id?: string | null;
+    periodo?: Date | null;
+  },
+) {
+  const contrato = await db.contrato.findUniqueOrThrow({
+    where: { id: contratoId },
+    select: {
+      inquilino_id: true,
+      vinculado_en: true,
+      unidad: { select: { nombre: true } },
+    },
+  });
+  if (contrato.vinculado_en === null) {
+    return null;
+  }
+  return crearAlerta(db, {
+    ...datos,
+    inquilino_id: contrato.inquilino_id,
+    contrato_id: contratoId,
+    mensaje: datos.mensaje.replace('{unidad}', () => contrato.unidad.nombre),
+  });
+}
+
+/**
+ * Cuando una de las partes actúa sobre el contrato (terminación anticipada, aviso de no renovación),
+ * avisa a la OTRA: si actúa el inquilino, al arrendador; si actúa el arrendador, al inquilino (omitida
+ * si no tiene cuenta vinculada). `textos` trae el mensaje según quién actúa.
+ */
+export async function alertarALaContraparte(
+  db: Pick<Prisma.TransactionClient, 'alerta' | 'contrato'>,
+  contratoId: string,
+  actor: RolSolicitante,
+  tipo: TipoAlerta,
+  textos: Record<RolSolicitante, string>,
+): Promise<void> {
+  if (actor === RolSolicitante.INQUILINO) {
+    await alertarAlArrendadorDelContrato(
+      db,
+      contratoId,
+      tipo,
+      textos[RolSolicitante.INQUILINO],
+    );
+    return;
+  }
+  await alertarAlInquilinoDelContrato(db, contratoId, {
+    tipo,
+    mensaje: textos[RolSolicitante.ARRENDADOR],
   });
 }

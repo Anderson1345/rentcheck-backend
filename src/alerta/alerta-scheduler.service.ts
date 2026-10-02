@@ -19,6 +19,7 @@ import {
   mesesDelTerminoInicial,
 } from '../contrato/aplicar-prorroga';
 import { DocumentoContratoService } from '../contrato/documento-contrato.service';
+import { alertarAlInquilinoDelContrato, crearAlerta } from './crear-alerta';
 import { LimpiezaTecnicaService } from './limpieza-tecnica.service';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
@@ -351,13 +352,17 @@ export class AlertaSchedulerService {
         );
       }
 
-      await tx.alerta.create({
-        data: {
-          arrendador_id: contrato.arrendador_id,
-          tipo: TipoAlerta.CONTRATO_PRORROGADO_AUTOMATICAMENTE,
-          contrato_id: id,
-          mensaje: `El contrato de la unidad ${contrato.unidad.nombre} se prorrogó automáticamente hasta el ${fechaFin.toISOString().slice(0, 10)} (no hubo aviso de no renovación).`,
-        },
+      const hastaElDia = fechaFin.toISOString().slice(0, 10);
+      await crearAlerta(tx, {
+        arrendador_id: contrato.arrendador_id,
+        tipo: TipoAlerta.CONTRATO_PRORROGADO_AUTOMATICAMENTE,
+        contrato_id: id,
+        mensaje: `El contrato de la unidad ${contrato.unidad.nombre} se prorrogó automáticamente hasta el ${hastaElDia} (no hubo aviso de no renovación).`,
+      });
+      // Copia para el inquilino (otra fila; omitida si aún no vinculó su cuenta).
+      await alertarAlInquilinoDelContrato(tx, id, {
+        tipo: TipoAlerta.CONTRATO_PRORROGADO_AUTOMATICAMENTE,
+        mensaje: `Tu contrato de la unidad {unidad} se prorrogó automáticamente hasta el ${hastaElDia} (no hubo aviso de no renovación).`,
       });
       return aplicadas;
     });
