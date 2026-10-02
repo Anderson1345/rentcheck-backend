@@ -1,4 +1,4 @@
-import { extname } from 'path';
+import { extensionDeRuta } from './extension-de-ruta.util';
 
 export type ComprobanteTipo = 'IMAGEN' | 'PDF';
 
@@ -13,10 +13,7 @@ export type ComprobanteTipo = 'IMAGEN' | 'PDF';
 export function tipoDeComprobante(
   ruta: string | null | undefined,
 ): ComprobanteTipo | null {
-  if (!ruta) {
-    return null;
-  }
-  switch (extname(ruta).toLowerCase()) {
+  switch (extensionDeRuta(ruta)) {
     case '.pdf':
       return 'PDF';
     case '.jpg':

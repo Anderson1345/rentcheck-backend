@@ -29,6 +29,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const SELECT_CONTRATO_PORTAL = {
   id: true,
+  // B-66: la app necesita el id de la unidad para crear solicitudes de mantenimiento.
+  unidad_id: true,
   estado: true,
   canon_centavos: true,
   dia_pago: true,
@@ -65,6 +67,7 @@ const SELECT_CONTRATO_LISTA = {
   pagos: { select: { periodo: true, estado: true, monto_centavos: true } },
   unidad: {
     select: {
+      id: true,
       nombre: true,
       tipo: true,
       inmueble: { select: { direccion: true, ciudad: true } },
@@ -156,7 +159,11 @@ export class InquilinoPanelService {
       estado: contrato.estado,
       fecha_inicio: contrato.fecha_inicio,
       fecha_fin: contrato.fecha_fin,
-      unidad: { nombre: contrato.unidad.nombre, tipo: contrato.unidad.tipo },
+      unidad: {
+        id: contrato.unidad.id,
+        nombre: contrato.unidad.nombre,
+        tipo: contrato.unidad.tipo,
+      },
       inmueble: {
         direccion: contrato.unidad.inmueble.direccion,
         ciudad: contrato.unidad.inmueble.ciudad,
@@ -248,6 +255,8 @@ export class InquilinoPanelService {
 
     return {
       contratoId: contrato.id,
+      // Solo el id de la unidad (B-66): ningún otro dato de la unidad se agrega aquí.
+      unidad: { id: contrato.unidad_id },
       estado: contrato.estado,
       programado: contrato.estado === EstadoContrato.PROGRAMADO,
       canon_centavos: contrato.canon_centavos,
