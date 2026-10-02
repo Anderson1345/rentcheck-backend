@@ -13,6 +13,7 @@ import {
 } from '../auth/auth.module';
 import { FiltroContratoQueryDto } from '../common/dto/filtro-contrato-query.dto';
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
+import { SolicitudInquilinoDto } from './dto/solicitud-respuesta.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
 
 @ApiTags('Solicitudes de Mantenimiento')
@@ -31,8 +32,10 @@ export class InquilinoSolicitudesController {
       'Solo las de unidades donde el inquilino tiene un contrato vinculado. Con `?contratoId=` solo las de la unidad de ese contrato (404 si el contrato no es suyo, no está vinculado o está cancelado).',
   })
   @ApiOkResponse({
+    type: SolicitudInquilinoDto,
+    isArray: true,
     description:
-      'Solicitudes ordenadas de la más reciente a la más antigua, con `adjunto_url` firmada (null si el archivo no está disponible).',
+      'Solicitudes ordenadas de la más reciente a la más antigua, con `adjunto_url` firmada (null si el archivo no está disponible) y `adjunto_tipo` (IMAGEN, VIDEO o null).',
   })
   @ApiNotFoundResponse({ description: 'El contrato del filtro no es válido.' })
   listar(
@@ -48,8 +51,9 @@ export class InquilinoSolicitudesController {
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de una solicitud de mantenimiento propia' })
   @ApiOkResponse({
+    type: SolicitudInquilinoDto,
     description:
-      'La solicitud con `adjunto_url` firmada (null si el archivo no está disponible).',
+      'La solicitud con `adjunto_url` firmada (null si el archivo no está disponible) y `adjunto_tipo` (IMAGEN, VIDEO o null).',
   })
   @ApiNotFoundResponse({
     description:

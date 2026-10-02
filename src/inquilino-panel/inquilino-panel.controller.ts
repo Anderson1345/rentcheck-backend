@@ -51,7 +51,7 @@ export class InquilinoPanelController {
   })
   @ApiOkResponse({
     description:
-      'Lista de contratos: id, estado, fechas, unidad (nombre, tipo), inmueble (dirección, ciudad) y estado_pago (al_dia, en_mora, pendiente o null).',
+      'Lista de contratos: id, estado, fechas, unidad (id, nombre, tipo; el id sirve para crear solicitudes de mantenimiento), inmueble (dirección, ciudad) y estado_pago (al_dia, en_mora, pendiente o null).',
   })
   listarContratos(@InquilinoActual() inquilinoId: string) {
     return this.inquilinoPanelService.listarContratos(inquilinoId);
@@ -83,7 +83,10 @@ export class InquilinoPanelController {
     description:
       'Condiciones económicas, incrementos IPC, terminación, aviso de no renovación, fotos de entrega y devolución y `documentos` (original y otrosíes con URL firmada). `pdf_contrato_url` se conserva pero es obsoleto: usa `documentos`. Toda URL firmada (`pdf_contrato_url`, fotos, documentos) es null si el archivo no está disponible.',
   })
-  @ApiOkResponse({ description: 'Detalle del contrato con sus documentos.' })
+  @ApiOkResponse({
+    description:
+      'Detalle del contrato con sus documentos y `unidad: { id }` (el id de la unidad, para crear solicitudes de mantenimiento).',
+  })
   @ApiNotFoundResponse({
     description:
       'El contrato no existe, es de otro inquilino, no está vinculado o está cancelado.',

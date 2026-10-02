@@ -4,6 +4,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  AdjuntoTipo,
+  extensionDeAdjunto,
+  tipoDeAdjunto,
+} from '../common/adjunto-tipo.util';
 import { firmarTolerante } from '../common/firma-tolerante';
 import {
   EstadoContrato,
@@ -110,7 +115,7 @@ export class SolicitudMantenimientoService {
 
     try {
       if (adjunto) {
-        adjuntoRuta = `solicitudes-mantenimiento/${dto.unidadId}/${Date.now()}-${this.sanitizarNombreArchivo(adjunto.originalname)}`;
+        adjuntoRuta = `solicitudes-mantenimiento/${dto.unidadId}/${Date.now()}-${this.nombreDeAdjunto(adjunto.originalname, adjunto.mimetype)}`;
         await this.almacenamiento.subirArchivo(
           adjunto.buffer,
           adjuntoRuta,
@@ -383,7 +388,12 @@ export class SolicitudMantenimientoService {
     T extends { id: string; adjunto_ruta: string | null },
   >(
     solicitud: T,
-  ): Promise<Omit<T, 'adjunto_ruta'> & { adjunto_url: string | null }> {
+  ): Promise<
+    Omit<T, 'adjunto_ruta'> & {
+      adjunto_url: string | null;
+      adjunto_tipo: AdjuntoTipo | null;
+    }
+  > {
     const { adjunto_ruta, ...sinRuta } = solicitud;
     // La unidad anidada trae `foto_principal_url`: siempre firmada, nunca la ruta.
     const resto = await conFotoDeUnidadAnidada(
@@ -399,15 +409,20 @@ export class SolicitudMantenimientoService {
         this.logger,
         `el adjunto de la solicitud ${solicitud.id}`,
       ),
+      // Por la extensión de la ruta; la ruta misma nunca sale (B-68).
+      adjunto_tipo: tipoDeAdjunto(adjunto_ruta),
     };
   }
 
-  private sanitizarNombreArchivo(nombre: string): string {
-    const extension = extname(nombre);
-    const base = basename(nombre, extension);
+  /**
+   * Nombre del archivo guardado: el nombre base del cliente, saneado, y una extensión que sale del
+   * mimetype ya validado por el contenido real (el validador de B0.5-C comprueba los bytes antes de
+   * llegar aquí), nunca de la extensión que mande el cliente.
+   */
+  private nombreDeAdjunto(nombre: string, mimetype: string): string {
+    const base = basename(nombre, extname(nombre));
     const baseLimpia = base.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const extensionLimpia = extension.replace(/[^a-zA-Z0-9.]/g, '');
-    return `${baseLimpia}${extensionLimpia}`;
+    return `${baseLimpia}${extensionDeAdjunto(mimetype) ?? ''}`;
   }
 
   private async eliminarArchivoHuérfano(ruta: string): Promise<void> {

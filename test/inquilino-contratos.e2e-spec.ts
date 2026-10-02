@@ -26,7 +26,7 @@ interface ContratoLista {
   id: string;
   estado: string;
   estado_pago: string | null;
-  unidad: { nombre: string; tipo: string };
+  unidad: { id: string; nombre: string; tipo: string };
   inmueble: { direccion: string; ciudad: string };
   [clave: string]: unknown;
 }
@@ -230,6 +230,7 @@ describe('Portal del inquilino por contrato (e2e)', () => {
     ]);
     for (const contrato of lista) {
       expect(contrato.unidad).toEqual({
+        id: expect.any(String) as string, // B-66
         nombre: expect.any(String) as string,
         tipo: expect.any(String) as string,
       });

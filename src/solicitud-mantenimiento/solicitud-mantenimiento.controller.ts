@@ -24,7 +24,9 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiTags,
+  ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -40,7 +42,15 @@ import {
 } from '../common/limites-archivo.constants';
 import { ClaveIdempotencia } from '../idempotencia/clave-idempotencia.decorator';
 import { CrearSolicitudMantenimientoDto } from './dto/crear-solicitud-mantenimiento.dto';
+import { SolicitudCreadaDto } from './dto/solicitud-respuesta.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
+
+// Los límites del adjunto se documentan desde las constantes (una sola fuente de verdad).
+const MAXIMO_ADJUNTO_MB = TAMANO_MAXIMO_ADJUNTO / (1024 * 1024);
+const TIPOS_ADJUNTO_TEXTO = (() => {
+  const tipos = TIPOS_ARCHIVO_ADJUNTO.map((t) => t.split('/')[1].toUpperCase());
+  return `${tipos.slice(0, -1).join(', ')} o ${tipos[tipos.length - 1]}`;
+})();
 
 @ApiTags('Solicitudes de Mantenimiento')
 @Controller('solicitudes-mantenimiento')
@@ -97,7 +107,7 @@ export class SolicitudMantenimientoController {
         adjunto: {
           type: 'string',
           format: 'binary',
-          description: 'Foto o video de evidencia (opcional).',
+          description: `Foto o video de evidencia (opcional): un solo archivo, ${TIPOS_ADJUNTO_TEXTO}, hasta ${MAXIMO_ADJUNTO_MB} MB. El contenido real debe coincidir con el tipo declarado.`,
         },
       },
     },
@@ -109,18 +119,31 @@ export class SolicitudMantenimientoController {
       'Clave de idempotencia (8 a 128 caracteres [A-Za-z0-9_-]). La misma clave con el mismo contenido devuelve la misma solicitud con el encabezado Idempotent-Replayed: true; con distinto contenido responde 422 IDEMPOTENCY_KEY_REUTILIZADA.',
   })
   @ApiCreatedResponse({
-    description: 'Solicitud de mantenimiento creada exitosamente.',
+    type: SolicitudCreadaDto,
+    description:
+      'Solicitud de mantenimiento creada exitosamente (la misma respuesta, con `Idempotent-Replayed: true`, si se repite la clave con el mismo contenido). `adjunto_url` es una URL firmada que caduca; `adjunto_tipo` dice si es IMAGEN o VIDEO.',
   })
-  @ApiBadRequestResponse({ description: 'Datos del formulario inválidos.' })
+  @ApiBadRequestResponse({
+    description:
+      'Datos del formulario inválidos (VALIDACION) o Idempotency-Key con formato inválido (IDEMPOTENCY_KEY_INVALIDA).',
+  })
   @ApiNotFoundResponse({
     description: 'No existe un contrato del inquilino en esa unidad.',
   })
   @ApiConflictResponse({
     description:
-      'El contrato del inquilino ya no está activo y no puede reportar solicitudes.',
+      'El contrato del inquilino no está activo y no puede reportar solicitudes (CONTRATO_NO_ACTIVO), o ya hay una solicitud en proceso con la misma Idempotency-Key (SOLICITUD_EN_PROCESO).',
   })
   @ApiUnsupportedMediaTypeResponse({
-    description: 'El tipo de archivo del adjunto no está permitido.',
+    description:
+      'El tipo de archivo del adjunto no está permitido, o su contenido real no coincide con el tipo declarado (ARCHIVO_CONTENIDO_INVALIDO).',
+  })
+  @ApiPayloadTooLargeResponse({
+    description: `El adjunto pesa más de ${MAXIMO_ADJUNTO_MB} MB (CARGA_DEMASIADO_GRANDE).`,
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'La misma Idempotency-Key ya se usó con un contenido distinto (IDEMPOTENCY_KEY_REUTILIZADA).',
   })
   async crear(
     @UploadedFile() adjunto: Express.Multer.File | undefined,

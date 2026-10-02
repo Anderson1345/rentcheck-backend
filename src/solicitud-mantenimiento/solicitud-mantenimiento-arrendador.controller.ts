@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
@@ -25,6 +26,7 @@ import {
 import { ParseIdPipe } from '../common/pipes/parse-id.pipe';
 import { ActualizarEstadoSolicitudMantenimientoDto } from './dto/actualizar-estado-solicitud-mantenimiento.dto';
 import { ListarSolicitudesMantenimientoQueryDto } from './dto/listar-solicitudes-mantenimiento-query.dto';
+import { SolicitudArrendadorDto } from './dto/solicitud-respuesta.dto';
 import { SolicitudMantenimientoService } from './solicitud-mantenimiento.service';
 
 @ApiTags('Solicitudes de Mantenimiento')
@@ -41,8 +43,10 @@ export class SolicitudMantenimientoArrendadorController {
     summary: 'Listar solicitudes de mantenimiento (vista del arrendador)',
   })
   @ApiOkResponse({
+    type: SolicitudArrendadorDto,
+    isArray: true,
     description:
-      'Solicitudes del arrendador con unidad, inmueble e inquilino relacionados, ordenadas por urgencia y fecha.',
+      'Solicitudes del arrendador con unidad, inmueble e inquilino relacionados, ordenadas por urgencia (ALTO primero) y fecha de creación (la más reciente primero). `adjunto_url` es una URL firmada (null si el archivo no está disponible) y `adjunto_tipo` dice si es IMAGEN, VIDEO o null.',
   })
   @ApiQuery({
     name: 'estado',
@@ -74,7 +78,9 @@ export class SolicitudMantenimientoArrendadorController {
     summary: 'Obtener el detalle de una solicitud de mantenimiento',
   })
   @ApiOkResponse({
-    description: 'Detalle completo de la solicitud con sus relaciones.',
+    type: SolicitudArrendadorDto,
+    description:
+      'Detalle completo de la solicitud con sus relaciones (unidad, inmueble e inquilino).',
   })
   @ApiNotFoundResponse({
     description:
@@ -90,6 +96,8 @@ export class SolicitudMantenimientoArrendadorController {
   @Patch(':id/estado')
   @ApiOperation({
     summary: 'Actualizar el estado de una solicitud de mantenimiento',
+    description:
+      'Transiciones permitidas: PENDIENTE → EN_PROCESO, PENDIENTE → RESUELTO y EN_PROCESO → RESUELTO. Una solicitud RESUELTO no admite más cambios y EN_PROCESO no se puede repetir (409 TRANSICION_INVALIDA).',
   })
   @ApiBody({
     schema: {
@@ -104,14 +112,20 @@ export class SolicitudMantenimientoArrendadorController {
       },
     },
   })
-  @ApiOkResponse({ description: 'Solicitud actualizada correctamente.' })
+  @ApiOkResponse({
+    type: SolicitudArrendadorDto,
+    description: 'Solicitud actualizada correctamente.',
+  })
+  @ApiBadRequestResponse({
+    description: 'El estado debe ser EN_PROCESO o RESUELTO (VALIDACION).',
+  })
   @ApiNotFoundResponse({
     description:
       'Solicitud no encontrada o no pertenece al arrendador autenticado.',
   })
   @ApiConflictResponse({
     description:
-      'La transición de estado no es válida (ya resuelta o transición no permitida).',
+      'La transición de estado no es válida: ya está RESUELTO o la transición no está permitida (TRANSICION_INVALIDA).',
   })
   actualizarEstado(
     @Param('id', ParseIdPipe) id: string,
