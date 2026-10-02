@@ -21,7 +21,11 @@ import {
   calcularEstadoCuenta,
   construirRespuestaEstadoCuenta,
 } from '../common/estado-cuenta.util';
-import { sumarDiasUTC, sumarMesesUTC } from '../common/fechas-contrato.util';
+import { sumarDiasUTC } from '../common/fechas-contrato.util';
+import {
+  anioIpcParaIncremento,
+  incrementoDisponibleDesde,
+} from '../common/incremento-disponible.util';
 import { conFotoDeUnidadAnidada } from '../common/foto-perfil';
 import { resumenAvisoNoRenovacion } from '../common/aviso-no-renovacion.util';
 import { hoyEnBogota } from '../common/hoy-bogota.util';
@@ -263,9 +267,10 @@ export class ContratoService {
         });
       }
 
-      const referencia =
-        contrato.incrementos_ipc[0]?.fecha_aplicacion ?? contrato.fecha_inicio;
-      const puedeDesde = sumarMesesUTC(referencia, 12);
+      const puedeDesde = incrementoDisponibleDesde(
+        contrato.fecha_inicio,
+        contrato.incrementos_ipc[0]?.fecha_aplicacion ?? null,
+      );
       if (hoy.getTime() < puedeDesde.getTime()) {
         throw new ConflictException({
           codigo: 'INCREMENTO_ANTES_DE_12_MESES',
@@ -277,7 +282,7 @@ export class ContratoService {
         });
       }
 
-      const anioIpc = hoy.getUTCFullYear() - 1;
+      const anioIpc = anioIpcParaIncremento(hoy);
       const ipc = await tx.configuracionIpc.findUnique({
         where: { anio: anioIpc },
       });
