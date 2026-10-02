@@ -1,8 +1,10 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.14 — 1 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.15 — 2 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.15 frente a la 2.14** (entrega B0.6-A2, Panel del arrendador, B-58): la **mora incluye los períodos Parciales** (un período vencido con algo aprobado pero menos que el canon sigue debiendo; el código y las alertas ya lo hacían así), en la regla 21 y en 7.2; y la fila **Panel** de la sección 9 pasa a tener definiciones operativas (ver la nota debajo de la tabla de 9).
 
 **Cambios de la versión 2.14 frente a la 2.13** (entrega E7-A, B-64, solo precisión de 5.10):
 - **Monto reportado y pago parcial (5.10):** el servidor no compara el monto reportado con el canon ni rechaza un monto distinto. El que queda **Parcial** es el **período**: si, una vez aprobados los pagos, lo aprobado es menor que el canon vigente del período. La aplicación móvil avisa al Inquilino antes de enviar un monto menor al saldo del período ("quedará como pago parcial") o mayor ("no cubre otros períodos"), sin impedir el envío. Un monto mayor no se reparte entre períodos: cada período se reporta por separado. Si esto debe cambiar (por ejemplo, repartir el excedente), es una decisión de producto aparte.
@@ -355,7 +357,7 @@ Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso rela
 18. Un contrato que no está Activo bloquea las acciones operativas del Inquilino; la consulta nunca se bloquea.
 19. Un Inmueble o Unidad solo se elimina si nunca tuvo contratos. Contratos, pagos, historial de IPC, documentos del contrato, documentos del inmueble y fotos de inventario **nunca** se eliminan físicamente.
 20. Las alertas automáticas corren una vez al día (después de medianoche, hora de Colombia), pueden ejecutarse dos veces sin duplicar nada y no repiten un aviso sin leer del mismo evento, salvo los avisos mensuales de pago, que se generan una vez por período.
-21. Un contrato está **En mora** si tiene al menos un período Vencido. Un comprobante pendiente de revisión cuenta como cobertura de su período. No hay días de gracia más allá de la fecha límite.
+21. Un contrato está **En mora** si tiene al menos un período Vencido o Parcial (un período Parcial ya venció y aún debe una parte del canon). Un comprobante pendiente de revisión cuenta como cobertura de su período. No hay días de gracia más allá de la fecha límite.
 22. El recordatorio de pago se envía al **Inquilino** 3 días antes de la fecha límite del período siguiente, salvo que ese período ya tenga un pago reportado.
 23. Al cerrar un contrato de Local o Parqueadero con depósito, queda pendiente la liquidación de depósito.
 24. Un mismo correo no puede estar registrado como Arrendador y como Inquilino a la vez.
@@ -402,8 +404,8 @@ Un contrato **Programado** no bloquea la unidad ni genera períodos, pagos, mora
 | Estado | Condición |
 |---|---|
 | Pendiente | Aún no vence ningún período (contrato recién iniciado) |
-| Al día | Ningún período Vencido |
-| En mora | Al menos un período Vencido |
+| Al día | Ningún período Vencido ni Parcial |
+| En mora | Al menos un período Vencido o Parcial |
 
 Es independiente del ciclo de vida: un contrato puede estar Activo y En mora.
 
@@ -478,7 +480,7 @@ Pendiente de liquidar → Liquidado.
 
 | Módulo | Contenido |
 |---|---|
-| **Panel** | Ingresos del mes (pagos aprobados), recaudo esperado vs. real del mes, ocupación, cartera en mora (períodos vencidos), centro de pendientes (comprobantes por validar, contratos que vencen en 30 días, incrementos disponibles, mantenimientos pendientes, terminaciones por confirmar), tendencia de ingresos. |
+| **Panel** | Ingresos del mes (pagos aprobados), recaudo esperado vs. real del mes, ocupación, cartera en mora (períodos vencidos o parciales, por la parte que aún se debe), centro de pendientes (comprobantes por validar, contratos que vencen en 30 días, incrementos disponibles, mantenimientos pendientes, terminaciones por confirmar), tendencia de ingresos. |
 | **Mis Inmuebles / Detalle** | Listado; información editable; unidades (agregar, editar, eliminar); foto de portada; ZIP de documentos; documentos del inmueble. |
 | **Inquilinos** | Personas con las que tiene o tuvo contratos (datos según los contratos), con indicadores separados de vinculación y de estado de pago. |
 | **Contratos** | Listado filtrable; detalle con condiciones, períodos, historial de IPC, documentos (versiones); acciones: incremento, prórroga, aviso de no renovación, terminación (solicitar, confirmar, cancelar), código de acceso (ver, compartir, regenerar), corregir datos del inquilino mientras esté sin vincular, liquidación de depósito. |
@@ -486,6 +488,13 @@ Pendiente de liquidar → Liquidado.
 | **Mantenimiento** | Filtros por estado, urgencia y unidad; cambio de estado. |
 | **Alertas** | Feed con enlace al recurso. |
 | **Mi Perfil** | Nombre, teléfono, cédula, foto de cédula/NIT; correo de solo lectura; sesiones activas. |
+
+**Definiciones del Panel (mes actual de America/Bogota; el servidor las calcula, la app no):**
+- **Ingresos del mes y tendencia de 6 meses:** suma de los pagos Aprobados por la **fecha en que el inquilino dice haber pagado** (caja real, sin tope por canon). La tendencia siempre trae 6 meses (los 5 anteriores y el actual), con 0 en los meses sin pagos.
+- **Recaudo esperado del mes:** el canon vigente de cada período cuya fecha límite cae en el mes. Se divide en **aprobado** (por período, sin pasar del canon), **en revisión** (pagos pendientes, sin pasar de lo que falta) y **sin reportar** (el resto, incluso lo que aún no vence). Los tres suman el esperado.
+- **Cartera en mora:** períodos Vencidos o Parciales de cualquier contrato que los tenga (Activo, Vencido o Terminado anticipadamente); el monto es el canon menos lo aprobado. Un período En revisión no cuenta como mora. Siempre se calcula "a hoy".
+- **Ocupación:** todas las unidades del arrendador; ocupada = tiene un contrato Activo; las libres con un contrato Programado se muestran aparte.
+- **Pendientes:** comprobantes por validar (pagos pendientes); mantenimientos pendientes (solo los que aún están Pendiente); contratos Activos que vencen en 30 días o menos; incrementos disponibles (pasaron 12 meses desde el último incremento o el inicio, con aviso si falta el IPC del año anterior); terminaciones por confirmar (las que ya puede confirmar el arrendador). Las listas muestran hasta 5 contratos; el número es el total.
 
 ---
 
