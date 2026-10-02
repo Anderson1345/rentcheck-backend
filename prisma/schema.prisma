@@ -97,6 +97,7 @@ model Inquilino {
   contratos          Contrato[]
   codigos_acceso     CodigoAcceso[]
   solicitudes_mantenimiento SolicitudMantenimiento[]
+  alertas           Alerta[]
 }
 
 
@@ -314,6 +315,7 @@ model Pago {
   mensaje_rechazo String?
   creado_en       DateTime    @default(now())
   actualizado_en  DateTime    @updatedAt
+  alertas         Alerta[]
 }
 
 
@@ -360,20 +362,42 @@ enum TipoAlerta {
   AVISO_NO_RENOVACION_CANCELADO
   CONTRATO_PRORROGADO_AUTOMATICAMENTE
   CONTRATO_VINCULADO_POR_INQUILINO
+  PAGO_APROBADO
+  PAGO_RECHAZADO
+  PAGO_ANULADO
+  SOLICITUD_MANTENIMIENTO_CREADA
+  MANTENIMIENTO_CAMBIO_ESTADO
+  PRORROGA_APLICADA
+  INCREMENTO_APLICADO
 }
 
+/// Destinatario: exactamente uno de arrendador_id e inquilino_id (CHECK alerta_un_solo_destinatario, escrito a mano
+/// en la migración; Prisma no modela las restricciones CHECK).
 model Alerta {
   id                          String      @id @default(uuid()) @db.Uuid
-  arrendador_id               String      @db.Uuid
-  arrendador                  Arrendador  @relation(fields: [arrendador_id], references: [id])
+  arrendador_id               String?     @db.Uuid
+  arrendador                  Arrendador? @relation(fields: [arrendador_id], references: [id], onDelete: Restrict)
+  inquilino_id                String?     @db.Uuid
+  inquilino                   Inquilino?  @relation(fields: [inquilino_id], references: [id], onDelete: Restrict)
   tipo                        TipoAlerta
   mensaje                     String
   contrato_id                 String?     @db.Uuid
   contrato                    Contrato?   @relation(fields: [contrato_id], references: [id])
   solicitud_mantenimiento_id  String?     @db.Uuid
   solicitud_mantenimiento     SolicitudMantenimiento? @relation(fields: [solicitud_mantenimiento_id], references: [id])
+  pago_id                     String?     @db.Uuid
+  pago                        Pago?       @relation(fields: [pago_id], references: [id])
+  /// Primer día del mes que cubre el período al que se refiere la alerta (recordatorio, mora, pago).
+  periodo                     DateTime?   @db.Date
   leida                       Boolean     @default(false)
   creado_en                   DateTime    @default(now())
+  /// Cuándo se envió el push de esta alerta (lo usa B0.6-B5); nulo = no enviado.
+  push_enviado_en             DateTime?
+
+  @@index([arrendador_id, leida, creado_en(sort: Desc)])
+  @@index([inquilino_id, leida, creado_en(sort: Desc)])
+  @@index([arrendador_id, creado_en(sort: Desc), id(sort: Desc)])
+  @@index([inquilino_id, creado_en(sort: Desc), id(sort: Desc)])
 }
 
 
