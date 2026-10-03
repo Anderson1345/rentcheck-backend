@@ -1,8 +1,14 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.15 — 2 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.16 — 2 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.16 frente a la 2.15** (decisiones del 02/10/2026 tras probar E9; detalle y orden en `RentCheck_Plan_Rediseno_UX.md`):
+- **Entrar con Google** para ambos roles (3.1, 3.2; D-11).
+- **Pagos verificables en dos fases** (5.10; D-12): A) llave Bre-B del arrendador y referencia única por período; B) pasarela en modo pruebas para la demostración.
+- **Retención de alertas** y **mora como máximo semanal** (5.16, 11; D-13).
+- **Panel del arrendador** reorientado a cuatro preguntas (9; D-14); el del inquilino sigue el diseño original (10).
 
 **Cambios de la versión 2.15 frente a la 2.14** (entrega B0.6-A2, Panel del arrendador, B-58): la **mora incluye los períodos Parciales** (un período vencido con algo aprobado pero menos que el canon sigue debiendo; el código y las alertas ya lo hacían así), en la regla 21 y en 7.2; y la fila **Panel** de la sección 9 pasa a tener definiciones operativas (ver la nota debajo de la tabla de 9).
 
@@ -116,7 +122,7 @@ Implicaciones:
 ### 3.1 Arrendador
 
 - Registro abierto: nombre, correo (único; es su identificador de acceso), teléfono y contraseña (mínimo 8 caracteres, con al menos una letra y un número).
-- Inicio de sesión con correo y contraseña. El correo no se puede editar después del registro.
+- Inicio de sesión con correo y contraseña, **o con Google** (D-11): registrarse o entrar con una cuenta de Google con correo verificado; ese correo es el identificador. El teléfono y la cédula se completan después en "Mi perfil". El correo no se puede editar después del registro.
 - La cédula **no** se pide al registrarse; se completa en "Mi perfil". **Regla:** no se puede confirmar un Contrato si el Arrendador no tiene cédula registrada.
 - Foto de cédula o NIT: opcional, subida como archivo.
 
@@ -126,7 +132,8 @@ Implicaciones:
 - **Medio de activación:** un código corto con formato `RC-XXXX-XXXX` (8 caracteres, sin caracteres que se confundan como 0/O o 1/I) **y** un enlace o QR equivalente que abre la app en la pantalla de activación con el código ya escrito.
 - **Si la persona aún no tiene cuenta:** con el código crea su cuenta (correo y contraseña) y en el mismo paso queda **vinculada** a ese contrato. La foto de cédula es opcional y se sube después, desde su perfil.
 - **Si la persona ya tiene cuenta** (por un contrato anterior o con otro arrendador): inicia sesión y usa "Agregar contrato con código". El contrato nuevo aparece en su portal solo después de ese paso.
-- Ingresos posteriores: correo y contraseña.
+- **Con Google (D-11):** tras validar el código de activación, la persona puede crear su cuenta con Google en vez de correo y contraseña; la vinculación al contrato es la misma.
+- Ingresos posteriores: correo y contraseña, o Google si así creó o vinculó su cuenta.
 - Tras terminar un contrato, el Inquilino conserva el acceso de solo lectura a ese contrato. Las acciones operativas quedan bloqueadas.
 - **Identidad única en toda la plataforma:** la persona se identifica por su número de documento (normalizado: sin puntos, espacios ni guiones) y su cuenta por un correo único global (comparado sin distinguir mayúsculas ni espacios sobrantes).
 - **Riesgo aceptado para la primera versión:** el sistema no verifica que quien activa sea la persona cuyo nombre y cédula registró el Arrendador.
@@ -301,6 +308,7 @@ Código (`RC-XXXX-XXXX`, único), enlace/QR equivalente, contrato asociado, fech
 | Monto | Lo escribe el inquilino. El servidor no lo compara con el canon: lo que queda **parcial** es el período, cuando lo aprobado es menor que el canon. La app avisa si el monto es menor o mayor al saldo del período, sin bloquear el envío. |
 | Fecha en que pagó | No puede ser futura ni anterior al inicio del contrato |
 | Comprobante | Foto o PDF, obligatorio |
+| Referencia de pago (D-12, fase A) | Cada período tiene una referencia única de RentCheck que el inquilino escribe en su transferencia (Bre-B u otro medio). Se muestra al inquilino junto a los datos de recaudo y al arrendador junto al comprobante para cruzarlos. El arrendador puede registrar su **llave Bre-B** (y un QR) como dato de recaudo. Los detalles se fijan en la entrega P1. |
 | Estado | Pendiente / Aprobado / Rechazado / Reemplazado (7.3) |
 | Motivo del rechazo | Solo en un pago Rechazado. Lista fija: el monto no coincide / no se ve el pago / el comprobante es ilegible / otro; más un mensaje opcional de hasta 200 caracteres (obligatorio con "otro"). El Inquilino los ve en su pago. Los rechazos anteriores a la regla no tienen motivo. |
 
@@ -332,6 +340,8 @@ Unidad e Inquilino (asociados automáticamente), descripción, adjunto opcional 
 ### 5.16 Alerta
 
 Destinatario (Arrendador o Inquilino), tipo (sección 11), mensaje, recurso relacionado, leída / no leída.
+
+**Retención (D-13):** una alerta leída deja de mostrarse a los **7 días** de leída y se borra a los **60 días**; las no leídas no se borran solas. Las alertas no tienen valor legal (los pagos, contratos y documentos sí, y no se borran).
 
 ---
 
@@ -480,7 +490,7 @@ Pendiente de liquidar → Liquidado.
 
 | Módulo | Contenido |
 |---|---|
-| **Panel** | Ingresos del mes (pagos aprobados), recaudo esperado vs. real del mes, ocupación, cartera en mora (períodos vencidos o parciales, por la parte que aún se debe), centro de pendientes (comprobantes por validar, contratos que vencen en 30 días, incrementos disponibles, mantenimientos pendientes, terminaciones por confirmar), tendencia de ingresos. |
+| **Panel** | Responde cuatro preguntas (D-14): **qué tengo que hacer hoy** (solo pendientes con conteo mayor que 0: comprobantes por validar, contratos que vencen en 30 días, incrementos disponibles, mantenimientos pendientes, terminaciones por confirmar); **quién me debe** (contratos en mora con unidad, inquilino, días de mora desde el período vencido más antiguo y monto); **cómo va el mes** (recaudo esperado vs. real: aprobado, en revisión, sin reportar); **cómo va el año** (ingresos del año en curso frente al anterior mes a mes, ingresos por inmueble y ocupación). También: ingresos del mes y cartera en mora total. |
 | **Mis Inmuebles / Detalle** | Listado; información editable; unidades (agregar, editar, eliminar); foto de portada; ZIP de documentos; documentos del inmueble. |
 | **Inquilinos** | Personas con las que tiene o tuvo contratos (datos según los contratos), con indicadores separados de vinculación y de estado de pago. |
 | **Contratos** | Listado filtrable; detalle con condiciones, períodos, historial de IPC, documentos (versiones); acciones: incremento, prórroga, aviso de no renovación, terminación (solicitar, confirmar, cancelar), código de acceso (ver, compartir, regenerar), corregir datos del inquilino mientras esté sin vincular, liquidación de depósito. |
@@ -519,7 +529,7 @@ Pendiente de liquidar → Liquidado.
 |---|---|---|
 | Contrato próximo a vencer | Ambos | 30 días antes de la fecha de fin |
 | Incremento de IPC disponible | Arrendador | 30 días antes de cumplirse 12 meses desde el último incremento o el inicio |
-| Inquilino en mora | Arrendador | Un período pasa a Vencido |
+| Inquilino en mora | Ambos | Un período está Vencido; se repite como máximo una vez cada 7 días por contrato, período y destinatario mientras siga vencido (D-13) |
 | Recordatorio de pago | Inquilino | 3 días antes de la fecha límite, si el período no tiene pago reportado |
 | Comprobante aprobado / rechazado | Inquilino | Al procesarse |
 | Nuevo comprobante por validar | Arrendador | Al reportarse (solo notificación push; en la app ya aparece en la cola) |
@@ -528,7 +538,7 @@ Pendiente de liquidar → Liquidado.
 | Terminación anticipada solicitada | Contraparte | Al solicitarse |
 | Contrato vinculado por el inquilino | Arrendador | Al vincularse |
 
-Reglas: toda alerta existe primero **dentro de la app**; el push es un canal adicional y se puede configurar por tipo; el correo queda para una fase posterior.
+Reglas: retención según 5.16 (D-13). Toda alerta existe primero **dentro de la app**; el push es un canal adicional y se puede configurar por tipo; el correo queda para una fase posterior.
 
 ---
 
@@ -628,3 +638,7 @@ Firma o aceptación electrónica, co-arrendatarios, publicación de vacantes y e
 | D-8 | ¿Publicar en Google Play en esta etapa? | No: distribuir un APK por EAS para las pruebas y la sustentación; publicar cuando haya presupuesto (USD 25) y 12 testers. | Recomendación vigente |
 | D-9 | ¿Proveedores de push y correo? | Push: servicio de Expo (usa FCM por debajo). Correo: un plan gratuito (Resend o Brevo) sin tarjeta, **pero con un dominio propio cuyo DNS se pueda editar** (verificado el 30/09/2026: sin dominio solo se puede enviar al dueño de la cuenta). | Recomendación vigente; dominio pendiente |
 | D-10 | ¿Se verifica el correo con un código al registrarse? | Sí, para arrendador e inquilino: código de 6 dígitos enviado al correo escrito, con expiración de unos 10 minutos, máximo 5 intentos y espera para reenviar; la cuenta queda sin verificar hasta ingresarlo. El mismo mecanismo sirve para recuperar la contraseña. Construida en B0.4-D1 con el proveedor apagado; se enciende al tener un dominio verificado (D-9). | Confirmada (30/09/2026); envío real pendiente del dominio |
+| D-11 | ¿Entrar con Google? | Sí, para ambos roles; el inquilino valida primero su código. Requiere development build (no funciona en Expo Go). | **CONFIRMADA** (02/10/2026) |
+| D-12 | ¿Cómo se verifica un pago más allá de la captura? | Fase A: llave Bre-B del arrendador y referencia única por período (gratis, con comprobante). Fase B: pasarela (Wompi) en modo pruebas con confirmación automática para la demostración; en producción cada arrendador usaría su propia cuenta y paga comisión; RentCheck nunca recibe el dinero. | **CONFIRMADA** (02/10/2026) |
+| D-13 | ¿Las alertas se acumulan para siempre? | No: las leídas se ocultan a los 7 días y se borran a los 60; la de mora se repite como máximo cada 7 días. | **CONFIRMADA** (02/10/2026) |
+| D-14 | ¿Qué debe mostrar el Panel del arrendador? | Cuatro preguntas: qué hacer hoy, quién me debe, cómo va el mes, cómo va el año (sección 9). Las dos que faltan necesitan datos nuevos del servidor (B-82). | **CONFIRMADA** (02/10/2026) |

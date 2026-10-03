@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.25 — 2 de octubre de 2026.** Reemplaza a la versión 3.24.
+> **Versión 3.26 — 2 de octubre de 2026.** Reemplaza a la versión 3.25.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.26:**
+
+- **Rediseño de UX y funciones nuevas decididas el 02/10/2026** (ver `RentCheck_Plan_Rediseno_UX.md`). Nuevos **B-79 a B-85** (sección 3.7): mora repetida a diario (B-79), retención de alertas (B-80), formatos de fecha mezclados en los textos de alerta (B-81), Panel sin "quién me debe" ni "cómo va el año" (B-82), entrar con Google (B-83), llave Bre-B y referencia de pago (B-84) y pasarela en modo pruebas (B-85). B-79 a B-82 van en la entrega **B0.7**; B-83 en **G1**; B-84 en **P1**; B-85 en **P2**. Google requiere development build (verificado en docs.expo.dev el 02/10/2026); Wompi publica (sept. 2026) PSE 1,49% + $1.200 y tarjeta 2,99% + IVA + $600 por transacción, a reverificar en P2.
 
 **Qué cambió en la versión 3.25:**
 
@@ -432,6 +436,13 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-76 | Menor (nuevo) | El pago no guarda la fecha de aprobación (solo `fecha_reportada`, `periodo` y `actualizado_en`, que cambia con cualquier escritura). El Panel usa `fecha_reportada` para "ingresos del mes" (decisión D1) | con B-45 (anular aprobación) | ⬜ |
 | B-77 | Menor (nuevo) | `Contrato.estado_pago` guardado puede estar atrasado en contratos VENCIDO o TERMINADO_ANTICIPADAMENTE: el cron solo recalcula los ACTIVO. El Panel recalcula desde los períodos y no lo usa | B0.6-B | ✅ Corregido el 02/10/2026 (B0.6-B2) |
 | B-78 | Menor (nuevo) | La alerta `ejecutarAjusteIpcPendiente` salta los contratos cuyo próximo ajuste ya pasó (`proximoAjuste < hoy`): un incremento vencido nunca avisa. El Panel lo muestra como "incremento disponible" | B0.6-B | ✅ Corregido el 02/10/2026 (B0.6-B2) |
+| B-79 | Importante (nuevo) | La alerta de mora se crea **cada día** mientras el período siga vencido (si el destinatario la leyó, se vuelve a crear): el feed se llena de copias | Repetir como máximo una vez cada 7 días por contrato, período y destinatario (Contexto 11, D-13) | B0.7 | ⬜ |
+| B-80 | Importante (nuevo) | Las alertas no tienen retención: se acumulan para siempre | Feed sin leídas de hace más de 7 días (por fecha de lectura; puede requerir `leida_en`, decidir en el diagnóstico si cabe sin migración) y borrado de leídas de más de 60 días en la corrida diaria (Contexto 5.16, D-13) | B0.7 | ⬜ |
+| B-81 | Menor (nuevo) | Los textos de alerta mezclan formatos de fecha (`2026-10-01`, `5/10/2026`, `02/10/2026`) | Un solo formato (dd/mm/aaaa o "5 de octubre de 2026") en todos los textos | B0.7 | ⬜ |
+| B-82 | Importante (nuevo) | El Panel no dice **quién** debe (solo totales) ni **cómo va el año** | Ampliar `GET /arrendadores/panel` (o ruta nueva): contratos en mora con unidad, inquilino, días y monto; ingresos del año en curso y del anterior mes a mes; ingresos por inmueble; ocupación %. Sin romper los campos actuales (Contexto 9, D-14) | B0.7 | ⬜ |
+| B-83 | Funcionalidad (nuevo) | No se puede entrar con Google | `POST /auth/google` (o similar) que verifica el ID token de Google en el servidor, crea o vincula la cuenta por correo verificado; para el inquilino, después de validar el código de activación. Requiere development build en la app (Contexto 3.1/3.2, D-11) | G1 | ⬜ |
+| B-84 | Funcionalidad (nuevo) | El pago solo se respalda con una captura | Llave Bre-B (y QR) en los datos de recaudo del arrendador; referencia única por período visible para el inquilino y junto al comprobante para el arrendador. Una migración (Contexto 5.10, D-12) | P1 | ⬜ |
+| B-85 | Funcionalidad (nuevo) | No hay confirmación automática de pagos | Pasarela Wompi en modo pruebas con webhook firmado e idempotente; cada arrendador con sus propias llaves; RentCheck nunca recibe el dinero. Reverificar costos y requisitos antes (Contexto 5.10, D-12) | P2 | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
