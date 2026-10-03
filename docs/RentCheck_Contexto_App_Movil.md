@@ -1,8 +1,10 @@
 # RentCheck — Contexto de producto para la aplicación móvil
 
-> **Versión del documento:** 2.16 — 2 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
+> **Versión del documento:** 2.17 — 3 de octubre de 2026. Es la especificación de producto vigente y la **fuente de verdad** de las reglas de negocio.
 > **Propósito:** describir, en lenguaje de negocio, la lógica, los datos, las reglas, los estados, los permisos y los requisitos de seguridad y cumplimiento de RentCheck, para que un equipo (personas o una IA) pueda construir la **aplicación móvil nativa** sin ambigüedades.
 > **Fuera de alcance:** diseño visual y elección de tecnologías concretas (eso está en `RentCheck_Plan_Tecnico_App_Movil.md`).
+
+**Cambios de la versión 2.17 frente a la 2.16** (entrega B0.7-B, B-82): definiciones operativas de los indicadores nuevos del Panel del arrendador (quién me debe, cómo va el año, por inmueble, ocupación por unidad, solicitudes abiertas) debajo de la tabla de la sección 9.
 
 **Cambios de la versión 2.16 frente a la 2.15** (decisiones del 02/10/2026 tras probar E9; detalle y orden en `RentCheck_Plan_Rediseno_UX.md`):
 - **Entrar con Google** para ambos roles (3.1, 3.2; D-11).
@@ -505,6 +507,11 @@ Pendiente de liquidar → Liquidado.
 - **Cartera en mora:** períodos Vencidos o Parciales de cualquier contrato que los tenga (Activo, Vencido o Terminado anticipadamente); el monto es el canon menos lo aprobado. Un período En revisión no cuenta como mora. Siempre se calcula "a hoy".
 - **Ocupación:** todas las unidades del arrendador; ocupada = tiene un contrato Activo; las libres con un contrato Programado se muestran aparte.
 - **Pendientes:** comprobantes por validar (pagos pendientes); mantenimientos pendientes (solo los que aún están Pendiente); contratos Activos que vencen en 30 días o menos; incrementos disponibles (pasaron 12 meses desde el último incremento o el inicio, con aviso si falta el IPC del año anterior); terminaciones por confirmar (las que ya puede confirmar el arrendador). Las listas muestran hasta 5 contratos; el número es el total.
+- **Quién me debe (morosos):** un elemento por contrato con mora (misma definición de cartera en mora): unidad, inmueble, nombre del inquilino, períodos en mora, monto que debe y **días de mora** (días de Bogotá desde la fecha límite del período en mora más antiguo hasta hoy). Orden: mayor monto primero, luego más días. Se muestran hasta 10; el total de contratos y el monto total son los de la cartera en mora.
+- **Cómo va el año:** pagos Aprobados por fecha en que el inquilino dice haber pagado, mes a mes de enero al mes actual, junto al mismo mes del año anterior (mes completo). Totales: del 1 de enero a hoy y del 1 de enero al mismo día del año anterior (el 29 de febrero se compara con el 28). Variación porcentual entera; sin dato si el año anterior suma 0.
+- **Por inmueble:** todos los inmuebles, con los ingresos del año en curso (misma regla), sus unidades y las ocupadas.
+- **Ocupación por unidad:** cada unidad es **en mora** (contrato Activo con mora), **al día** (contrato Activo sin mora), **programada** (sin Activo, con un contrato Programado) o **libre**. Una unidad libre cuyo contrato cerrado aún debe aparece libre; la deuda se ve en "quién me debe". El porcentaje de ocupación es ocupadas/unidades redondeado.
+- **Solicitudes abiertas:** Pendientes más En proceso, y cuántas de ellas tienen la urgencia más alta.
 
 ---
 

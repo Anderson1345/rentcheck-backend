@@ -1,0 +1,234 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`Panel del arrendador (e2e, B-58) regresión: los campos antiguos no cambian (B0.7-B) A, B y C devuelven exactamente los mismos campos de antes: A 1`] = `
+{
+  "calculado_para": "2027-03-15",
+  "ingresos_mes_centavos": 3400000,
+  "mes": "2027-03",
+  "mora": {
+    "contratos": 2,
+    "periodos": 4,
+    "total_centavos": 3600000,
+  },
+  "ocupacion": {
+    "con_contrato_programado": 1,
+    "libres": 4,
+    "ocupadas": 4,
+    "unidades": 8,
+  },
+  "pendientes": {
+    "comprobantes_por_validar": 2,
+    "contratos_por_vencer": {
+      "cantidad": 1,
+      "contratos": [
+        {
+          "contrato_id": "<id>",
+          "fecha_fin": "2027-03-31",
+          "inmueble": "Calle A 1",
+          "unidad": "Apto 105",
+        },
+      ],
+    },
+    "incrementos_disponibles": {
+      "cantidad": 1,
+      "contratos": [
+        {
+          "contrato_id": "<id>",
+          "disponible_desde": "2027-03-01",
+          "inmueble": "Calle A 1",
+          "ipc_faltante": true,
+          "unidad": "Apto 106",
+        },
+      ],
+    },
+    "mantenimientos_pendientes": 2,
+    "terminaciones_por_confirmar": {
+      "cantidad": 1,
+      "contratos": [
+        {
+          "contrato_id": "<id>",
+          "fecha_fin": "2027-12-31",
+          "inmueble": "Calle A 1",
+          "unidad": "Apto 101",
+        },
+      ],
+    },
+  },
+  "recaudo": {
+    "aprobado_centavos": 3400000,
+    "contratos": 4,
+    "en_revision_centavos": 600000,
+    "esperado_centavos": 4000000,
+    "sin_reportar_centavos": 0,
+  },
+  "tendencia": [
+    {
+      "ingresos_centavos": 2000000,
+      "mes": "2026-10",
+    },
+    {
+      "ingresos_centavos": 2000000,
+      "mes": "2026-11",
+    },
+    {
+      "ingresos_centavos": 2000000,
+      "mes": "2026-12",
+    },
+    {
+      "ingresos_centavos": 4000000,
+      "mes": "2027-01",
+    },
+    {
+      "ingresos_centavos": 3400000,
+      "mes": "2027-02",
+    },
+    {
+      "ingresos_centavos": 3400000,
+      "mes": "2027-03",
+    },
+  ],
+}
+`;
+
+exports[`Panel del arrendador (e2e, B-58) regresión: los campos antiguos no cambian (B0.7-B) A, B y C devuelven exactamente los mismos campos de antes: B 1`] = `
+{
+  "calculado_para": "2027-03-15",
+  "ingresos_mes_centavos": 0,
+  "mes": "2027-03",
+  "mora": {
+    "contratos": 0,
+    "periodos": 0,
+    "total_centavos": 0,
+  },
+  "ocupacion": {
+    "con_contrato_programado": 0,
+    "libres": 1,
+    "ocupadas": 1,
+    "unidades": 2,
+  },
+  "pendientes": {
+    "comprobantes_por_validar": 1,
+    "contratos_por_vencer": {
+      "cantidad": 1,
+      "contratos": [
+        {
+          "contrato_id": "<id>",
+          "fecha_fin": "2027-03-20",
+          "inmueble": "Carrera B 2",
+          "unidad": "Local B1",
+        },
+      ],
+    },
+    "incrementos_disponibles": {
+      "cantidad": 0,
+      "contratos": [],
+    },
+    "mantenimientos_pendientes": 1,
+    "terminaciones_por_confirmar": {
+      "cantidad": 0,
+      "contratos": [],
+    },
+  },
+  "recaudo": {
+    "aprobado_centavos": 0,
+    "contratos": 1,
+    "en_revision_centavos": 2000000,
+    "esperado_centavos": 2000000,
+    "sin_reportar_centavos": 0,
+  },
+  "tendencia": [
+    {
+      "ingresos_centavos": 0,
+      "mes": "2026-10",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2026-11",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2026-12",
+    },
+    {
+      "ingresos_centavos": 2000000,
+      "mes": "2027-01",
+    },
+    {
+      "ingresos_centavos": 2000000,
+      "mes": "2027-02",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2027-03",
+    },
+  ],
+}
+`;
+
+exports[`Panel del arrendador (e2e, B-58) regresión: los campos antiguos no cambian (B0.7-B) A, B y C devuelven exactamente los mismos campos de antes: C 1`] = `
+{
+  "calculado_para": "2027-03-15",
+  "ingresos_mes_centavos": 0,
+  "mes": "2027-03",
+  "mora": {
+    "contratos": 0,
+    "periodos": 0,
+    "total_centavos": 0,
+  },
+  "ocupacion": {
+    "con_contrato_programado": 0,
+    "libres": 0,
+    "ocupadas": 0,
+    "unidades": 0,
+  },
+  "pendientes": {
+    "comprobantes_por_validar": 0,
+    "contratos_por_vencer": {
+      "cantidad": 0,
+      "contratos": [],
+    },
+    "incrementos_disponibles": {
+      "cantidad": 0,
+      "contratos": [],
+    },
+    "mantenimientos_pendientes": 0,
+    "terminaciones_por_confirmar": {
+      "cantidad": 0,
+      "contratos": [],
+    },
+  },
+  "recaudo": {
+    "aprobado_centavos": 0,
+    "contratos": 0,
+    "en_revision_centavos": 0,
+    "esperado_centavos": 0,
+    "sin_reportar_centavos": 0,
+  },
+  "tendencia": [
+    {
+      "ingresos_centavos": 0,
+      "mes": "2026-10",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2026-11",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2026-12",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2027-01",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2027-02",
+    },
+    {
+      "ingresos_centavos": 0,
+      "mes": "2027-03",
+    },
+  ],
+}
+`;

@@ -39,6 +39,7 @@ import { AvisoNoRenovacionDto } from './dto/aviso-no-renovacion.dto';
 import { TerminacionAnticipadaService } from './terminacion-anticipada.service';
 import { DocumentoContratoService } from './documento-contrato.service';
 import { AplicarIncrementoDto } from './dto/aplicar-incremento.dto';
+import { ContratoListaDto } from './dto/contrato-lista.dto';
 import { CorregirContratoDto } from './dto/corregir-contrato.dto';
 import { CorregirInquilinoContratoDto } from './dto/corregir-inquilino-contrato.dto';
 import { CrearContratoDto } from './dto/crear-contrato.dto';
@@ -61,7 +62,9 @@ export class ContratoController {
   @Get()
   @ApiOperation({ summary: 'Listar contratos del arrendador autenticado' })
   @ApiOkResponse({
-    description: 'Lista de contratos con su unidad e inquilino relacionados.',
+    description:
+      'Lista de contratos con su unidad e inquilino relacionados y su estado de pago guardado (`estado_pago`).',
+    type: [ContratoListaDto],
   })
   listar(@ArrendadorActual() arrendadorId: string) {
     return this.contratoService.listar(arrendadorId);

@@ -1,4 +1,9 @@
-import { EstadoContrato, RolSolicitante } from '@prisma/client';
+import {
+  EstadoContrato,
+  EstadoSolicitudMantenimiento,
+  RolSolicitante,
+  UrgenciaMantenimiento,
+} from '@prisma/client';
 import { hoyEnBogota } from './hoy-bogota.util';
 import {
   construirPanel,
@@ -16,7 +21,9 @@ function contrato(extra: Partial<ContratoParaPanel> = {}): ContratoParaPanel {
     id: 'c1',
     unidad_id: 'u1',
     unidad: 'Apto 101',
+    inmueble_id: 'i1',
     inmueble: 'Calle 45 # 12-30',
+    inquilino_nombre: 'Camilo Pardo',
     estado: EstadoContrato.ACTIVO,
     fecha_inicio: d('2026-09-01'),
     fecha_fin: d('2027-08-31'),
@@ -49,14 +56,39 @@ function pago(
   };
 }
 
-function entradas(extra: Partial<EntradasPanel> = {}): EntradasPanel {
+/**
+ * Entradas del Panel. B0.7-B cambió los conteos de unidades y de mantenimiento por sus filas; estas
+ * pruebas (anteriores) siguen pasando `unidades_total` y `mantenimientos_pendientes`, que aquí se
+ * convierten en unidades y solicitudes PENDIENTE de relleno.
+ */
+function entradas(
+  extra: Partial<EntradasPanel> & {
+    unidades_total?: number;
+    mantenimientos_pendientes?: number;
+  } = {},
+): EntradasPanel {
+  const { unidades_total = 0, mantenimientos_pendientes = 0, ...resto } = extra;
   return {
     contratos: [],
-    unidades_total: 0,
+    unidades: Array.from({ length: unidades_total }, (_, i) => ({
+      id: `unidad-${i}`,
+      nombre: `Unidad ${i}`,
+      inmueble_id: 'i1',
+      inmueble_direccion: 'Calle 45 # 12-30',
+    })),
+    inmuebles: [],
     comprobantes_pendientes: 0,
-    mantenimientos_pendientes: 0,
+    solicitudes: mantenimientos_pendientes
+      ? [
+          {
+            estado: EstadoSolicitudMantenimiento.PENDIENTE,
+            urgencia: UrgenciaMantenimiento.MEDIO,
+            cantidad: mantenimientos_pendientes,
+          },
+        ]
+      : [],
     ipc_configurado: true,
-    ...extra,
+    ...resto,
   };
 }
 
@@ -81,8 +113,23 @@ describe('construirPanel: sin datos', () => {
         ocupadas: 0,
         libres: 0,
         con_contrato_programado: 0,
+        porcentaje: null,
+        unidades_detalle: [],
       },
       mora: { contratos: 0, periodos: 0, total_centavos: 0 },
+      morosos: [],
+      anio: {
+        anio: 2026,
+        meses: Array.from({ length: 10 }, (_, i) => ({
+          mes: `2026-${String(i + 1).padStart(2, '0')}`,
+          actual_centavos: 0,
+          anterior_centavos: 0,
+        })),
+        total_actual_centavos: 0,
+        total_anterior_centavos: 0,
+        variacion_porcentual: null,
+      },
+      por_inmueble: [],
       tendencia: [
         { mes: '2026-05', ingresos_centavos: 0 },
         { mes: '2026-06', ingresos_centavos: 0 },
@@ -94,6 +141,7 @@ describe('construirPanel: sin datos', () => {
       pendientes: {
         comprobantes_por_validar: 0,
         mantenimientos_pendientes: 0,
+        solicitudes_abiertas: { total: 0, urgentes: 0 },
         contratos_por_vencer: { cantidad: 0, contratos: [] },
         incrementos_disponibles: { cantidad: 0, contratos: [] },
         terminaciones_por_confirmar: { cantidad: 0, contratos: [] },
@@ -356,7 +404,8 @@ describe('ocupación', () => {
       entradas({ contratos, unidades_total: 5 }),
       HOY,
     );
-    expect(ocupacion).toEqual({
+    // B0.7-B agregó `porcentaje` y `unidades_detalle` (con su propia prueba); estos cuatro no cambian.
+    expect(ocupacion).toMatchObject({
       unidades: 5,
       ocupadas: 1,
       libres: 4,
