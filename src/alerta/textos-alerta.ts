@@ -1,7 +1,18 @@
 import { MotivoRechazoPago } from '@prisma/client';
 
 // Textos de las alertas que llevan datos del pago. El resto de las alertas arma su texto en el
-// servicio donde ocurre el evento.
+// servicio donde ocurre el evento, con `fechaDeAlerta` para cualquier fecha.
+
+/**
+ * B-81: la ÚNICA forma de escribir una fecha en el texto de una alerta: `dd/mm/aaaa`, con día y mes de
+ * dos dígitos. Recibe una fecha de día (`@db.Date` o `hoyEnBogota`: medianoche UTC del día de Bogotá) y
+ * lee sus partes en UTC, así que el día no se corre por la zona horaria.
+ */
+export function fechaDeAlerta(dia: Date): string {
+  const dd = String(dia.getUTCDate()).padStart(2, '0');
+  const mm = String(dia.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${dia.getUTCFullYear()}`;
+}
 
 const MOTIVO_HUMANO: Record<MotivoRechazoPago, string> = {
   [MotivoRechazoPago.MONTO_NO_COINCIDE]: 'el monto no coincide',

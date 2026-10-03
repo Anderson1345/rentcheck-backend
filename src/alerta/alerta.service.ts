@@ -30,13 +30,42 @@ const SELECT_ALERTA = {
 
 type FilaAlerta = Prisma.AlertaGetPayload<{ select: typeof SELECT_ALERTA }>;
 
-/** Lo que las rutas antiguas del arrendador nunca devolvieron (se agregó en B0.6-B1). */
+/** Lo que las rutas antiguas del arrendador nunca devolvieron (se agregó en B0.6-B1 y B0.7-A). */
 const OMITIR_CAMPOS_NUEVOS = {
   inquilino_id: true,
   pago_id: true,
   periodo: true,
   push_enviado_en: true,
+  leida_en: true,
 } satisfies Prisma.AlertaOmit;
+
+/** B-80 (D-13): una alerta leída deja de verse en el feed a los 7 días de leída. */
+export const DIAS_VISIBLES_LEIDAS = 7;
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Qué alertas muestra el feed (B-80): por defecto las no leídas (de cualquier edad) y las leídas en los
+ * últimos `DIAS_VISIBLES_LEIDAS` días; `leida=false`, solo las no leídas; `leida=true`, solo esas leídas
+ * recientes. Una leída sin `leida_en` (no debería existir: toda lectura lo escribe) no se muestra.
+ */
+function filtroVisibles(
+  leida: boolean | undefined,
+  ahora: Date,
+): Prisma.AlertaWhereInput {
+  const leidaReciente: Prisma.AlertaWhereInput = {
+    leida: true,
+    leida_en: {
+      gte: new Date(ahora.getTime() - DIAS_VISIBLES_LEIDAS * DIA_MS),
+    },
+  };
+  if (leida === false) {
+    return { leida: false };
+  }
+  if (leida === true) {
+    return leidaReciente;
+  }
+  return { OR: [{ leida: false }, leidaReciente] };
+}
 
 function aAlertaDto(fila: FilaAlerta): AlertaDto {
   return {
@@ -85,15 +114,19 @@ export class AlertaService {
 
     const where: Prisma.AlertaWhereInput = {
       ...destinatario,
-      ...(opciones.leida !== undefined ? { leida: opciones.leida } : {}),
-      ...(posicion
-        ? {
-            OR: [
-              { creado_en: { lt: posicion.creado_en } },
-              { creado_en: posicion.creado_en, id: { lt: posicion.id } },
-            ],
-          }
-        : {}),
+      AND: [
+        filtroVisibles(opciones.leida, new Date()),
+        ...(posicion
+          ? [
+              {
+                OR: [
+                  { creado_en: { lt: posicion.creado_en } },
+                  { creado_en: posicion.creado_en, id: { lt: posicion.id } },
+                ],
+              },
+            ]
+          : []),
+      ],
     };
 
     const [filas, noLeidas] = await Promise.all([
@@ -140,21 +173,22 @@ export class AlertaService {
     if (alerta.leida) {
       return aAlertaDto(alerta);
     }
-    // Condicionada al destinatario también al escribir.
+    // Condicionada al destinatario también al escribir, y a que siga sin leer: una lectura simultánea
+    // no le cambia la fecha de lectura a la otra.
     await this.prisma.alerta.updateMany({
-      where: { id, ...destinatario },
-      data: { leida: true },
+      where: { id, ...destinatario, leida: false },
+      data: { leida: true, leida_en: new Date() },
     });
     return aAlertaDto({ ...alerta, leida: true });
   }
 
-  /** Solo las del destinatario y solo las que seguían sin leer. */
+  /** Solo las del destinatario y solo las que seguían sin leer (las ya leídas conservan su `leida_en`). */
   async marcarTodasLeidas(
     destinatario: DestinatarioAlerta,
   ): Promise<{ marcadas: number }> {
     const resultado = await this.prisma.alerta.updateMany({
       where: { ...destinatario, leida: false },
-      data: { leida: true },
+      data: { leida: true, leida_en: new Date() },
     });
     return { marcadas: resultado.count };
   }
@@ -182,9 +216,13 @@ export class AlertaService {
         'Alerta no encontrada o no pertenece al arrendador autenticado.',
       );
     }
-    return this.prisma.alerta.update({
+    // B-80: escribe la fecha de lectura solo si seguía sin leer (volver a marcarla no la cambia).
+    await this.prisma.alerta.updateMany({
+      where: { id: alerta.id, leida: false },
+      data: { leida: true, leida_en: new Date() },
+    });
+    return this.prisma.alerta.findUniqueOrThrow({
       where: { id: alerta.id },
-      data: { leida: true },
       omit: OMITIR_CAMPOS_NUEVOS,
     });
   }

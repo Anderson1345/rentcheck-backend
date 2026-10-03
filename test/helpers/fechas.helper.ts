@@ -35,3 +35,23 @@ export function fechasDeContratoPorDefecto(): {
     fecha_fin: enDias(DIAS_DE_FIN_POR_DEFECTO),
   };
 }
+
+/**
+ * B-81: las fechas de un texto de alerta que NO están en dd/mm/aaaa con ceros (`AAAA-MM-DD`, o `5/3/2031`
+ * con día o mes de un dígito). Vacío si el texto está bien.
+ */
+export function fechasMalFormadas(texto: string): string[] {
+  const iso = texto.match(/\d{4}-\d{2}-\d{2}/g) ?? [];
+  const conBarras = (texto.match(/\d{1,2}\/\d{1,2}\/\d{4}/g) ?? []).filter(
+    (fecha) => !/^\d{2}\/\d{2}\/\d{4}$/.test(fecha),
+  );
+  return [...iso, ...conBarras];
+}
+
+/** `AAAA-MM-DD` (o una fecha de día) en el formato de los textos de alerta: dd/mm/aaaa. */
+export function fechaDeTexto(fecha: string | Date): string {
+  const [anio, mes, dia] = (typeof fecha === 'string' ? fecha : fechaISO(fecha))
+    .slice(0, 10)
+    .split('-');
+  return `${dia}/${mes}/${anio}`;
+}

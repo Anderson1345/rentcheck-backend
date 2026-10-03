@@ -390,6 +390,9 @@ model Alerta {
   /// Primer día del mes que cubre el período al que se refiere la alerta (recordatorio, mora, pago).
   periodo                     DateTime?   @db.Date
   leida                       Boolean     @default(false)
+  /// Cuándo se marcó como leída (B-80): el feed oculta las leídas de hace más de 7 días y la corrida
+  /// diaria borra las de más de 60. Nula mientras no se lea; las leídas antes de B0.7-A llevan creado_en.
+  leida_en                    DateTime?   @db.Timestamptz(3)
   creado_en                   DateTime    @default(now())
   /// Cuándo se envió el push de esta alerta (lo usa B0.6-B5); nulo = no enviado.
   push_enviado_en             DateTime?

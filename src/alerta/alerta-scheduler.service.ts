@@ -21,6 +21,7 @@ import {
 import { DocumentoContratoService } from '../contrato/documento-contrato.service';
 import { alertarAlInquilinoDelContrato, crearAlerta } from './crear-alerta';
 import { LimpiezaTecnicaService } from './limpieza-tecnica.service';
+import { fechaDeAlerta } from './textos-alerta';
 
 const SELECT_INCREMENTOS_PARA_ESTADO_CUENTA = {
   fecha_aplicacion: true,
@@ -45,6 +46,21 @@ export interface ResultadoTarea {
 /** Máximo de prórrogas automáticas por contrato y por corrida (recuperación). */
 /** B-78: cada cuántos días vuelve a avisar un ajuste de IPC vencido que el arrendador ya leyó. */
 const DIAS_ENTRE_AVISOS_IPC_VENCIDO = 7;
+
+/** B-79 (D-13): la mora se repite como máximo cada 7 días por contrato, período y destinatario. */
+export const DIAS_ENTRE_AVISOS_MORA = 7;
+
+/**
+ * B-79: el aviso de vencimiento sale una sola vez por fecha de fin. Cuenta cualquier aviso creado desde
+ * (fecha_fin − 40 días): cubre la ventana de 30 días del aviso con margen, y una prórroga (fecha de fin
+ * un período después) deja el aviso anterior fuera y permite el de la nueva fecha.
+ */
+const DIAS_ANTES_DEL_FIN_AVISO_VENCIMIENTO = 40;
+
+/** B-80 (D-13): una alerta leída se borra a los 60 días de leída; las no leídas nunca. */
+export const DIAS_RETENCION_LEIDAS = 60;
+
+const DIA_MS = 24 * 60 * 60 * 1000;
 
 /** B-77: un contrato cerrado se recalcula si su estado guardado no es AL_DIA o si cerró hace menos de esto. */
 const DIAS_RECALCULO_CONTRATOS_CERRADOS = 90;
@@ -132,6 +148,7 @@ export class AlertaSchedulerService {
           () => this.ejecutarMantenimientoSinAtender(ahora),
         ],
         ['ajuste_ipc_pendiente', () => this.ejecutarAjusteIpcPendiente(ahora)],
+        ['purga_alertas_leidas', () => this.purgarAlertasLeidas(ahora)],
         ['limpieza', () => this.limpieza.limpiar(ahora)],
       ];
 
@@ -203,10 +220,44 @@ export class AlertaSchedulerService {
   }
 
   /**
+   * ¿Ya hay una alerta de ese evento creada desde `desde`, leída o no? (B-79: mora y vencimiento). A
+   * diferencia de `yaHayAlerta`, una alerta sin leer más antigua NO cuenta: lo único que importa es
+   * cuándo se creó la última.
+   */
+  private async yaHayAlertaDesde(
+    evento: Prisma.AlertaWhereInput,
+    desde: Date,
+  ): Promise<boolean> {
+    const existente = await this.prisma.alerta.findFirst({
+      where: { ...evento, creado_en: { gte: desde } },
+      select: { id: true },
+    });
+    return existente !== null;
+  }
+
+  /**
+   * B-80 (D-13): borra las alertas LEÍDAS hace más de `DIAS_RETENCION_LEIDAS` días. Las no leídas nunca
+   * se borran (una leída sin `leida_en` tampoco). Las alertas no tienen valor legal.
+   */
+  async purgarAlertasLeidas(
+    ahora: Date = new Date(),
+  ): Promise<{ alertasPurgadas: number }> {
+    const limite = new Date(ahora.getTime() - DIAS_RETENCION_LEIDAS * DIA_MS);
+    const { count } = await this.prisma.alerta.deleteMany({
+      where: { leida: true, leida_en: { lt: limite } },
+    });
+    this.logger.log(
+      `Purga de alertas: ${count} alerta(s) leída(s) hace más de ${DIAS_RETENCION_LEIDAS} días borrada(s).`,
+    );
+    return { alertasPurgadas: count };
+  }
+
+  /**
    * Alerta de cron para un contrato, una fila por destinatario: el arrendador siempre y el inquilino
    * solo si ya vinculó su cuenta (sin cuenta no hay a quién). Cada destinatario tiene su propia
-   * deduplicación (`yaHayAlerta` sobre SU fila), así que leer una no afecta a la otra. Devuelve
-   * cuántas filas creó.
+   * deduplicación (B-79: no se crea si ESE destinatario ya tiene una del evento creada desde
+   * `repetirDesde`, leída o no), así que leer una no afecta a la otra. Con `porPeriodo`, el evento es
+   * también el período (mora). Devuelve cuántas filas creó.
    */
   private async alertarContratoAmbosRoles(
     contrato: {
@@ -217,54 +268,53 @@ export class AlertaSchedulerService {
     },
     datos: {
       tipo: TipoAlerta;
-      inicioDia: Date;
+      repetirDesde: Date;
+      porPeriodo?: boolean;
       creadoEn: Date;
       periodo?: Date | null;
       mensajeArrendador: string;
       mensajeInquilino: string;
     },
   ): Promise<number> {
-    const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-    let creadas = 0;
-
-    if (
-      !(await this.yaHayAlerta(
-        {
-          tipo: datos.tipo,
-          contrato_id: contrato.id,
-          arrendador_id: arrendadorId,
-        },
-        datos.inicioDia,
-      ))
-    ) {
-      await crearAlerta(this.prisma, {
-        arrendador_id: arrendadorId,
-        tipo: datos.tipo,
-        contrato_id: contrato.id,
-        periodo: datos.periodo ?? null,
+    const evento: Prisma.AlertaWhereInput = {
+      tipo: datos.tipo,
+      contrato_id: contrato.id,
+      ...(datos.porPeriodo ? { periodo: datos.periodo ?? null } : {}),
+    };
+    const destinatarios: Array<{
+      destino: { arrendador_id: string } | { inquilino_id: string };
+      mensaje: string;
+    }> = [
+      {
+        destino: { arrendador_id: contrato.unidad.inmueble.arrendador_id },
         mensaje: datos.mensajeArrendador,
-        creado_en: datos.creadoEn,
-      });
-      creadas += 1;
-    }
+      },
+      ...(contrato.vinculado_en !== null
+        ? [
+            {
+              destino: { inquilino_id: contrato.inquilino_id },
+              mensaje: datos.mensajeInquilino,
+            },
+          ]
+        : []),
+    ];
 
-    if (
-      contrato.vinculado_en !== null &&
-      !(await this.yaHayAlerta(
-        {
-          tipo: datos.tipo,
-          contrato_id: contrato.id,
-          inquilino_id: contrato.inquilino_id,
-        },
-        datos.inicioDia,
-      ))
-    ) {
+    let creadas = 0;
+    for (const { destino, mensaje } of destinatarios) {
+      if (
+        await this.yaHayAlertaDesde(
+          { ...evento, ...destino },
+          datos.repetirDesde,
+        )
+      ) {
+        continue;
+      }
       await crearAlerta(this.prisma, {
-        inquilino_id: contrato.inquilino_id,
+        ...destino,
         tipo: datos.tipo,
         contrato_id: contrato.id,
         periodo: datos.periodo ?? null,
-        mensaje: datos.mensajeInquilino,
+        mensaje,
         creado_en: datos.creadoEn,
       });
       creadas += 1;
@@ -431,7 +481,7 @@ export class AlertaSchedulerService {
         );
       }
 
-      const hastaElDia = fechaFin.toISOString().slice(0, 10);
+      const hastaElDia = fechaDeAlerta(fechaFin);
       await crearAlerta(tx, {
         arrendador_id: contrato.arrendador_id,
         tipo: TipoAlerta.CONTRATO_PRORROGADO_AUTOMATICAMENTE,
@@ -580,7 +630,6 @@ export class AlertaSchedulerService {
     ahora: Date = new Date(),
   ): Promise<{ creadas: number }> {
     const hoy = hoyEnBogota(ahora);
-    const inicioDia = inicioDelDiaBogota(hoy);
     const limite = sumarDiasUTC(hoy, 30);
 
     const contratos = await this.prisma.contrato.findMany({
@@ -600,12 +649,16 @@ export class AlertaSchedulerService {
 
     let creadas = 0;
     for (const contrato of contratos) {
-      const fechaVencimiento = contrato.fecha_fin.toLocaleDateString('es-CO', {
-        timeZone: 'UTC',
-      });
+      const fechaVencimiento = fechaDeAlerta(contrato.fecha_fin);
       creadas += await this.alertarContratoAmbosRoles(contrato, {
         tipo: TipoAlerta.CONTRATO_PROXIMO_A_VENCER,
-        inicioDia,
+        // B-79: una sola vez por fecha de fin, aunque se lea (una prórroga mueve la fecha y vuelve a avisar).
+        repetirDesde: inicioDelDiaBogota(
+          sumarDiasUTC(
+            contrato.fecha_fin,
+            -DIAS_ANTES_DEL_FIN_AVISO_VENCIMIENTO,
+          ),
+        ),
         creadoEn: ahora,
         mensajeArrendador: `El contrato de la unidad ${contrato.unidad.nombre} vence el ${fechaVencimiento}.`,
         mensajeInquilino: `Tu contrato de la unidad ${contrato.unidad.nombre} vence el ${fechaVencimiento}.`,
@@ -689,12 +742,7 @@ export class AlertaSchedulerService {
         continue;
       }
 
-      const fechaPago = periodoProximo.fecha_limite.toLocaleDateString(
-        'es-CO',
-        {
-          timeZone: 'UTC',
-        },
-      );
+      const fechaPago = fechaDeAlerta(periodoProximo.fecha_limite);
 
       await crearAlerta(this.prisma, {
         inquilino_id: contrato.inquilino_id,
@@ -835,9 +883,7 @@ export class AlertaSchedulerService {
       }
 
       const arrendadorId = contrato.unidad.inmueble.arrendador_id;
-      const fechaAjuste = proximoAjuste.toLocaleDateString('es-CO', {
-        timeZone: 'UTC',
-      });
+      const fechaAjuste = fechaDeAlerta(proximoAjuste);
 
       await crearAlerta(this.prisma, {
         arrendador_id: arrendadorId,
@@ -866,7 +912,6 @@ export class AlertaSchedulerService {
     errores: number;
   }> {
     const hoy = hoyEnBogota(ahora);
-    const inicioDia = inicioDelDiaBogota(hoy);
 
     const contratos = await this.prisma.contrato.findMany({
       where: {
@@ -903,14 +948,18 @@ export class AlertaSchedulerService {
         continue;
       }
 
-      const fechaVencimientoStr =
-        periodoEnMoraMasAntiguo.fecha_limite.toLocaleDateString('es-CO', {
-          timeZone: 'UTC',
-        });
+      const fechaVencimientoStr = fechaDeAlerta(
+        periodoEnMoraMasAntiguo.fecha_limite,
+      );
 
       creadas += await this.alertarContratoAmbosRoles(contrato, {
         tipo: TipoAlerta.INQUILINO_EN_MORA,
-        inicioDia,
+        // B-79: como máximo cada 7 días por contrato, período y destinatario, leída o no: cuenta una
+        // creada hoy o en los 6 días anteriores (día de Bogotá); a los 7 días se repite.
+        repetirDesde: inicioDelDiaBogota(
+          sumarDiasUTC(hoy, -(DIAS_ENTRE_AVISOS_MORA - 1)),
+        ),
+        porPeriodo: true,
         creadoEn: ahora,
         periodo: periodoEnMoraMasAntiguo.periodo,
         mensajeArrendador: `El pago de la unidad ${contrato.unidad.nombre} correspondiente a ${fechaVencimientoStr} está vencido.`,

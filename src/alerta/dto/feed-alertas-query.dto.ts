@@ -16,7 +16,7 @@ export class FeedAlertasQueryDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
-      'Solo leídas (`true`) o solo no leídas (`false`). Sin él, todas. No cambia `no_leidas`.',
+      'Sin él: las no leídas (de cualquier edad) y las leídas en los últimos 7 días (las leídas hace más de 7 días ya no se muestran y se borran a los 60). `false`: solo las no leídas. `true`: solo las leídas de los últimos 7 días. No cambia `no_leidas`.',
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
