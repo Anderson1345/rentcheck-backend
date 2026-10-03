@@ -1,6 +1,6 @@
 # RentCheck — Plan de rediseño de UX y nuevas funciones
 
-> **Versión 1.0 — 2 de octubre de 2026.** Decidido con Jesús tras probar E9 en Expo Go.
+> **Versión 1.1 — 2 de octubre de 2026.** (1.1: D2 aprobada; maquetas en `docs/diseno/d2/` del repo móvil.) Decidido con Jesús tras probar E9 en Expo Go.
 > Complementa a `RentCheck_instrucciones_desarrollo_movil.md` (estado y orden de entregas), `RentCheck_Contexto_App_Movil.md` (reglas de negocio) y `RentCheck_Plan_Tecnico_App_Movil.md` (B-xx). Si este documento contradice a esos tres, ganan ellos; las decisiones de aquí ya se copiaron a cada uno.
 > **Para un chat nuevo del proyecto:** léelo antes de diseñar cualquier entrega de app desde R1 en adelante.
 
@@ -94,3 +94,7 @@ E11 (sin conexión), E12 (endurecimiento y APK), B0.6-B5 y E3-C siguen como esta
 6. Fotos visibles y ampliables siempre que existan.
 7. Densidad móvil: aprovechar el ancho (dos columnas para datos cortos), no apilar todo.
 8. Mismos colores, tipografía (Manrope) y radios de `src/tema.ts`; no se cambia la identidad.
+9. **Las pantallas que no tienen maqueta siguen el mismo lenguaje** (pedido de Jesús): heredan las piezas base de R1 y, en la entrega que las toque (R2–R4), se reorganizan con estos principios. R4 cierra con un barrido de todas las pantallas restantes (perfil, Más, mantenimiento, estado de cuenta, asistente de contrato, inventario, activación, etc.).
+
+## 6. Maquetas D2 (aprobadas el 02/10/2026)
+Lienzo "RentCheck D2 Rediseño" (artefacto de Jesús) y copia de las fuentes en `docs/diseno/d2/` del repo móvil: `Main.dc.html` (login), `Formulario.dc.html` (reportar pago y campo de formulario), `Alertas.dc.html`, `PanelArrendador.dc.html`, `PanelInquilino.dc.html`, `Inmuebles.dc.html`, `Contratos.dc.html`, `Contrato.dc.html`. Son HTML de referencia (medidas, colores, jerarquía), no código para copiar; los datos son de ejemplo. Lo que dependa de entregas futuras (Google, llave Bre-B y referencia, "Quién te debe", "Cómo va el año") se construye en su entrega, no antes.
