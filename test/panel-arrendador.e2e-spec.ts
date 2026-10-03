@@ -77,6 +77,23 @@ interface IncrementoApi {
   disponible_desde: string;
   ipc_faltante: boolean;
 }
+interface MorosoApi {
+  contrato_id: string;
+  unidad: { id: string; nombre: string };
+  inmueble: { id: string; direccion: string };
+  inquilino: { nombre: string } | null;
+  periodos: number;
+  monto_centavos: number;
+  dias_mora: number;
+  periodo_mas_antiguo: string;
+}
+interface UnidadDetalleApi {
+  unidad_id: string;
+  nombre: string;
+  inmueble_id: string;
+  inmueble_direccion: string;
+  estado: 'EN_MORA' | 'AL_DIA' | 'PROGRAMADA' | 'LIBRE';
+}
 interface PanelApi {
   mes: string;
   calculado_para: string;
@@ -93,12 +110,34 @@ interface PanelApi {
     ocupadas: number;
     libres: number;
     con_contrato_programado: number;
+    porcentaje: number | null;
+    unidades_detalle: UnidadDetalleApi[];
   };
   mora: { contratos: number; periodos: number; total_centavos: number };
+  morosos: MorosoApi[];
+  anio: {
+    anio: number;
+    meses: {
+      mes: string;
+      actual_centavos: number;
+      anterior_centavos: number;
+    }[];
+    total_actual_centavos: number;
+    total_anterior_centavos: number;
+    variacion_porcentual: number | null;
+  };
+  por_inmueble: {
+    inmueble_id: string;
+    direccion: string;
+    ingresos_anio_centavos: number;
+    unidades: number;
+    ocupadas: number;
+  }[];
   tendencia: { mes: string; ingresos_centavos: number }[];
   pendientes: {
     comprobantes_por_validar: number;
     mantenimientos_pendientes: number;
+    solicitudes_abiertas: { total: number; urgentes: number };
     contratos_por_vencer: {
       cantidad: number;
       contratos: ContratoPendienteApi[];
@@ -112,6 +151,46 @@ interface PanelApi {
 }
 
 const d = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+
+/**
+ * Regresión de B0.7-B: SOLO los campos que existían antes (B0.6-A2), con los ids reemplazados por
+ * `<id>` (cambian en cada corrida). El snapshot se grabó con el código anterior a B0.7-B.
+ */
+function camposAntiguos(p: PanelApi): unknown {
+  const sinIds = (valor: unknown): unknown => {
+    if (Array.isArray(valor)) return valor.map(sinIds);
+    if (valor && typeof valor === 'object') {
+      return Object.fromEntries(
+        Object.entries(valor).map(([k, v]) => [
+          k,
+          k.endsWith('_id') ? '<id>' : sinIds(v),
+        ]),
+      );
+    }
+    return valor;
+  };
+  return sinIds({
+    mes: p.mes,
+    calculado_para: p.calculado_para,
+    ingresos_mes_centavos: p.ingresos_mes_centavos,
+    recaudo: p.recaudo,
+    ocupacion: {
+      unidades: p.ocupacion.unidades,
+      ocupadas: p.ocupacion.ocupadas,
+      libres: p.ocupacion.libres,
+      con_contrato_programado: p.ocupacion.con_contrato_programado,
+    },
+    mora: p.mora,
+    tendencia: p.tendencia,
+    pendientes: {
+      comprobantes_por_validar: p.pendientes.comprobantes_por_validar,
+      mantenimientos_pendientes: p.pendientes.mantenimientos_pendientes,
+      contratos_por_vencer: p.pendientes.contratos_por_vencer,
+      incrementos_disponibles: p.pendientes.incrementos_disponibles,
+      terminaciones_por_confirmar: p.pendientes.terminaciones_por_confirmar,
+    },
+  });
+}
 
 describe('Panel del arrendador (e2e, B-58)', () => {
   let app: INestApplication<App>;
@@ -597,6 +676,14 @@ describe('Panel del arrendador (e2e, B-58)', () => {
     });
   });
 
+  describe('regresión: los campos antiguos no cambian (B0.7-B)', () => {
+    it('A, B y C devuelven exactamente los mismos campos de antes', async () => {
+      expect(camposAntiguos(await panel(tokenA))).toMatchSnapshot('A');
+      expect(camposAntiguos(await panel(tokenB))).toMatchSnapshot('B');
+      expect(camposAntiguos(await panel(tokenC))).toMatchSnapshot('C');
+    });
+  });
+
   describe('arrendador A: contratos en cada estado', () => {
     let a: PanelApi;
     beforeAll(async () => {
@@ -647,7 +734,7 @@ describe('Panel del arrendador (e2e, B-58)', () => {
     });
 
     it('ocupación: 8 unidades, 4 ocupadas, 4 libres y una con contrato programado', () => {
-      expect(a.ocupacion).toEqual({
+      expect(a.ocupacion).toMatchObject({
         unidades: 8,
         ocupadas: 4,
         libres: 4,
@@ -737,6 +824,157 @@ describe('Panel del arrendador (e2e, B-58)', () => {
     });
   });
 
+  describe('B0.7-B: quién me debe, cómo va el año, por inmueble, ocupación por unidad y solicitudes', () => {
+    let a: PanelApi;
+    beforeAll(async () => {
+      a = await panel(tokenA);
+    });
+
+    it('morosos: C3 (contrato cerrado, 3 períodos) y C2 (febrero parcial), por monto; suman mora.total_centavos', () => {
+      expect(a.morosos).toEqual([
+        {
+          contrato_id: idsA.c3,
+          unidad: { id: expect.any(String) as string, nombre: 'Apto 103' },
+          inmueble: { id: idsA.inmueble, direccion: 'Calle A 1' },
+          inquilino: { nombre: 'Persona Prueba' },
+          periodos: 3,
+          monto_centavos: 3 * MILLON,
+          dias_mora: 100, // del 05/12/2026 al 15/03/2027
+          periodo_mas_antiguo: '2026-12-01',
+        },
+        {
+          contrato_id: idsA.c2,
+          unidad: { id: expect.any(String) as string, nombre: 'Apto 102' },
+          inmueble: { id: idsA.inmueble, direccion: 'Calle A 1' },
+          inquilino: { nombre: 'Persona Prueba' },
+          periodos: 1,
+          monto_centavos: 600_000,
+          dias_mora: 38, // del 05/02 al 15/03
+          periodo_mas_antiguo: '2027-02-01',
+        },
+      ]);
+      expect(a.morosos.reduce((s, m) => s + m.monto_centavos, 0)).toBe(
+        a.mora.total_centavos,
+      );
+      expect(a.morosos.length).toBe(a.mora.contratos);
+    });
+
+    it('anio: enero a marzo de 2027 frente a 2026 (pagos APROBADOS por fecha_reportada)', () => {
+      expect(a.anio).toEqual({
+        anio: 2027,
+        meses: [
+          { mes: '2027-01', actual_centavos: 4 * MILLON, anterior_centavos: 0 },
+          {
+            mes: '2027-02',
+            actual_centavos: 3 * MILLON + 400_000,
+            anterior_centavos: 0,
+          },
+          {
+            mes: '2027-03',
+            actual_centavos: 3 * MILLON + 400_000,
+            anterior_centavos: MILLON,
+          },
+        ],
+        total_actual_centavos: 10 * MILLON + 800_000,
+        total_anterior_centavos: MILLON,
+        variacion_porcentual: 980,
+      });
+    });
+
+    it('por_inmueble: el inmueble de A con sus ingresos del año, unidades y ocupadas', () => {
+      expect(a.por_inmueble).toEqual([
+        {
+          inmueble_id: idsA.inmueble,
+          direccion: 'Calle A 1',
+          ingresos_anio_centavos: a.anio.total_actual_centavos,
+          unidades: 8,
+          ocupadas: 4,
+        },
+      ]);
+    });
+
+    it('ocupación por unidad: EN_MORA, AL_DIA, PROGRAMADA y LIBRE, y el porcentaje', () => {
+      expect(a.ocupacion.porcentaje).toBe(50);
+      expect(
+        a.ocupacion.unidades_detalle.map((u) => [u.nombre, u.estado]),
+      ).toEqual([
+        ['Apto 101', 'AL_DIA'],
+        ['Apto 102', 'EN_MORA'],
+        ['Apto 103', 'LIBRE'], // su contrato VENCIDO debe, pero la unidad está libre
+        ['Apto 104', 'PROGRAMADA'],
+        ['Apto 105', 'AL_DIA'],
+        ['Apto 106', 'AL_DIA'],
+        ['Apto 107', 'LIBRE'],
+        ['Apto 108', 'LIBRE'],
+      ]);
+      for (const u of a.ocupacion.unidades_detalle) {
+        expect(u.inmueble_id).toBe(idsA.inmueble);
+        expect(u.inmueble_direccion).toBe('Calle A 1');
+      }
+    });
+
+    it('solicitudes abiertas: PENDIENTE y EN_PROCESO (no RESUELTO); urgentes = ALTO', async () => {
+      expect(a.pendientes.solicitudes_abiertas).toEqual({
+        total: 3,
+        urgentes: 0,
+      });
+      // B: una PENDIENTE MEDIO de siempre + una EN_PROCESO ALTO + una RESUELTO ALTO (temporales).
+      const extra = await Promise.all(
+        [
+          EstadoSolicitudMantenimiento.EN_PROCESO,
+          EstadoSolicitudMantenimiento.RESUELTO,
+        ].map((estado) =>
+          prisma.solicitudMantenimiento.create({
+            data: {
+              arrendador_id: arrendadorB,
+              unidad_id: unidadesB[0],
+              inquilino_id: inquilinoB,
+              descripcion: 'Urgente',
+              urgencia: UrgenciaMantenimiento.ALTO,
+              estado,
+            },
+            select: { id: true },
+          }),
+        ),
+      );
+      try {
+        const b = await panel(tokenB);
+        expect(b.pendientes.solicitudes_abiertas).toEqual({
+          total: 2,
+          urgentes: 1,
+        });
+        expect(b.pendientes.mantenimientos_pendientes).toBe(1);
+      } finally {
+        await prisma.solicitudMantenimiento.deleteMany({
+          where: { id: { in: extra.map((s) => s.id) } },
+        });
+      }
+    });
+
+    it('arrendador sin datos: bloques nuevos vacíos o en cero', async () => {
+      const c = await panel(tokenC);
+      expect(c.morosos).toEqual([]);
+      expect(c.anio).toEqual({
+        anio: 2027,
+        meses: ['2027-01', '2027-02', '2027-03'].map((mes) => ({
+          mes,
+          actual_centavos: 0,
+          anterior_centavos: 0,
+        })),
+        total_actual_centavos: 0,
+        total_anterior_centavos: 0,
+        variacion_porcentual: null,
+      });
+      expect(c.por_inmueble).toEqual([]);
+      expect(c.ocupacion.porcentaje).toBeNull();
+      expect(c.ocupacion.unidades_detalle).toEqual([]);
+      expect(c.pendientes.solicitudes_abiertas).toEqual({
+        total: 0,
+        urgentes: 0,
+      });
+    });
+  });
+
   describe('arrendador B y aislamiento', () => {
     it('B ve solo lo suyo, con sus propios números', async () => {
       const b = await panel(tokenB);
@@ -749,7 +987,7 @@ describe('Panel del arrendador (e2e, B-58)', () => {
       });
       expect(b.ingresos_mes_centavos).toBe(0);
       expect(b.mora).toEqual({ contratos: 0, periodos: 0, total_centavos: 0 });
-      expect(b.ocupacion).toEqual({
+      expect(b.ocupacion).toMatchObject({
         unidades: 2,
         ocupadas: 1,
         libres: 1,
@@ -784,7 +1022,7 @@ describe('Panel del arrendador (e2e, B-58)', () => {
   describe('arrendador sin datos', () => {
     it('todo en cero y la tendencia con 6 meses en cero', async () => {
       const c = await panel(tokenC);
-      expect(c).toEqual({
+      expect(camposAntiguos(c)).toEqual({
         mes: '2027-03',
         calculado_para: '2027-03-15',
         ingresos_mes_centavos: 0,
@@ -917,9 +1155,18 @@ describe('Panel del arrendador (e2e, B-58)', () => {
         'mora',
         'tendencia',
         'pendientes',
+        'morosos',
+        'anio',
+        'por_inmueble',
       ]) {
         expect(principal).toContain(campo);
       }
+      // El estado de la unidad es un enum con nombre propio.
+      expect(esquemas.EstadoOcupacionUnidad).toEqual(
+        expect.objectContaining({
+          enum: ['EN_MORA', 'AL_DIA', 'PROGRAMADA', 'LIBRE'],
+        }),
+      );
       // Los 11 esquemas de esta entrega existen y ninguno está vacío.
       const delPanel = [
         'PanelArrendadorDto',
@@ -933,6 +1180,16 @@ describe('Panel del arrendador (e2e, B-58)', () => {
         'IncrementosDisponiblesPanelDto',
         'TerminacionesPorConfirmarPanelDto',
         'PendientesPanelDto',
+        // B0.7-B
+        'MorosoPanelDto',
+        'UnidadMorosoPanelDto',
+        'InmuebleMorosoPanelDto',
+        'InquilinoMorosoPanelDto',
+        'AnioPanelDto',
+        'MesAnioPanelDto',
+        'InmueblePanelDto',
+        'UnidadOcupacionPanelDto',
+        'SolicitudesAbiertasPanelDto',
       ];
       for (const nombre of delPanel) {
         expect(esquemas[nombre]).toBeDefined();
@@ -949,6 +1206,7 @@ describe('Panel del arrendador (e2e, B-58)', () => {
         'contratos_por_vencer',
         'incrementos_disponibles',
         'terminaciones_por_confirmar',
+        'solicitudes_abiertas',
       ]) {
         expect(pendientes).toContain(campo);
       }

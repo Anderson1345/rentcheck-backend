@@ -24,9 +24,10 @@ export class PanelArrendadorService {
 
     const [
       contratos,
-      unidadesTotal,
+      inmuebles,
+      unidades,
       comprobantesPendientes,
-      mantenimientosPendientes,
+      solicitudes,
       ipc,
     ] = await Promise.all([
       // Todos los contratos con sus incrementos y sus pagos PENDIENTE y APROBADO (los únicos que
@@ -36,6 +37,7 @@ export class PanelArrendadorService {
         select: {
           id: true,
           unidad_id: true,
+          inquilino_nombre: true,
           estado: true,
           fecha_inicio: true,
           fecha_fin: true,
@@ -49,7 +51,10 @@ export class PanelArrendadorService {
           terminacion_fecha_efectiva: true,
           terminacion_confirmada_por: true,
           unidad: {
-            select: { nombre: true, inmueble: { select: { direccion: true } } },
+            select: {
+              nombre: true,
+              inmueble: { select: { id: true, direccion: true } },
+            },
           },
           incrementos_ipc: {
             select: {
@@ -71,17 +76,33 @@ export class PanelArrendadorService {
           },
         },
       }),
-      this.prisma.unidad.count({
+      // B0.7-B: todos los inmuebles (también sin unidades) y todas las unidades, para el bloque por
+      // inmueble y el estado de cada unidad. La dirección de la unidad se toma del inmueble ya leído.
+      this.prisma.inmueble.findMany({
+        where: { arrendador_id: arrendadorId },
+        select: { id: true, direccion: true },
+      }),
+      this.prisma.unidad.findMany({
         where: { inmueble: { arrendador_id: arrendadorId } },
+        select: { id: true, nombre: true, inmueble_id: true },
       }),
       this.prisma.pago.count({
         where: { arrendador_id: arrendadorId, estado: EstadoPago.PENDIENTE },
       }),
-      this.prisma.solicitudMantenimiento.count({
+      // Solicitudes abiertas contadas por estado y urgencia en una sola consulta (de aquí salen también
+      // los mantenimientos PENDIENTE de siempre).
+      this.prisma.solicitudMantenimiento.groupBy({
+        by: ['estado', 'urgencia'],
         where: {
           arrendador_id: arrendadorId,
-          estado: EstadoSolicitudMantenimiento.PENDIENTE,
+          estado: {
+            in: [
+              EstadoSolicitudMantenimiento.PENDIENTE,
+              EstadoSolicitudMantenimiento.EN_PROCESO,
+            ],
+          },
         },
+        _count: { _all: true },
       }),
       // El IPC es global (no es del arrendador): solo se pregunta si existe el que usaría un incremento.
       this.prisma.configuracionIpc.findUnique({
@@ -90,11 +111,14 @@ export class PanelArrendadorService {
       }),
     ]);
 
+    const direccionDe = new Map(inmuebles.map((i) => [i.id, i.direccion]));
     const paraElPanel: ContratoParaPanel[] = contratos.map((c) => ({
       id: c.id,
       unidad_id: c.unidad_id,
       unidad: c.unidad.nombre,
+      inmueble_id: c.unidad.inmueble.id,
       inmueble: c.unidad.inmueble.direccion,
+      inquilino_nombre: c.inquilino_nombre,
       estado: c.estado,
       fecha_inicio: c.fecha_inicio,
       fecha_fin: c.fecha_fin,
@@ -114,9 +138,19 @@ export class PanelArrendadorService {
     return construirPanel(
       {
         contratos: paraElPanel,
-        unidades_total: unidadesTotal,
+        inmuebles,
+        unidades: unidades.map((u) => ({
+          id: u.id,
+          nombre: u.nombre,
+          inmueble_id: u.inmueble_id,
+          inmueble_direccion: direccionDe.get(u.inmueble_id) ?? '',
+        })),
         comprobantes_pendientes: comprobantesPendientes,
-        mantenimientos_pendientes: mantenimientosPendientes,
+        solicitudes: solicitudes.map((s) => ({
+          estado: s.estado,
+          urgencia: s.urgencia,
+          cantidad: s._count._all,
+        })),
         ipc_configurado: ipc !== null,
       },
       hoy,

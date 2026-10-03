@@ -1,4 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ESTADOS_OCUPACION_UNIDAD } from '../../common/panel-arrendador.util';
+import type { EstadoOcupacionUnidad } from '../../common/panel-arrendador.util';
 
 // Respuesta de GET /arrendadores/panel (B-58). Las clases solo DESCRIBEN lo que construye la función
 // pura src/common/panel-arrendador.util.ts: no cambian nada. Los decoradores van explícitos para que
@@ -27,6 +29,150 @@ export class RecaudoPanelDto {
   contratos!: number;
 }
 
+// ---- B0.7-B (B-82, D-14): quién me debe, cómo va el año, por inmueble y ocupación por unidad ----
+
+export class UnidadMorosoPanelDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ example: 'Apto 102' })
+  nombre!: string;
+}
+
+export class InmuebleMorosoPanelDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ example: 'Calle 45 # 12-30' })
+  direccion!: string;
+}
+
+export class InquilinoMorosoPanelDto {
+  /** El nombre que guarda el contrato (lo que firmó el arrendador), nunca el perfil global. */
+  @ApiProperty({ example: 'Camilo Pardo' })
+  nombre!: string;
+}
+
+export class MorosoPanelDto {
+  @ApiProperty()
+  contrato_id!: string;
+
+  @ApiProperty({ type: () => UnidadMorosoPanelDto })
+  unidad!: UnidadMorosoPanelDto;
+
+  @ApiProperty({ type: () => InmuebleMorosoPanelDto })
+  inmueble!: InmuebleMorosoPanelDto;
+
+  /** null si el contrato no guarda el nombre del inquilino. */
+  @ApiProperty({ type: () => InquilinoMorosoPanelDto, nullable: true })
+  inquilino!: InquilinoMorosoPanelDto | null;
+
+  /** Períodos VENCIDO o PARCIAL del contrato. */
+  @ApiProperty({ example: 2 })
+  periodos!: number;
+
+  /** Lo que debe: suma de (canon del período − aprobado). Misma regla que `mora.total_centavos`. */
+  @ApiProperty({ example: 1600000 })
+  monto_centavos!: number;
+
+  /** Días (de Bogotá) desde la fecha límite del período en mora más antiguo hasta hoy; siempre ≥ 1. */
+  @ApiProperty({ example: 38 })
+  dias_mora!: number;
+
+  /** Primer día del mes del período en mora más antiguo. */
+  @ApiProperty({ example: '2027-02-01' })
+  periodo_mas_antiguo!: string;
+}
+
+export class MesAnioPanelDto {
+  @ApiProperty({ example: '2027-02' })
+  mes!: string;
+
+  /** Pagos APROBADOS con fecha_reportada en ese mes del año en curso. */
+  @ApiProperty({ example: 3400000 })
+  actual_centavos!: number;
+
+  /** Pagos APROBADOS con fecha_reportada en el mismo mes (completo) del año anterior. */
+  @ApiProperty({ example: 3000000 })
+  anterior_centavos!: number;
+}
+
+export class AnioPanelDto {
+  /** Año en curso en Bogotá. */
+  @ApiProperty({ example: 2027 })
+  anio!: number;
+
+  /** Un elemento por mes, de enero al mes actual inclusive. */
+  @ApiProperty({ type: () => [MesAnioPanelDto] })
+  meses!: MesAnioPanelDto[];
+
+  /** Del 1 de enero hasta hoy. */
+  @ApiProperty({ example: 10800000 })
+  total_actual_centavos!: number;
+
+  /** Del 1 de enero hasta el mismo día del año anterior (un 29 de febrero se compara con el 28). */
+  @ApiProperty({ example: 9000000 })
+  total_anterior_centavos!: number;
+
+  /** (actual − anterior) / anterior × 100, entero redondeado; null si el año anterior suma 0. */
+  @ApiProperty({ type: Number, nullable: true, example: 20 })
+  variacion_porcentual!: number | null;
+}
+
+export class InmueblePanelDto {
+  @ApiProperty()
+  inmueble_id!: string;
+
+  @ApiProperty({ example: 'Calle 45 # 12-30' })
+  direccion!: string;
+
+  /** Como `anio.total_actual_centavos`, solo de los contratos de este inmueble (también los cerrados). */
+  @ApiProperty({ example: 6400000 })
+  ingresos_anio_centavos!: number;
+
+  @ApiProperty({ example: 4 })
+  unidades!: number;
+
+  /** Unidades con un contrato ACTIVO. */
+  @ApiProperty({ example: 3 })
+  ocupadas!: number;
+}
+
+export class UnidadOcupacionPanelDto {
+  @ApiProperty()
+  unidad_id!: string;
+
+  @ApiProperty({ example: 'Apto 101' })
+  nombre!: string;
+
+  @ApiProperty()
+  inmueble_id!: string;
+
+  @ApiProperty({ example: 'Calle 45 # 12-30' })
+  inmueble_direccion!: string;
+
+  /**
+   * EN_MORA: contrato ACTIVO con algún período VENCIDO o PARCIAL. AL_DIA: contrato ACTIVO sin mora.
+   * PROGRAMADA: sin contrato ACTIVO pero con uno PROGRAMADO. LIBRE: el resto.
+   */
+  @ApiProperty({
+    enum: ESTADOS_OCUPACION_UNIDAD,
+    enumName: 'EstadoOcupacionUnidad',
+    example: 'AL_DIA',
+  })
+  estado!: EstadoOcupacionUnidad;
+}
+
+export class SolicitudesAbiertasPanelDto {
+  /** Solicitudes de mantenimiento PENDIENTE o EN_PROCESO. */
+  @ApiProperty({ example: 3 })
+  total!: number;
+
+  /** De esas, las de urgencia ALTO (la más alta). */
+  @ApiProperty({ example: 1 })
+  urgentes!: number;
+}
+
 export class OcupacionPanelDto {
   /** Todas las unidades de sus inmuebles, también la "Unidad principal" sin completar. */
   @ApiProperty({ example: 8 })
@@ -42,6 +188,14 @@ export class OcupacionPanelDto {
   /** De las libres, las que ya tienen un contrato PROGRAMADO (no bloquea la unidad). */
   @ApiProperty({ example: 1 })
   con_contrato_programado!: number;
+
+  /** ocupadas / unidades × 100, entero redondeado; null sin unidades. */
+  @ApiProperty({ type: Number, nullable: true, example: 50 })
+  porcentaje!: number | null;
+
+  /** Todas las unidades, por dirección del inmueble y nombre. */
+  @ApiProperty({ type: () => [UnidadOcupacionPanelDto] })
+  unidades_detalle!: UnidadOcupacionPanelDto[];
 }
 
 export class MoraPanelDto {
@@ -138,6 +292,10 @@ export class PendientesPanelDto {
   @ApiProperty({ example: 2 })
   mantenimientos_pendientes!: number;
 
+  /** Solicitudes abiertas (PENDIENTE y EN_PROCESO) y cuántas son urgentes. */
+  @ApiProperty({ type: () => SolicitudesAbiertasPanelDto })
+  solicitudes_abiertas!: SolicitudesAbiertasPanelDto;
+
   /** Contratos ACTIVO con fecha de fin entre hoy y dentro de 30 días. */
   @ApiProperty({ type: () => ContratosPorVencerPanelDto })
   contratos_por_vencer!: ContratosPorVencerPanelDto;
@@ -179,9 +337,24 @@ export class PanelArrendadorDto {
   @ApiProperty({ type: () => MoraPanelDto })
   mora!: MoraPanelDto;
 
+  /**
+   * Quién me debe: hasta 10 contratos en mora (el total es `mora.contratos`), por monto descendente,
+   * luego días de mora descendente y luego contrato_id. Incluye contratos ya cerrados con deuda.
+   */
+  @ApiProperty({ type: () => [MorosoPanelDto] })
+  morosos!: MorosoPanelDto[];
+
   /** Siempre 6 meses, del más antiguo al actual, con los ingresos (caja real) de cada uno. */
   @ApiProperty({ type: () => [TendenciaMesDto] })
   tendencia!: TendenciaMesDto[];
+
+  /** Cómo va el año: ingresos (caja real) del año en curso frente al anterior, mes a mes. */
+  @ApiProperty({ type: () => AnioPanelDto })
+  anio!: AnioPanelDto;
+
+  /** Todos los inmuebles (también sin ingresos), por ingresos del año descendente y luego dirección. */
+  @ApiProperty({ type: () => [InmueblePanelDto] })
+  por_inmueble!: InmueblePanelDto[];
 
   @ApiProperty({ type: () => PendientesPanelDto })
   pendientes!: PendientesPanelDto;

@@ -874,7 +874,8 @@ describe('Alertas: modelo con destinatario y feed por cursor (e2e)', () => {
       // Nuevas: 7 rutas con 7 operaciones y 7 esquemas (los 5 DTO y los enums TipoAlerta y TipoRecursoAlerta).
       expect(rutas).toHaveLength(74 + 7);
       expect(operaciones).toBe(86 + 7);
-      expect(esquemas).toBe(60 + 7);
+      // B0.7-B agregó 10 esquemas del Panel (9 DTO y el enum EstadoOcupacionUnidad), sin rutas nuevas.
+      expect(esquemas).toBe(60 + 7 + 10);
     });
   });
 });
