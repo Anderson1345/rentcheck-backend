@@ -39,6 +39,7 @@ const TAREAS_ESPERADAS = [
   'inquilino_en_mora',
   'mantenimiento_sin_atender',
   'ajuste_ipc_pendiente',
+  'purga_alertas_leidas',
   'limpieza',
 ];
 
@@ -256,9 +257,12 @@ describe('Tareas diarias (e2e)', () => {
   // Sin duplicados (regla 20)
   // ------------------------------------------------------------------
   describe('no duplica alertas al ejecutar dos veces el mismo día, aunque la primera esté leída', () => {
+    // B-79: la mora se repite a los 7 días y el vencimiento una sola vez por fecha de fin; IPC y
+    // mantenimiento siguen como antes (pueden volver a avisar al día siguiente).
     async function comprobarDedupe(
       tipo: string,
       preparar: () => Promise<void>,
+      diaSiguiente: 'repite' | 'no_repite' = 'repite',
     ) {
       await preparar();
       const ahora = new Date();
@@ -272,21 +276,27 @@ describe('Tareas diarias (e2e)', () => {
       expect(await alertas(tipo)).toBe(1);
 
       // Leída la primera: el mismo día tampoco se crea otra.
-      await prisma.alerta.updateMany({ data: { leida: true } });
+      await prisma.alerta.updateMany({
+        data: { leida: true, leida_en: ahora },
+      });
       await ejecutar(ahora);
       await ejecutar(new Date(ahora.getTime() + 60 * 1000));
       expect(await alertas(tipo)).toBe(1);
       expect(await todasLasAlertas()).toBe(totalDespuesDeLaPrimera);
 
-      // Al día siguiente sí puede crearse una nueva.
+      // Al día siguiente: IPC y mantenimiento pueden crear una nueva; mora y vencimiento no (B-79).
       await ejecutar(new Date(ahora.getTime() + DIA));
-      expect(await alertas(tipo)).toBe(2);
+      expect(await alertas(tipo)).toBe(diaSiguiente === 'repite' ? 2 : 1);
     }
 
     it('contrato por vencer', async () => {
-      await comprobarDedupe('CONTRATO_PROXIMO_A_VENCER', async () => {
-        await escenario({ fin: sumarDiasUTC(hoy, 10) });
-      });
+      await comprobarDedupe(
+        'CONTRATO_PROXIMO_A_VENCER',
+        async () => {
+          await escenario({ fin: sumarDiasUTC(hoy, 10) });
+        },
+        'no_repite',
+      );
     }, 180000);
 
     it('ajuste de IPC pendiente', async () => {
@@ -299,12 +309,16 @@ describe('Tareas diarias (e2e)', () => {
     }, 180000);
 
     it('inquilino en mora', async () => {
-      await comprobarDedupe('INQUILINO_EN_MORA', async () => {
-        await escenario({
-          inicio: sumarMesesUTC(hoy, -3),
-          fin: sumarDiasUTC(hoy, 200),
-        });
-      });
+      await comprobarDedupe(
+        'INQUILINO_EN_MORA',
+        async () => {
+          await escenario({
+            inicio: sumarMesesUTC(hoy, -3),
+            fin: sumarDiasUTC(hoy, 200),
+          });
+        },
+        'no_repite',
+      );
     }, 180000);
 
     it('mantenimiento sin atender', async () => {
@@ -358,7 +372,7 @@ describe('Tareas diarias (e2e)', () => {
       // El detalle del error no repite el mensaje (puede traer datos).
       expect(JSON.stringify(error.detalle)).not.toContain('cedula');
     }
-    expect(resultados.filter((r) => r.estado === 'ok')).toHaveLength(7);
+    expect(resultados.filter((r) => r.estado === 'ok')).toHaveLength(8);
   }, 60000);
 
   it('dos llamadas simultáneas: una corre y la otra recibe en_curso; las alertas son las de una sola corrida', async () => {
@@ -582,7 +596,9 @@ describe('Tareas diarias (e2e)', () => {
       expect(primera).toBeGreaterThan(0);
 
       await llamar(secreto, '?esperar=true').expect(OK);
-      await prisma.alerta.updateMany({ data: { leida: true } });
+      await prisma.alerta.updateMany({
+        data: { leida: true, leida_en: new Date() },
+      });
       await llamar(secreto, '?esperar=true').expect(OK);
 
       expect(await todasLasAlertas()).toBe(primera);

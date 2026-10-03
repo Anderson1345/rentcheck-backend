@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.26 — 2 de octubre de 2026.** Reemplaza a la versión 3.25.
+> **Versión 3.27 — 3 de octubre de 2026.** Reemplaza a la versión 3.26.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.27:**
+
+- **B0.7-A cerrada: B-79 ✅, B-80 ✅, B-81 ✅.** Una migración (`Alerta.leida_en`, relleno con `creado_en` para las ya leídas). Feed sin leídas de más de 7 días; purga diaria de leídas de más de 60; mora máximo una vez cada 7 días por contrato, período y destinatario; vencimiento una sola vez por fecha de fin; textos de alerta con fechas dd/mm/aaaa. Sigue B-82 (Panel v2) en B0.7-B.
 
 **Qué cambió en la versión 3.26:**
 
@@ -436,9 +440,9 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-76 | Menor (nuevo) | El pago no guarda la fecha de aprobación (solo `fecha_reportada`, `periodo` y `actualizado_en`, que cambia con cualquier escritura). El Panel usa `fecha_reportada` para "ingresos del mes" (decisión D1) | con B-45 (anular aprobación) | ⬜ |
 | B-77 | Menor (nuevo) | `Contrato.estado_pago` guardado puede estar atrasado en contratos VENCIDO o TERMINADO_ANTICIPADAMENTE: el cron solo recalcula los ACTIVO. El Panel recalcula desde los períodos y no lo usa | B0.6-B | ✅ Corregido el 02/10/2026 (B0.6-B2) |
 | B-78 | Menor (nuevo) | La alerta `ejecutarAjusteIpcPendiente` salta los contratos cuyo próximo ajuste ya pasó (`proximoAjuste < hoy`): un incremento vencido nunca avisa. El Panel lo muestra como "incremento disponible" | B0.6-B | ✅ Corregido el 02/10/2026 (B0.6-B2) |
-| B-79 | Importante (nuevo) | La alerta de mora se crea **cada día** mientras el período siga vencido (si el destinatario la leyó, se vuelve a crear): el feed se llena de copias | Repetir como máximo una vez cada 7 días por contrato, período y destinatario (Contexto 11, D-13) | B0.7 | ⬜ |
-| B-80 | Importante (nuevo) | Las alertas no tienen retención: se acumulan para siempre | Feed sin leídas de hace más de 7 días (por fecha de lectura; puede requerir `leida_en`, decidir en el diagnóstico si cabe sin migración) y borrado de leídas de más de 60 días en la corrida diaria (Contexto 5.16, D-13) | B0.7 | ⬜ |
-| B-81 | Menor (nuevo) | Los textos de alerta mezclan formatos de fecha (`2026-10-01`, `5/10/2026`, `02/10/2026`) | Un solo formato (dd/mm/aaaa o "5 de octubre de 2026") en todos los textos | B0.7 | ⬜ |
+| B-79 | Importante (nuevo) | La alerta de mora se crea **cada día** mientras el período siga vencido (si el destinatario la leyó, se vuelve a crear): el feed se llena de copias | Repetir como máximo una vez cada 7 días por contrato, período y destinatario (Contexto 11, D-13) | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-A) |
+| B-80 | Importante (nuevo) | Las alertas no tienen retención: se acumulan para siempre | Feed sin leídas de hace más de 7 días (por fecha de lectura; puede requerir `leida_en`, decidir en el diagnóstico si cabe sin migración) y borrado de leídas de más de 60 días en la corrida diaria (Contexto 5.16, D-13) | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-A) |
+| B-81 | Menor (nuevo) | Los textos de alerta mezclan formatos de fecha (`2026-10-01`, `5/10/2026`, `02/10/2026`) | Un solo formato (dd/mm/aaaa o "5 de octubre de 2026") en todos los textos | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-A) |
 | B-82 | Importante (nuevo) | El Panel no dice **quién** debe (solo totales) ni **cómo va el año** | Ampliar `GET /arrendadores/panel` (o ruta nueva): contratos en mora con unidad, inquilino, días y monto; ingresos del año en curso y del anterior mes a mes; ingresos por inmueble; ocupación %. Sin romper los campos actuales (Contexto 9, D-14) | B0.7 | ⬜ |
 | B-83 | Funcionalidad (nuevo) | No se puede entrar con Google | `POST /auth/google` (o similar) que verifica el ID token de Google en el servidor, crea o vincula la cuenta por correo verificado; para el inquilino, después de validar el código de activación. Requiere development build en la app (Contexto 3.1/3.2, D-11) | G1 | ⬜ |
 | B-84 | Funcionalidad (nuevo) | El pago solo se respalda con una captura | Llave Bre-B (y QR) en los datos de recaudo del arrendador; referencia única por período visible para el inquilino y junto al comprobante para el arrendador. Una migración (Contexto 5.10, D-12) | P1 | ⬜ |

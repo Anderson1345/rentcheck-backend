@@ -406,9 +406,10 @@ describe('Alertas: modelo con destinatario y feed por cursor (e2e)', () => {
   describe('filtro `leida` y contador', () => {
     it('`leida=false` y `leida=true` filtran los items; `no_leidas` cuenta siempre todas las no leídas', async () => {
       const ids = await alertasDe({ inquilino_id: inquilino1 }, 4);
+      // B-80: leída ahora (con su `leida_en`, como la marca el servicio), así se sigue viendo.
       await prisma.alerta.updateMany({
         where: { id: { in: ids.slice(0, 1) } },
-        data: { leida: true },
+        data: { leida: true, leida_en: new Date() },
       });
 
       const sinLeer = (

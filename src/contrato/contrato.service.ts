@@ -16,6 +16,7 @@ import {
   TipoProrroga,
 } from '@prisma/client';
 import { alertarAlInquilinoDelContrato } from '../alerta/crear-alerta';
+import { fechaDeAlerta } from '../alerta/textos-alerta';
 import { AlmacenamientoService } from '../almacenamiento/almacenamiento.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { calcularCanonNuevo } from '../common/canon-incremento.util';
@@ -447,7 +448,7 @@ export class ContratoService {
       // Alerta al inquilino (omitida si aún no vinculó su cuenta), dentro de la transacción.
       await alertarAlInquilinoDelContrato(tx, id, {
         tipo: TipoAlerta.PRORROGA_APLICADA,
-        mensaje: `Tu contrato de la unidad {unidad} fue prorrogado hasta el ${prorroga.fecha_fin_nueva.toISOString().slice(0, 10)}.`,
+        mensaje: `Tu contrato de la unidad {unidad} fue prorrogado hasta el ${fechaDeAlerta(prorroga.fecha_fin_nueva)}.`,
       });
 
       return {

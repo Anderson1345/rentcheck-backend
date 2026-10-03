@@ -1,5 +1,6 @@
 import { MotivoRechazoPago } from '@prisma/client';
 import {
+  fechaDeAlerta,
   mesDePeriodo,
   textoPagoAprobado,
   textoPagoRechazado,
@@ -65,5 +66,31 @@ describe('textos de alertas', () => {
       );
       expect(texto.endsWith(mensaje)).toBe(true);
     });
+  });
+});
+
+describe('fechaDeAlerta (B-81): dd/mm/aaaa con ceros', () => {
+  it('día y mes de un dígito llevan cero a la izquierda', () => {
+    expect(fechaDeAlerta(new Date('2031-04-05T00:00:00.000Z'))).toBe(
+      '05/04/2031',
+    );
+  });
+
+  it('día y mes de dos dígitos quedan igual', () => {
+    expect(fechaDeAlerta(new Date('2031-12-31T00:00:00.000Z'))).toBe(
+      '31/12/2031',
+    );
+  });
+
+  it('una fecha de día (medianoche UTC) no se corre al día anterior por la zona de Bogotá', () => {
+    expect(fechaDeAlerta(new Date('2031-01-01T00:00:00.000Z'))).toBe(
+      '01/01/2031',
+    );
+  });
+
+  it('nunca produce el formato AAAA-MM-DD', () => {
+    expect(fechaDeAlerta(new Date('2031-03-09T00:00:00.000Z'))).not.toMatch(
+      /\d{4}-\d{2}-\d{2}/,
+    );
   });
 });

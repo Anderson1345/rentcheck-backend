@@ -25,7 +25,12 @@ import {
   registrarArrendador,
   RespuestaCrearContrato,
 } from './helpers/crear-datos.helper';
-import { enDias, fechaISO } from './helpers/fechas.helper';
+import {
+  enDias,
+  fechaDeTexto,
+  fechaISO,
+  fechasMalFormadas,
+} from './helpers/fechas.helper';
 import { limpiarBd } from './helpers/limpiar-bd';
 
 jest.setTimeout(240_000);
@@ -89,6 +94,15 @@ describe('Alertas por evento (e2e)', () => {
     await limpiarBd(prisma);
     await app.close();
     await prisma.$disconnect();
+  });
+
+  // B-81: ninguna alerta de estos flujos (pagos, mantenimiento, terminación, aviso, prórrogas, incremento)
+  // lleva una fecha AAAA-MM-DD ni d/m/aaaa sin ceros.
+  afterEach(async () => {
+    const alertas = await prisma.alerta.findMany({ select: { mensaje: true } });
+    for (const { mensaje } of alertas) {
+      expect(fechasMalFormadas(mensaje)).toEqual([]);
+    }
   });
 
   function idDelToken(token: string): string {
@@ -435,7 +449,8 @@ describe('Alertas por evento (e2e)', () => {
       );
       expect(solicitadas).toHaveLength(1);
       expect(solicitadas[0].mensaje).toContain('arrendador');
-      expect(solicitadas[0].mensaje).toContain(enDias(20));
+      // B-81: la fecha efectiva va en dd/mm/aaaa.
+      expect(solicitadas[0].mensaje).toContain(fechaDeTexto(enDias(20)));
       expect(solicitadas[0].recurso?.tipo).toBe('CONTRATO');
 
       // Repetir: 409 y sin alerta nueva.
@@ -558,7 +573,8 @@ describe('Alertas por evento (e2e)', () => {
       );
       expect(alertas).toHaveLength(1);
       expect(alertas[0].mensaje).toContain(e.unidadNombre);
-      expect(alertas[0].mensaje).toContain(nuevoFin);
+      // B-81: la nueva fecha de fin va en dd/mm/aaaa.
+      expect(alertas[0].mensaje).toContain(fechaDeTexto(nuevoFin));
       expect(alertas[0].recurso).toEqual({
         tipo: 'CONTRATO',
         id: e.contrato.id,

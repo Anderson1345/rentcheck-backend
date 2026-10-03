@@ -16,6 +16,7 @@ import { OMITIR_COPIA_INQUILINO } from '../common/inquilino-copia';
 import { recalcularEstadoPagoContrato } from '../common/recalcular-estado-pago';
 import { resumenTerminacion } from '../common/terminacion.util';
 import { alertarALaContraparte } from '../alerta/crear-alerta';
+import { fechaDeAlerta } from '../alerta/textos-alerta';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Cómo se localiza el contrato de quien actúa (pertenencia, nunca por rol). */
@@ -171,7 +172,7 @@ export class TerminacionAnticipadaService {
         });
       }
 
-      const fechaEfectiva = efectiva.toISOString().slice(0, 10);
+      const fechaEfectiva = fechaDeAlerta(efectiva);
       await alertarALaContraparte(
         tx,
         contratoId,
