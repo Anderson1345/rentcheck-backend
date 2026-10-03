@@ -1,8 +1,16 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.27 — 3 de octubre de 2026.** Reemplaza a la versión 3.26.
+> **Versión 3.29 — 3 de octubre de 2026.** Reemplaza a la versión 3.28.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.29:**
+
+- **B0.7-C cerrada: B-86 ✅ (era de documentación).** `GET /contratos` ya devolvía `estado_pago` y las unidades de `GET /inmuebles` y `/:id` ya traían `foto_principal_url` firmada; faltaba el esquema de la lista en OpenAPI (la app escribió `ContratoResumen` a mano, sin `estado_pago`). Ahora `GET /contratos` documenta `ContratoListaDto[]` (+ `EstadoPagoContrato`, `RolSolicitante`; esquemas 77 → 83) con una prueba que compara claves del esquema y de la respuesta real. La app debe regenerar tipos y leer `foto_principal_url` (R2). `GET /contratos/:id` sigue sin esquema (B-57).
+
+**Qué cambió en la versión 3.28:**
+
+- **B0.7-B cerrada: B-82 ✅.** `GET /arrendadores/panel` suma `morosos`, `anio`, `por_inmueble`, `ocupacion.porcentaje`, `ocupacion.unidades_detalle` y `pendientes.solicitudes_abiertas` sin cambiar los campos anteriores (snapshot de regresión); 10 consultas constantes (antes 9). Nuevo **B-86** (`GET /contratos` sin `estado_pago`; foto de la unidad en las listas por verificar), que se corrige en **B0.7-C** en la misma rama antes de fusionar.
 
 **Qué cambió en la versión 3.27:**
 
@@ -443,10 +451,11 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-79 | Importante (nuevo) | La alerta de mora se crea **cada día** mientras el período siga vencido (si el destinatario la leyó, se vuelve a crear): el feed se llena de copias | Repetir como máximo una vez cada 7 días por contrato, período y destinatario (Contexto 11, D-13) | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-A) |
 | B-80 | Importante (nuevo) | Las alertas no tienen retención: se acumulan para siempre | Feed sin leídas de hace más de 7 días (por fecha de lectura; puede requerir `leida_en`, decidir en el diagnóstico si cabe sin migración) y borrado de leídas de más de 60 días en la corrida diaria (Contexto 5.16, D-13) | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-A) |
 | B-81 | Menor (nuevo) | Los textos de alerta mezclan formatos de fecha (`2026-10-01`, `5/10/2026`, `02/10/2026`) | Un solo formato (dd/mm/aaaa o "5 de octubre de 2026") en todos los textos | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-A) |
-| B-82 | Importante (nuevo) | El Panel no dice **quién** debe (solo totales) ni **cómo va el año** | Ampliar `GET /arrendadores/panel` (o ruta nueva): contratos en mora con unidad, inquilino, días y monto; ingresos del año en curso y del anterior mes a mes; ingresos por inmueble; ocupación %. Sin romper los campos actuales (Contexto 9, D-14) | B0.7 | ⬜ |
+| B-82 | Importante (nuevo) | El Panel no dice **quién** debe (solo totales) ni **cómo va el año** | Ampliar `GET /arrendadores/panel` (o ruta nueva): contratos en mora con unidad, inquilino, días y monto; ingresos del año en curso y del anterior mes a mes; ingresos por inmueble; ocupación %. Sin romper los campos actuales (Contexto 9, D-14) | B0.7 | ✅ Corregido el 03/10/2026 (B0.7-B) |
 | B-83 | Funcionalidad (nuevo) | No se puede entrar con Google | `POST /auth/google` (o similar) que verifica el ID token de Google en el servidor, crea o vincula la cuenta por correo verificado; para el inquilino, después de validar el código de activación. Requiere development build en la app (Contexto 3.1/3.2, D-11) | G1 | ⬜ |
 | B-84 | Funcionalidad (nuevo) | El pago solo se respalda con una captura | Llave Bre-B (y QR) en los datos de recaudo del arrendador; referencia única por período visible para el inquilino y junto al comprobante para el arrendador. Una migración (Contexto 5.10, D-12) | P1 | ⬜ |
 | B-85 | Funcionalidad (nuevo) | No hay confirmación automática de pagos | Pasarela Wompi en modo pruebas con webhook firmado e idempotente; cada arrendador con sus propias llaves; RentCheck nunca recibe el dinero. Reverificar costos y requisitos antes (Contexto 5.10, D-12) | P2 | ⬜ |
+| B-86 | Menor (nuevo) | `GET /contratos` no trae `estado_pago` (la lista rediseñada necesita "al día / en mora" por fila y el filtro "En mora"); y hay que verificar si las listas de unidades traen la URL de la foto de la unidad (Jesús ve solo iconos) | Añadir `estado_pago` (el guardado, recalculado a diario también para cerrados por B-77) a la lista y, si falta, `foto_url` firmada en las unidades del detalle del inmueble | B0.7-C | ✅ 03/10/2026 (B0.7-C): los datos ya existían; se documentó la lista en OpenAPI. El resto es de la app (R2) |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
