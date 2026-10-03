@@ -875,7 +875,8 @@ describe('Alertas: modelo con destinatario y feed por cursor (e2e)', () => {
       expect(rutas).toHaveLength(74 + 7);
       expect(operaciones).toBe(86 + 7);
       // B0.7-B agregó 10 esquemas del Panel (9 DTO y el enum EstadoOcupacionUnidad), sin rutas nuevas.
-      expect(esquemas).toBe(60 + 7 + 10);
+      // B0.7-C documentó GET /contratos: 4 DTO y los enums EstadoPagoContrato y RolSolicitante.
+      expect(esquemas).toBe(60 + 7 + 10 + 6);
     });
   });
 });
