@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.29 — 3 de octubre de 2026.** Reemplaza a la versión 3.28.
+> **Versión 3.30 — 6 de octubre de 2026.** Reemplaza a la versión 3.29.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.30:**
+
+- **Nuevo B-87 (menor, a P1-B).** "Tus pagos" de Mi panel (R3-B) no puede mostrar "N de M a tiempo": la app no tiene la fecha del pago aprobado para compararla con la fecha límite, y calcularlo en la app sería lógica de negocio. Se agrega al panel del inquilino en P1-B, sin migración.
 
 **Qué cambió en la versión 3.29:**
 
@@ -456,6 +460,7 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-84 | Funcionalidad (nuevo) | El pago solo se respalda con una captura | Llave Bre-B (y QR) en los datos de recaudo del arrendador; referencia única por período visible para el inquilino y junto al comprobante para el arrendador. Una migración (Contexto 5.10, D-12) | P1 | ⬜ |
 | B-85 | Funcionalidad (nuevo) | No hay confirmación automática de pagos | Pasarela Wompi en modo pruebas con webhook firmado e idempotente; cada arrendador con sus propias llaves; RentCheck nunca recibe el dinero. Reverificar costos y requisitos antes (Contexto 5.10, D-12) | P2 | ⬜ |
 | B-86 | Menor (nuevo) | `GET /contratos` no trae `estado_pago` (la lista rediseñada necesita "al día / en mora" por fila y el filtro "En mora"); y hay que verificar si las listas de unidades traen la URL de la foto de la unidad (Jesús ve solo iconos) | Añadir `estado_pago` (el guardado, recalculado a diario también para cerrados por B-77) a la lista y, si falta, `foto_url` firmada en las unidades del detalle del inmueble | B0.7-C | ✅ 03/10/2026 (B0.7-C): los datos ya existían; se documentó la lista en OpenAPI. El resto es de la app (R2) |
+| B-87 | Menor (nuevo) | `GET /inquilino/contratos/:id/panel` no dice cuántos períodos se pagaron a tiempo; "Tus pagos" de Mi panel (R3-B) no puede mostrar "N de M a tiempo" | Agregar `puntualidad: { a_tiempo, total }` calculada en el servidor sobre los períodos ya vencidos del estado de cuenta: `total` = períodos con fecha límite pasada; `a_tiempo` = los PAGADO cuyo pago aprobado que completa el canon tiene `fecha_reportada` ≤ fecha límite. Prueba unitaria con reloj fijo (pago anticipado, el mismo día, un día tarde, parcial completado tarde). Sin migración | P1-B | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
