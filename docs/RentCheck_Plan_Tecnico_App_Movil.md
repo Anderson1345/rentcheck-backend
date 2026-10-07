@@ -1,8 +1,12 @@
 # RentCheck — Plan técnico de la app móvil
 
-> **Versión 3.31 — 6 de octubre de 2026.** Reemplaza a la versión 3.30.
+> **Versión 3.32 — 7 de octubre de 2026.** Reemplaza a la versión 3.31.
 > Complementa a `RentCheck_Contexto_App_Movil.md` (qué hace el producto) con el **cómo**: qué se reutiliza, qué se corrige primero en el backend, qué tecnologías se usan y cuánto cuesta publicar. Es el único documento donde se nombran tecnologías concretas.
 > La forma de trabajar día a día (tamaño de los prompts, plantilla, verificación, estado del avance) está en `RentCheck_instrucciones_desarrollo_movil.md`.
+
+**Qué cambió en la versión 3.32:**
+
+- **Nuevo B-89 (menor, a P1-B).** `GET /inquilino/contratos/:id` no trae datos del arrendador: Mi contrato (R4-B) no puede mostrar su nombre ni "Llamar", y P1 necesitará el nombre para "Llave Bre-B de {arrendador}".
 
 **Qué cambió en la versión 3.31:**
 
@@ -466,6 +470,7 @@ Revisión complementaria hecha sobre 30 escenarios operativos concretos (documen
 | B-86 | Menor (nuevo) | `GET /contratos` no trae `estado_pago` (la lista rediseñada necesita "al día / en mora" por fila y el filtro "En mora"); y hay que verificar si las listas de unidades traen la URL de la foto de la unidad (Jesús ve solo iconos) | Añadir `estado_pago` (el guardado, recalculado a diario también para cerrados por B-77) a la lista y, si falta, `foto_url` firmada en las unidades del detalle del inmueble | B0.7-C | ✅ 03/10/2026 (B0.7-C): los datos ya existían; se documentó la lista en OpenAPI. El resto es de la app (R2) |
 | B-87 | Menor (nuevo) | `GET /inquilino/contratos/:id/panel` no dice cuántos períodos se pagaron a tiempo; "Tus pagos" de Mi panel (R3-B) no puede mostrar "N de M a tiempo" | Agregar `puntualidad: { a_tiempo, total }` calculada en el servidor sobre los períodos ya vencidos del estado de cuenta: `total` = períodos con fecha límite pasada; `a_tiempo` = los PAGADO cuyo pago aprobado que completa el canon tiene `fecha_reportada` ≤ fecha límite. Prueba unitaria con reloj fijo (pago anticipado, el mismo día, un día tarde, parcial completado tarde). Sin migración | P1-B | ⬜ |
 | B-88 | Menor (nuevo) | Con el contrato vencido o terminado, el panel del inquilino no trae `proximo_periodo` ni `periodos_vencidos`: la app no puede mostrar lo que quedó debiendo (B-38) como en un contrato activo | Incluir en esas formas del panel `periodos_vencidos` (cantidad y total) y el período más antiguo reportable, calculados con el mismo estado de cuenta; sin cambiar la forma del contrato activo (snapshot de regresión). Sin migración | P1-B | ⬜ |
+| B-89 | Menor (nuevo) | `GET /inquilino/contratos/:id` no trae datos del arrendador: el inquilino no ve con quién tiene el contrato ni puede llamarlo desde la app, y la llave Bre-B de P1 se mostrará sin nombre | Agregar `arrendador: { nombre, telefono }` (solo esos dos campos, nunca correo, cédula ni datos de otros contratos) al detalle del contrato del inquilino; 404 para lo ajeno como hoy; esquema en OpenAPI. Sin migración | P1-B | ⬜ |
 
 Para el detalle de cada escenario (qué pasa hoy, qué debería pasar, cómo probarlo a mano), ver el documento completo. Cuando se dé el prompt de cada bloque, se referencia el escenario correspondiente además del ID.
 
