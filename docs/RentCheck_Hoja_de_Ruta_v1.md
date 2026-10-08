@@ -1,6 +1,6 @@
 # RentCheck — Hoja de ruta hacia la versión de demostración
 
-> **Versión 1.0 — 7 de octubre de 2026.** Estado: **propuesta**; las decisiones de la sección 8 las toma Jesús.
+> **Versión 1.1 — 8 de octubre de 2026.** Estado: **propuesta**; D-21 decidida (sí: APK ya; A1 cerrada en código el 08/10/2026). Las demás decisiones de la sección 8 las toma Jesús.
 > Ordena todo lo que falta en un solo camino: lo pendiente del plan de rediseño (`RentCheck_Plan_Rediseno_UX.md` §4, pasos 7 a 11), las ideas de `RentCheck — Funciones que hacen la diferencia.md` y la versión web.
 > Cuando se apruebe, **reemplaza** el orden de esos dos documentos. Las reglas de negocio siguen en el documento 1 (Contexto), los B-xx en el documento 2 (Plan Técnico) y el estado de cada entrega en el documento 3 (instrucciones).
 
@@ -218,7 +218,7 @@ Queda congelado (`web-v1-congelada`) como historia. No se reutiliza: usa la API 
 | **D-18** | ¿Planes de precio? | A) Gratis (1 unidad), Propietario y Portafolio, como propuesta · B) solo Gratis y Propietario · C) no mostrar precios | **A**, en la landing (W4), sin cobro real |
 | **D-19** | ¿Cómo se construye la web? | A) mismo proyecto Expo · B) proyecto aparte | **A** (sección 7) |
 | **D-20** | ¿La web va antes que push y Google? | A) Fase 3 web, luego Fase 4 · B) push y Google primero | **A**, salvo que el SENA pida push o Google |
-| **D-21** | ¿Generamos ya el APK (Fase 0)? | Sí · esperar al final | **Sí**: cuesta $0 y te deja mostrar avances desde ya |
+| **D-21** | ¿Generamos ya el APK (Fase 0)? | Sí · esperar al final | **DECIDIDA (08/10/2026): sí.** A1 cerrada en código; falta la compilación |
 
 **Falta un dato: la fecha de la sustentación** (y si el SENA exige web, IA o algo puntual). Con esa fecha se decide hasta dónde se llega antes: la Fase 0 sola sirve para un avance; las Fases 0 a 2 son la demostración completa; la Fase 3 suma la web.
 
